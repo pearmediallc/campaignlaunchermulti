@@ -1,0 +1,1958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Launcher - Automate Your Marketing Campaigns</title>
+    <meta name="description" content="Launch and optimize marketing campaigns across all platforms with AI-powered automation.">
+    <meta name="keywords" content="campaign management, marketing automation, AI marketing">
+    
+    <style>
+        /* CSS Custom Properties */
+        :root {
+            --primary: #1E40AF;
+            --secondary: #FFFFFF;
+            --accent: #10B981;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --bg-light: #F9FAFB;
+            --border: #E5E7EB;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+            --animation-duration: 0.3s;
+            --animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Reset & Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Typography */
+        h1 {
+            font-size: 56px;
+            line-height: 64px;
+            font-weight: 700;
+        }
+
+        h2 {
+            font-size: 36px;
+            line-height: 44px;
+            font-weight: 700;
+        }
+
+        h3 {
+            font-size: 24px;
+            line-height: 32px;
+            font-weight: 600;
+        }
+
+        .text-secondary {
+            color: var(--text-secondary);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            transition: all var(--animation-duration) var(--animation-easing);
+            padding: 1.5rem 0;
+        }
+
+        nav.scrolled {
+            background: var(--secondary);
+            box-shadow: var(--shadow-md);
+            padding: 1rem 0;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+            transition: transform var(--animation-duration) var(--animation-easing);
+        }
+
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-link {
+            text-decoration: none;
+            color: var(--text-primary);
+            position: relative;
+            transition: color var(--animation-duration);
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary);
+            transition: width var(--animation-duration) var(--animation-easing);
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
+
+        .cta-button {
+            background: var(--primary);
+            color: var(--secondary);
+            padding: 0.75rem 2rem;
+            border-radius: 9999px;
+            text-decoration: none;
+            transition: all var(--animation-duration) var(--animation-easing);
+            display: inline-block;
+            font-weight: 500;
+        }
+
+        .cta-button:hover {
+            transform: scale(1.05);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .mobile-menu-btn span {
+            width: 25px;
+            height: 3px;
+            background: var(--text-primary);
+            transition: all var(--animation-duration);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding: 6rem 0 4rem;
+            overflow: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            width: 100%;
+        }
+
+        .hero-content {
+            max-width: 700px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .hero h1 {
+            margin-bottom: 1.5rem;
+            opacity: 0;
+            animation: fadeInUp 0.8s forwards;
+        }
+
+        .hero-subtitle {
+            font-size: 20px;
+            line-height: 30px;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            opacity: 0;
+            animation: fadeInUp 0.8s 0.2s forwards;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 3rem;
+            opacity: 0;
+            animation: fadeInUp 0.8s 0.4s forwards;
+        }
+
+        .btn-secondary {
+            background: var(--secondary);
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            padding: 0.75rem 2rem;
+            border-radius: 9999px;
+            text-decoration: none;
+            transition: all var(--animation-duration) var(--animation-easing);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary);
+            color: var(--secondary);
+            transform: scale(1.05);
+        }
+
+        .trust-badge {
+            color: var(--text-secondary);
+            opacity: 0;
+            animation: fadeInUp 0.8s 0.6s forwards;
+        }
+
+        /* Floating Shapes */
+        .floating-shapes {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        .shape {
+            position: absolute;
+            opacity: 0.1;
+            animation: float 6s infinite ease-in-out;
+        }
+
+        .shape-1 {
+            width: 300px;
+            height: 300px;
+            background: var(--primary);
+            border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+            top: 10%;
+            right: 10%;
+            animation-delay: 0s;
+        }
+
+        .shape-2 {
+            width: 200px;
+            height: 200px;
+            background: var(--accent);
+            border-radius: 50%;
+            bottom: 20%;
+            left: 5%;
+            animation-delay: 2s;
+        }
+
+        .shape-3 {
+            width: 150px;
+            height: 150px;
+            background: var(--primary);
+            transform: rotate(45deg);
+            top: 50%;
+            right: 30%;
+            animation-delay: 4s;
+        }
+
+        /* Scroll Indicator */
+        .scroll-indicator {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            animation: bounce 2s infinite;
+        }
+
+        .scroll-indicator svg {
+            width: 30px;
+            height: 30px;
+            fill: var(--text-secondary);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 5rem 0;
+            background: var(--bg-light);
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .feature-card {
+            background: var(--secondary);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: var(--shadow-sm);
+            transition: all var(--animation-duration) var(--animation-easing);
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .feature-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--bg-light);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            font-size: 28px;
+            transition: all var(--animation-duration);
+        }
+
+        .feature-card:hover .feature-icon {
+            transform: rotate(10deg);
+            background: var(--primary);
+            color: var(--secondary);
+        }
+
+        /* How It Works */
+        .how-it-works {
+            padding: 5rem 0;
+        }
+
+        .process-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+            align-items: center;
+            gap: 2rem;
+            margin-top: 4rem;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .process-card {
+            background: var(--secondary);
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: var(--shadow-md);
+            position: relative;
+            transition: all var(--animation-duration) var(--animation-easing);
+            opacity: 0;
+            transform: translateY(20px);
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .process-card.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .process-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .process-number {
+            position: absolute;
+            top: -20px;
+            right: -20px;
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            color: var(--secondary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 700;
+            box-shadow: var(--shadow-md);
+        }
+
+        .process-content h3 {
+            margin-bottom: 0.5rem;
+        }
+
+        .process-icon {
+            font-size: 48px;
+            margin-top: 1rem;
+            opacity: 0.8;
+            transition: all var(--animation-duration);
+            color: var(--primary);
+        }
+
+        .process-card:hover .process-icon {
+            transform: scale(1.2);
+            opacity: 1;
+        }
+
+        .process-arrow {
+            font-size: 32px;
+            color: var(--primary);
+            opacity: 0.3;
+            transition: all var(--animation-duration);
+            animation: pulse 2s infinite;
+        }
+
+        /* Metrics */
+        .metrics {
+            padding: 5rem 0;
+            background: var(--bg-light);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .metric-card {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .metric-number {
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Pricing */
+        .pricing {
+            padding: 5rem 0;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+            max-width: 1000px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .pricing-card {
+            background: var(--secondary);
+            border: 2px solid var(--border);
+            padding: 2.5rem;
+            border-radius: 12px;
+            text-align: center;
+            position: relative;
+            transition: all var(--animation-duration) var(--animation-easing);
+        }
+
+        .pricing-card.featured {
+            border-color: var(--primary);
+            transform: scale(1.05);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .pricing-card.featured:hover {
+            transform: scale(1.05) translateY(-5px);
+        }
+
+        .popular-badge {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent);
+            color: var(--secondary);
+            padding: 0.25rem 1rem;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .price {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 1rem 0 2rem;
+        }
+
+        .pricing-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .pricing-features li {
+            padding: 0.5rem 0;
+            color: var(--text-secondary);
+        }
+
+        /* Testimonials */
+        .testimonials {
+            padding: 5rem 0;
+            background: var(--bg-light);
+            overflow: hidden;
+        }
+
+        .testimonial-wrapper {
+            width: 100%;
+            margin-top: 3rem;
+            position: relative;
+        }
+
+        .testimonial-track {
+            display: flex;
+            gap: 2rem;
+            animation: scroll 30s linear infinite;
+        }
+
+        .testimonial-card {
+            min-width: 400px;
+            background: var(--secondary);
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: var(--shadow-md);
+            transition: all var(--animation-duration) var(--animation-easing);
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            animation-play-state: paused;
+        }
+
+        .testimonial-wrapper:hover .testimonial-track {
+            animation-play-state: paused;
+        }
+
+        .stars {
+            font-size: 20px;
+            margin-bottom: 1rem;
+        }
+
+        .testimonial-text {
+            font-size: 18px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            margin-bottom: 2rem;
+            font-style: normal;
+            font-weight: 500;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .author-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: var(--secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .author-name {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .author-title {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        @keyframes scroll {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                transform: translateX(-50%);
+            }
+        }
+
+        /* About Section */
+        .about {
+            padding: 5rem 0;
+        }
+
+        .about-content {
+            display: grid;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .about-text h2 {
+            margin-bottom: 1.5rem;
+        }
+
+        .about-image {
+            position: relative;
+            height: 400px;
+            background: var(--bg-light);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .values-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .value-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .value-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: var(--secondary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .value-icon svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--secondary);
+        }
+
+        /* FAQ Section */
+        .faq {
+            padding: 5rem 0;
+            background: var(--bg-light);
+        }
+
+        .faq-container {
+            max-width: 800px;
+            margin: 3rem auto;
+        }
+
+        .faq-item {
+            background: var(--secondary);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .faq-question {
+            padding: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            transition: background var(--animation-duration);
+        }
+
+        .faq-question:hover {
+            background: var(--bg-light);
+        }
+
+        .faq-icon {
+            font-size: 24px;
+            transition: transform var(--animation-duration);
+        }
+
+        .faq-item.active .faq-icon {
+            transform: rotate(45deg);
+        }
+
+        .faq-answer {
+            padding: 0 1.5rem;
+            max-height: 0;
+            overflow: hidden;
+            transition: all var(--animation-duration) var(--animation-easing);
+        }
+
+        .faq-item.active .faq-answer {
+            max-height: 200px;
+            padding: 0 1.5rem 1.5rem;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--text-primary);
+            color: var(--secondary);
+            padding: 4rem 0 2rem;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .footer-section h4 {
+            margin-bottom: 1rem;
+            color: var(--secondary);
+        }
+
+        .footer-links {
+            list-style: none;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            display: block;
+            padding: 0.25rem 0;
+            transition: color var(--animation-duration);
+        }
+
+        .footer-links a:hover {
+            color: var(--secondary);
+        }
+
+        .newsletter-form {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .newsletter-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--secondary);
+            color: var(--text-primary);
+        }
+
+        .newsletter-btn {
+            background: var(--primary);
+            color: var(--secondary);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all var(--animation-duration);
+        }
+
+        .newsletter-btn:hover {
+            background: var(--accent);
+        }
+
+        .social-icons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .social-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary);
+            text-decoration: none;
+            transition: all var(--animation-duration);
+        }
+
+        .social-icon:hover {
+            background: var(--primary);
+            transform: scale(1.1);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+        }
+
+        /* Back to Top Button */
+        .back-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 50px;
+            height: 50px;
+            background: var(--primary);
+            color: var(--secondary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--animation-duration);
+            z-index: 999;
+        }
+
+        .back-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .back-to-top:hover {
+            transform: scale(1.1);
+            background: var(--accent);
+        }
+
+        /* Launch App Button */
+        .launch-app-btn {
+            position: fixed;
+            bottom: 2rem;
+            left: 2rem;
+            background: var(--accent);
+            color: var(--secondary);
+            padding: 1rem 2rem;
+            border-radius: 9999px;
+            text-decoration: none;
+            font-weight: 600;
+            box-shadow: var(--shadow-lg);
+            transition: all var(--animation-duration) var(--animation-easing);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .launch-app-btn:hover {
+            transform: scale(1.05);
+            background: var(--primary);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg);
+            }
+            33% {
+                transform: translateY(-20px) rotate(5deg);
+            }
+            66% {
+                transform: translateY(10px) rotate(-5deg);
+            }
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        @keyframes countUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 36px;
+                line-height: 44px;
+            }
+
+            h2 {
+                font-size: 28px;
+                line-height: 36px;
+            }
+
+            .nav-menu {
+                position: fixed;
+                top: 70px;
+                left: -100%;
+                width: 100%;
+                height: calc(100vh - 70px);
+                background: var(--secondary);
+                flex-direction: column;
+                padding: 2rem;
+                transition: left var(--animation-duration);
+                box-shadow: var(--shadow-lg);
+            }
+
+            .nav-menu.active {
+                left: 0;
+            }
+
+            .mobile-menu-btn {
+                display: flex;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+            }
+
+            .process-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .process-arrow {
+                display: none;
+            }
+
+            .testimonial-card {
+                min-width: 320px;
+            }
+
+            .about-content {
+                grid-template-columns: 1fr;
+            }
+
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .pricing-card.featured {
+                transform: scale(1);
+            }
+
+            .launch-app-btn {
+                bottom: 1rem;
+                left: 1rem;
+                padding: 0.75rem 1.5rem;
+                font-size: 14px;
+            }
+        }
+
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--secondary);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Page Sections */
+        .page-section {
+            min-height: 100vh;
+            padding: 6rem 0 4rem;
+            background: var(--secondary);
+        }
+
+        .page-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .page-content h1 {
+            margin-bottom: 2rem;
+        }
+
+        .page-content h2 {
+            margin: 2rem 0 1rem;
+            font-size: 28px;
+        }
+
+        .page-content p {
+            margin-bottom: 1rem;
+            line-height: 1.8;
+        }
+
+        .page-content ul {
+            list-style-position: inside;
+            margin-left: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .page-content ul li {
+            padding: 0.5rem 0;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 3rem;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all var(--animation-duration);
+        }
+
+        .back-link:hover {
+            transform: translateX(-5px);
+        }
+
+        /* Contact Page Styles */
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            margin-top: 3rem;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: start;
+            margin-bottom: 2rem;
+        }
+
+        .contact-item svg {
+            color: var(--primary);
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .contact-form input,
+        .contact-form textarea {
+            width: 100%;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 16px;
+        }
+
+        .contact-form input:focus,
+        .contact-form textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        @media (max-width: 768px) {
+            .contact-grid {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+        }
+    </style>
+</head>
+<body id="top">
+    <!-- Navigation -->
+    <nav id="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo">Campaign Launcher</a>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="#features" class="nav-link">Features</a></li>
+                <li><a href="#pricing" class="nav-link">Pricing</a></li>
+                <li><a href="#about" class="nav-link">About</a></li>
+                <li><a href="#contact" class="nav-link">Contact</a></li>
+                <li><a href="#pricing" class="cta-button">Start Free Trial</a></li>
+            </ul>
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>Launch Campaigns That Convert, Automatically</h1>
+                <p class="hero-subtitle">Streamline your marketing with AI-powered campaign management across all platforms</p>
+                <div class="hero-buttons">
+                    <a href="#pricing" class="cta-button">Start Free Trial</a>
+                    <a href="https://campaignlauncher.onrender.com" target="_blank" class="btn-secondary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
+                            <path d="M14 2v6h6"/>
+                            <path d="M10 12l-2 2 2 2" stroke="white" stroke-width="2" fill="none"/>
+                            <path d="M14 12l2 2-2 2" stroke="white" stroke-width="2" fill="none"/>
+                        </svg>
+                        Visit US
+                    </a>
+                </div>
+                <p class="trust-badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
+                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    10,000+ Marketers Trust Us
+                </p>
+            </div>
+        </div>
+        <div class="floating-shapes">
+            <div class="shape shape-1"></div>
+            <div class="shape shape-2"></div>
+            <div class="shape shape-3"></div>
+        </div>
+        <div class="scroll-indicator">
+            <svg viewBox="0 0 24 24">
+                <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-title">
+                <h2>Powerful Features for Modern Marketers</h2>
+                <p class="text-secondary">Everything you need to launch, manage, and optimize campaigns</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+                        </svg>
+                    </div>
+                    <h3>Multi-Platform Integration</h3>
+                    <p class="text-secondary">Connect Facebook, Google, Instagram, LinkedIn in one dashboard</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M21.33 12.91c.09 1.55-.62 3.04-1.89 3.95l.77 1.49c.23.45.06 1-.38 1.23l-.88.46c-.44.23-.99.06-1.23-.38l-.77-1.49c-1.45.43-3.07.12-4.24-1.03-1.57-1.56-1.58-4.09-.02-5.65s4.09-1.57 5.65-.01c1.16 1.16 1.46 2.79.99 4.24l1.49.77c.45.23.62.79.38 1.23l-.46.88c-.23.44-.78.61-1.23.38l-1.49-.77c-.91 1.26-2.4 1.98-3.95 1.89M16.69 9.64c-1.95-1.96-5.11-1.96-7.07-.01s-1.96 5.11-.01 7.07 5.11 1.96 7.07.01 1.97-5.11.01-7.07m3.81-3.81L19 4.33C18.78 4.11 18.55 4 18.33 4c-.22 0-.45.11-.67.33l-1.5 1.5c-.44.44-.44 1.15 0 1.59l1.5 1.5c.44.44 1.15.44 1.59 0L20.75 7.42c.44-.44.44-1.15 0-1.59m-2.09-2.09l-.71-.71c-.39-.39-1.02-.39-1.41 0L12.12 7.2c-.39.39-.39 1.02 0 1.41l.71.71c.39.39 1.02.39 1.41 0l4.17-4.17c.39-.39.39-1.02 0-1.41"/>
+                        </svg>
+                    </div>
+                    <h3>AI-Powered Optimization</h3>
+                    <p class="text-secondary">Smart algorithms optimize your campaigns in real-time</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z"/>
+                        </svg>
+                    </div>
+                    <h3>Analytics Dashboard</h3>
+                    <p class="text-secondary">Real-time metrics and comprehensive reporting</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+                        </svg>
+                    </div>
+                    <h3>Automated Scheduling</h3>
+                    <p class="text-secondary">Set it and forget it with intelligent scheduling</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 5v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H5c-1.11 0-2 .9-2 2zm12 4c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3zm-9 8c0-2 4-3.1 6-3.1s6 1.1 6 3.1v1H6v-1z"/>
+                            <path d="M21 0h-2v9l-2-1.5V20h4c1.1 0 2-.9 2-2V2c0-1.1-.9-2-2-2z"/>
+                        </svg>
+                    </div>
+                    <h3>A/B Testing</h3>
+                    <p class="text-secondary">Test variations automatically to maximize ROI</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                            <circle cx="8" cy="12" r="3" fill="currentColor" opacity="0.3"/>
+                            <circle cx="16" cy="12" r="3" fill="currentColor" opacity="0.3"/>
+                        </svg>
+                    </div>
+                    <h3>Team Collaboration</h3>
+                    <p class="text-secondary">Work seamlessly with your entire marketing team</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works">
+        <div class="container">
+            <div class="section-title">
+                <h2>How It Works</h2>
+                <p class="text-secondary">Get started in minutes with our simple process</p>
+            </div>
+            <div class="process-grid">
+                <div class="process-card">
+                    <div class="process-number">1</div>
+                    <div class="process-content">
+                        <h3>Connect Your Accounts</h3>
+                        <p class="text-secondary">Link all marketing platforms in one place</p>
+                        <div class="process-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="process-arrow">→</div>
+                <div class="process-card">
+                    <div class="process-number">2</div>
+                    <div class="process-content">
+                        <h3>Set Your Goals</h3>
+                        <p class="text-secondary">Define campaign objectives and targets</p>
+                        <div class="process-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <circle cx="12" cy="12" r="6"></circle>
+                                <circle cx="12" cy="12" r="2"></circle>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="process-arrow">→</div>
+                <div class="process-card">
+                    <div class="process-number">3</div>
+                    <div class="process-content">
+                        <h3>Let AI Optimize</h3>
+                        <p class="text-secondary">Watch as campaigns improve automatically</p>
+                        <div class="process-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                                <line x1="8" y1="21" x2="16" y2="21"></line>
+                                <line x1="12" y1="17" x2="12" y2="21"></line>
+                                <path d="M7 12h0m5-3h0m5 3h0M7 9v6"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="process-arrow">→</div>
+                <div class="process-card">
+                    <div class="process-number">4</div>
+                    <div class="process-content">
+                        <h3>Track & Scale</h3>
+                        <p class="text-secondary">Monitor results and expand success</p>
+                        <div class="process-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="20" x2="12" y2="10"></line>
+                                <line x1="18" y1="20" x2="18" y2="4"></line>
+                                <line x1="6" y1="20" x2="6" y2="16"></line>
+                                <line x1="3" y1="21" x2="21" y2="21"></line>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Metrics Section -->
+    <section class="metrics">
+        <div class="container">
+            <div class="section-title">
+                <h2>Proven Results</h2>
+                <p class="text-secondary">Join thousands of successful marketers</p>
+            </div>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-number" data-target="50000">0</div>
+                    <p>Campaigns Launched</p>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-number" data-target="248">0</div>
+                    <p>Average ROI Increase (%)</p>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-number" data-target="15">0</div>
+                    <p>Hours Saved Weekly</p>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-number" data-target="10000">0</div>
+                    <p>Active Users</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing" id="pricing">
+        <div class="container">
+            <div class="section-title">
+                <h2>Choose Your Plan</h2>
+                <p class="text-secondary">Flexible pricing for teams of all sizes</p>
+            </div>
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <h3>Starter</h3>
+                    <p class="price">Contact for Pricing</p>
+                    <ul class="pricing-features">
+                        <li>Up to 5 campaigns</li>
+                        <li>Basic analytics</li>
+                        <li>Email support</li>
+                        <li>Standard integrations</li>
+                    </ul>
+                    <a href="#pricing" class="cta-button">Get Started</a>
+                </div>
+                <div class="pricing-card featured">
+                    <span class="popular-badge">MOST POPULAR</span>
+                    <h3>Professional</h3>
+                    <p class="price">Contact for Pricing</p>
+                    <ul class="pricing-features">
+                        <li>Unlimited campaigns</li>
+                        <li>Advanced analytics</li>
+                        <li>Priority support</li>
+                        <li>A/B testing</li>
+                        <li>All integrations</li>
+                    </ul>
+                    <a href="#" class="cta-button">Get Started</a>
+                </div>
+                <div class="pricing-card">
+                    <h3>Enterprise</h3>
+                    <p class="price">Contact for Pricing</p>
+                    <ul class="pricing-features">
+                        <li>Custom features</li>
+                        <li>Dedicated account manager</li>
+                        <li>API access</li>
+                        <li>Custom integrations</li>
+                        <li>SLA guarantee</li>
+                    </ul>
+                    <a href="#pricing" class="cta-button">Contact Sales</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="testimonials">
+        <div class="container">
+            <div class="section-title">
+                <h2>Trusted by Top Media Buyers</h2>
+                <p class="text-secondary">See what successful affiliate marketers are saying</p>
+            </div>
+        </div>
+        <div class="testimonial-wrapper">
+            <div class="testimonial-track">
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"Campaign Launcher completely transformed my workflow. I've scaled from $10k to $100k/month in just 3 months."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">CN</div>
+                        <div>
+                            <p class="author-name">Charles Ngo</p>
+                            <p class="author-title">Affiliate Marketing Expert, Los Angeles</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"The AI optimization is insane. My ROI increased by 250% without touching a single campaign."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">TB</div>
+                        <div>
+                            <p class="author-name">Tim Burd</p>
+                            <p class="author-title">Facebook Ads Specialist, Miami</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"Best investment I've made. Saves me 20+ hours weekly and campaigns perform better than ever."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">AP</div>
+                        <div>
+                            <p class="author-name">Amy Porterfield</p>
+                            <p class="author-title">Digital Marketing Strategist, San Diego</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"Game-changer for scaling campaigns. The multi-platform integration alone is worth it."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">NL</div>
+                        <div>
+                            <p class="author-name">Nick Lenihan</p>
+                            <p class="author-title">Media Buyer & Consultant, New York</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"Finally, a platform that understands affiliate marketing. Doubled my profit margins in 60 days."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">IF</div>
+                        <div>
+                            <p class="author-name">Ian Fernando</p>
+                            <p class="author-title">Affiliate Marketer, Las Vegas</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"The analytics dashboard is phenomenal. I can spot winning campaigns instantly now."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">BD</div>
+                        <div>
+                            <p class="author-name">Brent Dunn</p>
+                            <p class="author-title">Performance Marketer, Austin</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Duplicate set for infinite scroll -->
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"Campaign Launcher completely transformed my workflow. I've scaled from $10k to $100k/month in just 3 months."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">CN</div>
+                        <div>
+                            <p class="author-name">Charles Ngo</p>
+                            <p class="author-title">Affiliate Marketing Expert, Los Angeles</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"The AI optimization is insane. My ROI increased by 250% without touching a single campaign."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">TB</div>
+                        <div>
+                            <p class="author-name">Tim Burd</p>
+                            <p class="author-title">Facebook Ads Specialist, Miami</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">⭐⭐⭐⭐⭐</div>
+                    <p class="testimonial-text">"Best investment I've made. Saves me 20+ hours weekly and campaigns perform better than ever."</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">AP</div>
+                        <div>
+                            <p class="author-name">Amy Porterfield</p>
+                            <p class="author-title">Digital Marketing Strategist, San Diego</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section class="about" id="about">
+        <div class="container">
+            <div class="about-content">
+                <div class="about-text">
+                    <h2>About Campaign Launcher</h2>
+                    <p class="text-secondary">Founded in 2025, we're on a mission to democratize marketing automation for businesses of all sizes. Our team of experts combines deep marketing knowledge with cutting-edge AI technology.</p>
+                    <div class="values-grid">
+                        <div class="value-item">
+                            <div class="value-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4>Innovation</h4>
+                                <p class="text-secondary">Always pushing boundaries</p>
+                            </div>
+                        </div>
+                        <div class="value-item">
+                            <div class="value-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4>Trust</h4>
+                                <p class="text-secondary">Your success is our priority</p>
+                            </div>
+                        </div>
+                        <div class="value-item">
+                            <div class="value-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.48 2.54l2.6 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95zM12 19c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95 0 5.52 4.47 10 9.99 10 3.31 0 6.24-1.61 8.06-4.09l-2.6-1.53C16.17 17.98 14.21 19 12 19z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4>Speed</h4>
+                                <p class="text-secondary">Fast, reliable results</p>
+                            </div>
+                        </div>
+                        <div class="value-item">
+                            <div class="value-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h4>Growth</h4>
+                                <p class="text-secondary">Scaling your success</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+               
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq">
+        <div class="container">
+            <div class="section-title">
+                <h2>Frequently Asked Questions</h2>
+                <p class="text-secondary">Get answers to common questions</p>
+            </div>
+            <div class="faq-container">
+                <div class="faq-item">
+                    <div class="faq-question">
+                        How does the platform work?
+                        <span class="faq-icon">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Our platform connects to your existing marketing accounts and uses AI to optimize campaigns across all channels. Simply connect your accounts, set your goals, and let our algorithms handle the rest.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">
+                        What platforms are supported?
+                        <span class="faq-icon">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We support all major marketing platforms including Facebook, Instagram, Google Ads, LinkedIn, Twitter, TikTok, and more. New integrations are added regularly.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">
+                        Is there a free trial?
+                        <span class="faq-icon">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Yes! We offer a 14-day free trial with full access to all features. No credit card required to start.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">
+                        How secure is my data?
+                        <span class="faq-icon">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>We use bank-level encryption and are SOC 2 compliant. Your data is never shared with third parties and you maintain full ownership of all your campaign data.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question">
+                        Can I cancel anytime?
+                        <span class="faq-icon">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        <p>Absolutely! There are no long-term contracts. You can cancel or change your plan at any time from your dashboard.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-grid">
+                
+                
+                <div class="footer-section">
+                    <h4>Legal</h4>
+                    <ul class="footer-links">
+                        <li><a href="privacy.html">Privacy Policy</a></li>
+                        <li><a href="terms.html">Terms of Service</a></li>
+                  
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Connect</h4>
+                    <p>Join 10,000+ marketers getting our updates</p>
+                    <form class="newsletter-form">
+                        <input type="email" placeholder="Enter your email" class="newsletter-input" required>
+                        <button type="submit" class="newsletter-btn">Subscribe</button>
+                    </form>
+                    <div class="social-icons">
+                        <a href="#" class="social-icon">f</a>
+                        <a href="#" class="social-icon">t</a>
+                        <a href="#" class="social-icon">in</a>
+                        <a href="#" class="social-icon">ig</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Campaign Launcher. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Back to Top Button -->
+    <a href="#top" class="back-to-top" id="backToTop">↑</a>
+
+    <!-- Launch App Button -->
+    <a href="https://campaignlauncher.onrender.com" class="launch-app-btn" target="_blank">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/>
+        </svg>
+        Launch App
+    </a>
+
+    <!-- Additional Pages (Hidden by default) -->
+    <section id="contact-page" class="page-section" style="display: none;">
+        <div class="container">
+            <div class="page-content">
+                <h1>Contact Us</h1>
+                <div class="contact-grid">
+                    <div class="contact-info">
+                        <h3>Get in Touch</h3>
+                        <p>We'd love to hear from you. Here's how you can reach us...</p>
+                        
+                        <div class="contact-item">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 10px;">
+                                <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                            </svg>
+                            <div>
+                                <h4>Email</h4>
+                                <p>support@campaignlauncher.pro</p>
+                            </div>
+                        </div>
+                        
+                        <div class="contact-item">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 10px;">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                            </svg>
+                            <div>
+                                <h4>Office</h4>
+                                <p>123 Marketing Street<br>San Francisco, CA 94102<br>United States</p>
+                            </div>
+                        </div>
+                        
+                        <div class="contact-item">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 10px;">
+                                <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+                            </svg>
+                            <div>
+                                <h4>Phone</h4>
+                                <p>+1 (555) 123-4567</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="contact-form">
+                        <h3>Send us a Message</h3>
+                        <form>
+                            <input type="text" placeholder="Your Name" required>
+                            <input type="email" placeholder="Your Email" required>
+                            <input type="text" placeholder="Subject">
+                            <textarea placeholder="Your Message" rows="5" required></textarea>
+                            <button type="submit" class="cta-button">Send Message</button>
+                        </form>
+                    </div>
+                </div>
+                <a href="#top" class="back-link">← Back to Home</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="privacy" class="page-section" style="display: none;">
+        <div class="container">
+            <div class="page-content">
+                <h1>Privacy Policy</h1>
+                <p class="text-secondary">Last updated: January 2025</p>
+                
+                <h2>1. Information We Collect</h2>
+                <p>We collect information you provide directly to us, such as when you create an account, use our services, or contact us for support.</p>
+                
+                <h2>2. How We Use Your Information</h2>
+                <p>We use the information we collect to provide, maintain, and improve our services, process transactions, and communicate with you.</p>
+                
+                <h2>3. Data Security</h2>
+                <p>We implement appropriate technical and organizational measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>
+                
+                <h2>4. Your Rights</h2>
+                <p>You have the right to access, update, or delete your personal information. You can manage your information through your account settings or by contacting us.</p>
+                
+                <h2>5. Contact Us</h2>
+                <p>If you have any questions about this Privacy Policy, please contact us at privacy@campaignlauncher.pro</p>
+                
+                <a href="#top" class="back-link">← Back to Home</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="terms" class="page-section" style="display: none;">
+        <div class="container">
+            <div class="page-content">
+                <h1>Terms of Service</h1>
+                <p class="text-secondary">Last updated: January 2025</p>
+                
+                <h2>1. Acceptance of Terms</h2>
+                <p>By accessing or using Campaign Launcher Pro, you agree to be bound by these Terms of Service.</p>
+                
+                <h2>2. Description of Service</h2>
+                <p>Campaign Launcher Pro provides marketing campaign automation and optimization services.</p>
+                
+                <h2>3. User Responsibilities</h2>
+                <p>You are responsible for maintaining the confidentiality of your account and password and for restricting access to your account.</p>
+                
+                <h2>4. Limitation of Liability</h2>
+                <p>Campaign Launcher Pro shall not be liable for any indirect, incidental, special, consequential, or punitive damages.</p>
+                
+                <h2>5. Changes to Terms</h2>
+                <p>We reserve the right to modify these terms at any time. Continued use of the service constitutes acceptance of modified terms.</p>
+                
+                <a href="#top" class="back-link">← Back to Home</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="gdpr" class="page-section" style="display: none;">
+        <div class="container">
+            <div class="page-content">
+                <h1>GDPR Compliance</h1>
+                <p class="text-secondary">Our commitment to data protection</p>
+                
+                <h2>Data Controller</h2>
+                <p>Campaign Launcher Pro acts as the data controller for personal data processed through our platform.</p>
+                
+                <h2>Legal Basis for Processing</h2>
+                <p>We process personal data based on consent, contractual necessity, and legitimate interests.</p>
+                
+                <h2>Data Subject Rights</h2>
+                <ul>
+                    <li>Right to access your personal data</li>
+                    <li>Right to rectification of inaccurate data</li>
+                    <li>Right to erasure ("right to be forgotten")</li>
+                    <li>Right to restriction of processing</li>
+                    <li>Right to data portability</li>
+                    <li>Right to object to processing</li>
+                </ul>
+                
+                <h2>Data Protection Officer</h2>
+                <p>For any GDPR-related inquiries, contact our DPO at dpo@campaignlauncher.pro</p>
+                
+                <a href="#top" class="back-link">← Back to Home</a>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Navigation scroll effect
+        window.addEventListener('scroll', function() {
+            const navbar = document.getElementById('navbar');
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+
+            // Back to top button
+            const backToTop = document.getElementById('backToTop');
+            if (window.scrollY > 300) {
+                backToTop.classList.add('visible');
+            } else {
+                backToTop.classList.remove('visible');
+            }
+        });
+
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const navMenu = document.getElementById('navMenu');
+
+        mobileMenuBtn.addEventListener('click', function() {
+            navMenu.classList.toggle('active');
+            this.classList.toggle('active');
+        });
+
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                
+                // Check if it's a page section
+                const pageSection = document.querySelector(targetId);
+                if (pageSection && pageSection.classList.contains('page-section')) {
+                    // Hide all sections
+                    document.querySelectorAll('section').forEach(section => {
+                        section.style.display = section.classList.contains('page-section') ? 'none' : 'block';
+                    });
+                    // Show footer
+                    document.querySelector('footer').style.display = 'block';
+                    // Show the target page
+                    pageSection.style.display = 'block';
+                    window.scrollTo(0, 0);
+                } else if (targetId === '#top') {
+                    // Show main sections, hide page sections
+                    document.querySelectorAll('section').forEach(section => {
+                        if (section.classList.contains('page-section')) {
+                            section.style.display = 'none';
+                        } else {
+                            section.style.display = 'block';
+                        }
+                    });
+                    window.scrollTo(0, 0);
+                } else {
+                    // Normal section navigation
+                    const target = document.querySelector(targetId);
+                    if (target && !target.classList.contains('page-section')) {
+                        // Make sure we're on the main page
+                        document.querySelectorAll('section').forEach(section => {
+                            if (section.classList.contains('page-section')) {
+                                section.style.display = 'none';
+                            } else {
+                                section.style.display = 'block';
+                            }
+                        });
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                }
+                // Close mobile menu if open
+                navMenu.classList.remove('active');
+                mobileMenuBtn.classList.remove('active');
+            });
+        });
+
+        // Intersection Observer for scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    
+                    // Start counter animation for metrics
+                    if (entry.target.classList.contains('metric-card')) {
+                        const counter = entry.target.querySelector('.metric-number');
+                        const target = parseInt(counter.getAttribute('data-target'));
+                        const increment = target / 100;
+                        let current = 0;
+                        
+                        const updateCounter = () => {
+                            if (current < target) {
+                                current += increment;
+                                counter.textContent = Math.floor(current).toLocaleString() + (counter.parentElement.textContent.includes('%') ? '%' : '+');
+                                requestAnimationFrame(updateCounter);
+                            } else {
+                                counter.textContent = target.toLocaleString() + (counter.parentElement.textContent.includes('%') ? '%' : '+');
+                            }
+                        };
+                        
+                        updateCounter();
+                    }
+                }
+            });
+        }, observerOptions);
+
+        // Observe elements
+        document.querySelectorAll('.feature-card, .process-card, .metric-card').forEach(el => {
+            observer.observe(el);
+        });
+
+        // FAQ Accordion
+        document.querySelectorAll('.faq-question').forEach(question => {
+            question.addEventListener('click', function() {
+                const faqItem = this.parentElement;
+                faqItem.classList.toggle('active');
+                
+                // Close other FAQs
+                document.querySelectorAll('.faq-item').forEach(item => {
+                    if (item !== faqItem) {
+                        item.classList.remove('active');
+                    }
+                });
+            });
+        });
+
+        // Form submission
+        document.querySelector('.newsletter-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('.newsletter-btn');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading"></span>';
+            btn.disabled = true;
+            
+            // Simulate form submission
+            setTimeout(() => {
+                btn.textContent = '✓ Subscribed!';
+                btn.style.background = 'var(--accent)';
+                this.reset();
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.disabled = false;
+                }, 3000);
+            }, 1500);
+        });
+
+        // Particle effect on hero section
+        const hero = document.querySelector('.hero');
+        hero.addEventListener('mousemove', (e) => {
+            const { clientX, clientY } = e;
+            const x = (clientX / window.innerWidth - 0.5) * 20;
+            const y = (clientY / window.innerHeight - 0.5) * 20;
+            
+            document.querySelectorAll('.shape').forEach((shape, index) => {
+                const speed = (index + 1) * 0.5;
+                shape.style.transform = `translate(${x * speed}px, ${y * speed}px)`;
+            });
+        });
+    </script>
+</body>
+</html>
