@@ -153,9 +153,9 @@ class FacebookAPI {
       params = {
         name: `[REVIEW] ${adSetData.campaignName} - AdSet`,
         campaign_id: adSetData.campaignId,
-        billing_event: 'IMPRESSIONS',
+        billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
-        bid_strategy: adSetData.bidStrategy || 'LOWEST_COST_WITHOUT_CAP',
+        bid_strategy: adSetData.bidStrategy,  // Must be provided by user
         status: 'ACTIVE',
         access_token: this.accessToken
       };

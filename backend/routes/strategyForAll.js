@@ -228,7 +228,15 @@ const validateStrategyForAll = [
   body('mediaType').optional().isIn(['single_image', 'single_video', 'carousel']),
   body('mediaSpecs').optional().isObject(),
 
-  // Duplication settings for 49 ad sets
+  // Duplication settings for dynamic ad set count (1-49)
+  body('duplicationSettings.adSetCount')
+    .optional()
+    .isInt({ min: 1, max: 49 })
+    .withMessage('Ad set count must be between 1 and 49'),
+  body('duplicationSettings.totalBudget')
+    .optional()
+    .isFloat({ min: 1 })
+    .withMessage('Total budget must be at least $1'),
   body('duplicationSettings.defaultBudgetPerAdSet')
     .optional()
     .isFloat({ min: 1 })
@@ -480,108 +488,98 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     };
 
     // Prepare campaign data with all Meta-compliant Strategy For All fields
+    // NOTE: NO DEFAULT VALUES - All fields must be provided by user or validation will fail
     const campaignData = {
       // Campaign level fields
       campaignName: req.body.campaignName,
-      buyingType: req.body.buyingType || 'AUCTION',
-      objective: req.body.objective,
-      budgetLevel: req.body.budgetLevel || 'campaign',  // Default to CBO
+      buyingType: req.body.buyingType,  // Required - user must select
+      objective: req.body.objective,  // Required - user must select
+      budgetLevel: req.body.budgetLevel,  // Required - user must select
       // Properly handle special ad categories - filter out NONE and empty strings
       specialAdCategories: Array.isArray(req.body.specialAdCategories)
         ? req.body.specialAdCategories.filter(cat => cat !== 'NONE' && cat !== '')
         : [],
       campaignBudgetOptimization: req.body.budgetLevel === 'campaign' ? true : (req.body.campaignBudgetOptimization || false),
-      bidStrategy: req.body.bidStrategy || 'LOWEST_COST_WITHOUT_CAP',
+      bidStrategy: req.body.bidStrategy,  // Required - user must select
 
       // Bid strategy related values
       bidAmount: parseBudget(req.body.bidAmount),
       costCap: parseBudget(req.body.costCap),
       minRoas: req.body.minRoas ? parseFloat(req.body.minRoas) : undefined,
 
-      // Campaign budget (when using CBO) - set defaults if CBO is enabled
+      // Campaign budget (when using CBO)
       campaignBudget: req.body.budgetLevel === 'campaign' ? {
-        dailyBudget: parseBudget(req.body.campaignBudget?.dailyBudget) || 50,
+        dailyBudget: parseBudget(req.body.campaignBudget?.dailyBudget),
         lifetimeBudget: parseBudget(req.body.campaignBudget?.lifetimeBudget)
       } : (req.body.campaignBudget || {}),
-      campaignSpendingLimit: req.body.campaignSpendingLimit, // Only set if user provides it
+      campaignSpendingLimit: req.body.campaignSpendingLimit,
 
-      // Ad set level fields
-      performanceGoal: req.body.performanceGoal || 'maximize_conversions',
+      // Ad set level fields - user must provide all values
+      performanceGoal: req.body.performanceGoal,  // Required - user must select
       pixel: req.body.pixel || pixelId, // Use provided pixel or fallback to selected
-      manualPixelId: req.body.manualPixelId, // For manual pixel entry
-      conversionEvent: req.body.conversionEvent || 'Lead',
-      attributionSetting: req.body.attributionSetting || '1_day_click_1_day_view',
-      attributionWindow: req.body.attributionWindow || '7_day',
+      manualPixelId: req.body.manualPixelId,
+      conversionEvent: req.body.conversionEvent,  // Required - user must select
+      attributionSetting: req.body.attributionSetting,  // Required - user must select
+      attributionWindow: req.body.attributionWindow,  // Required - user must select
 
       // Ad set budget & schedule
-      // IMPORTANT: Always include spendingLimits even when using CBO (campaign-level budget)
-      // Spending limits apply at ad set level regardless of budget level
       adSetBudget: req.body.budgetLevel === 'adset' ? {
         ...req.body.adSetBudget,
-        dailyBudget: parseBudget(req.body.adSetBudget?.dailyBudget) || parseBudget(req.body.dailyBudget) || 50,
-        lifetimeBudget: parseBudget(req.body.adSetBudget?.lifetimeBudget) || parseBudget(req.body.lifetimeBudget),
-        scheduleType: req.body.adSetBudget?.scheduleType || 'run_continuously'
+        dailyBudget: parseBudget(req.body.adSetBudget?.dailyBudget) ?? parseBudget(req.body.dailyBudget),
+        lifetimeBudget: parseBudget(req.body.adSetBudget?.lifetimeBudget) ?? parseBudget(req.body.lifetimeBudget),
+        scheduleType: req.body.adSetBudget?.scheduleType  // Required - user must select
       } : {
         // When using CBO, still preserve spendingLimits (they apply at ad set level)
         spendingLimits: req.body.adSetBudget?.spendingLimits,
-        scheduleType: req.body.adSetBudget?.scheduleType || 'run_continuously'
+        scheduleType: req.body.adSetBudget?.scheduleType  // Required - user must select
       },
-      budgetType: req.body.budgetType || 'daily',
+      budgetType: req.body.budgetType,  // Required - user must select
 
       // Also send budgets at root level for FacebookAPI compatibility
-      // Use campaign budget if CBO, otherwise use ad set budget
       dailyBudget: req.body.budgetLevel === 'campaign'
-        ? (parseBudget(req.body.campaignBudget?.dailyBudget) || 50)
-        : (parseBudget(req.body.dailyBudget) || parseBudget(req.body.adSetBudget?.dailyBudget) || 50),
+        ? parseBudget(req.body.campaignBudget?.dailyBudget)
+        : (parseBudget(req.body.dailyBudget) ?? parseBudget(req.body.adSetBudget?.dailyBudget)),
       lifetimeBudget: req.body.budgetLevel === 'campaign'
         ? parseBudget(req.body.campaignBudget?.lifetimeBudget)
-        : (parseBudget(req.body.lifetimeBudget) || parseBudget(req.body.adSetBudget?.lifetimeBudget)),
+        : (parseBudget(req.body.lifetimeBudget) ?? parseBudget(req.body.adSetBudget?.lifetimeBudget)),
 
-      // Enhanced targeting (Meta-compliant)
-      targeting: req.body.targeting || {
-        locations: { countries: ['US'] },
-        ageMin: 18,
-        ageMax: 65,
-        genders: ['all']
-      },
+      // Enhanced targeting - user must provide
+      targeting: req.body.targeting,  // Required - user must select
 
-      // Placement settings
-      placementType: req.body.placementType || 'automatic',
-      placements: req.body.placements || {
-        facebook: ['feed', 'stories'],
-        instagram: ['stream', 'stories'],
-        audienceNetwork: ['classic'],
-        messenger: [],
-        devices: ['mobile', 'desktop'],
-        platforms: ['all']
-      },
+      // Placement settings - user must provide
+      placementType: req.body.placementType,  // Required - user must select
+      placements: req.body.placements,  // Required if placementType is 'manual'
 
       // Ad level fields
       facebookPage: req.body.facebookPage || selectedPageId,
       instagramAccount: req.body.instagramAccount,
-      urlType: req.body.urlType || 'website',
+      urlType: req.body.urlType,  // Required - user must select
       url: req.body.url,
       primaryText: req.body.primaryText,
       headline: req.body.headline,
       description: req.body.description,
-      callToAction: req.body.callToAction || 'LEARN_MORE',
+      callToAction: req.body.callToAction,  // Required - user must select
       displayLink: req.body.displayLink,
 
       // Media specifications
-      mediaType: req.body.mediaType || 'single_image',
+      mediaType: req.body.mediaType,  // Required - user must select
       mediaSpecs: req.body.mediaSpecs,
       imagePath: req.body.mediaType === 'single_image' ? mediaPath : null,
       videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') ? mediaPath : null,
       imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
 
-      // Duplication settings for the 49 ad sets
-      duplicationSettings: req.body.duplicationSettings || {
-        defaultBudgetPerAdSet: 1,
-        budgetDistributionType: 'equal'
+      // Duplication settings - user must provide count and budget
+      duplicationSettings: {
+        adSetCount: req.body.duplicationSettings?.adSetCount ?? 49,  // Defaults to 49 only if undefined/null
+        totalBudget: req.body.duplicationSettings?.totalBudget,  // User must provide OR will use calculated budget
+        budgetPerAdSet: req.body.duplicationSettings?.totalBudget && req.body.duplicationSettings?.adSetCount
+          ? (req.body.duplicationSettings.totalBudget / req.body.duplicationSettings.adSetCount)
+          : undefined,
+        budgetDistributionType: req.body.duplicationSettings?.budgetDistributionType ?? 'equal'  // Defaults to equal if not provided
       },
 
       // Process control
-      publishDirectly: req.body.publishDirectly || false,
+      publishDirectly: req.body.publishDirectly !== undefined ? req.body.publishDirectly : false,
 
       // System fields
       selectedPageId: selectedPageId,
@@ -591,7 +589,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // Additional Meta options
       costCap: req.body.costCap,
       minRoas: req.body.minRoas,
-      conversionLocation: req.body.conversionLocation || 'website'
+      conversionLocation: req.body.conversionLocation  // Required - user must select
     };
 
     console.log('🟢 Creating Strategy for-all campaign with data:', {

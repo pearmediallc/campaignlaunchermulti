@@ -24,10 +24,17 @@ class StrategyForAllDuplicationService {
 
   /**
    * Duplicate campaign using the exact same pattern as for-all strategy
+   * @param {string} campaignId - Campaign ID to duplicate
+   * @param {string} newName - Name for the new campaign
+   * @param {number} copies - Number of copies to create
+   * @param {number} adSetCount - Number of ad sets to create (1-49), default 49
+   * @param {number} totalBudget - Total budget to distribute across ad sets
    */
-  async duplicateCampaign(campaignId, newName, copies = 1) {
+  async duplicateCampaign(campaignId, newName, copies = 1, adSetCount = 49, totalBudget = null) {
     console.log(`🚀 Starting for-all based duplication for campaign ${campaignId}`);
     console.log(`📊 Creating ${copies} copies using proven working pattern`);
+    console.log(`📊 Ad sets per campaign: ${adSetCount}`);
+    console.log(`💵 Total budget: ${totalBudget ? `$${totalBudget}` : 'Original budget'}`);
 
     const results = [];
     let campaignData = null;
@@ -45,6 +52,10 @@ class StrategyForAllDuplicationService {
 
       console.log(`✅ Found post ID: ${postId}`);
 
+      // Calculate budget per ad set
+      const budgetPerAdSet = totalBudget ? (totalBudget / adSetCount) : 1;
+      console.log(`💵 Budget per ad set: $${budgetPerAdSet.toFixed(2)}`);
+
       // Step 3: Create copies using the exact for-all pattern
       for (let copyIndex = 0; copyIndex < copies; copyIndex++) {
         const copyName = copies > 1
@@ -53,7 +64,13 @@ class StrategyForAllDuplicationService {
 
         console.log(`🔄 Creating copy ${copyIndex + 1}/${copies}: "${copyName}"`);
 
-        const copyResult = await this.createCampaignCopy(campaignData, copyName, postId);
+        const copyResult = await this.createCampaignCopy(
+          campaignData,
+          copyName,
+          postId,
+          adSetCount,
+          budgetPerAdSet
+        );
 
         // Add original campaign info to result for error reporting
         copyResult.originalCampaignId = campaignId;
@@ -177,9 +194,15 @@ class StrategyForAllDuplicationService {
 
   /**
    * Create campaign copy using the exact same structure as for-all
+   * @param {object} originalCampaign - Original campaign data
+   * @param {string} newName - Name for the new campaign
+   * @param {string} postId - Post ID to use for ads
+   * @param {number} adSetCount - Number of ad sets to create (1-49)
+   * @param {number} budgetPerAdSet - Budget per ad set in dollars
    */
-  async createCampaignCopy(originalCampaign, newName, postId) {
+  async createCampaignCopy(originalCampaign, newName, postId, adSetCount = 49, budgetPerAdSet = 1) {
     console.log(`📋 Creating campaign copy using for-all structure...`);
+    console.log(`📊 Creating ${adSetCount} ad sets with $${budgetPerAdSet.toFixed(2)} budget each`);
 
     const errors = [];
     let newCampaign = null;
@@ -190,15 +213,23 @@ class StrategyForAllDuplicationService {
       // Step 1: Create campaign using for-all pattern
       newCampaign = await this.createCampaign(originalCampaign, newName);
 
-      // Step 2: Get original ad set configuration for promoted_object
-      const originalAdSetConfig = originalCampaign.adsets?.data?.[0];
+      // Step 2: Get original ad set configuration - FETCH COMPLETE CONFIG FROM FACEBOOK
+      console.log(`🔍 Fetching EXACT configuration from original ad set...`);
+      const originalAdSetConfig = await this.getOriginalAdSetFullConfig(originalCampaign);
 
       // Step 3: Check if campaign uses CBO (Campaign Budget Optimization)
       const usesCBO = !!(originalCampaign.daily_budget || originalCampaign.lifetime_budget);
       console.log(`📊 Campaign uses CBO: ${usesCBO}`);
 
-      // Step 4: Create 50 ad sets using for-all pattern with original promoted_object
-      const adSetResult = await this.create50AdSets(newCampaign.id, postId, originalAdSetConfig, usesCBO);
+      // Step 4: Create ad sets using EXACT copy of original configuration
+      const adSetResult = await this.create50AdSets(
+        newCampaign.id,
+        postId,
+        originalAdSetConfig,
+        usesCBO,
+        adSetCount,
+        budgetPerAdSet
+      );
       adSets = adSetResult.adSets;
       if (adSetResult.errors && adSetResult.errors.length > 0) {
         errors.push(...adSetResult.errors);
@@ -209,6 +240,20 @@ class StrategyForAllDuplicationService {
       ads = adsResult.ads;
       if (adsResult.errors && adsResult.errors.length > 0) {
         errors.push(...adsResult.errors);
+      }
+
+      // Step 6: Verify all ad sets and ads were created
+      console.log(`\n📊 Creation Summary:`);
+      console.log(`  ✓ Target ad sets: ${adSetCount}`);
+      console.log(`  ✓ Created ad sets: ${adSets.length}`);
+      console.log(`  ✓ Target ads: ${adSets.length}`);
+      console.log(`  ✓ Created ads: ${ads.length}`);
+
+      if (adSets.length < adSetCount) {
+        console.warn(`  ⚠️ Missing ${adSetCount - adSets.length} ad sets`);
+      }
+      if (ads.length < adSets.length) {
+        console.warn(`  ⚠️ Missing ${adSets.length - ads.length} ads`);
       }
 
     } catch (error) {
@@ -226,10 +271,49 @@ class StrategyForAllDuplicationService {
       ads: ads,
       totalAdSets: adSets.length,
       totalAds: ads.length,
+      targetAdSets: adSetCount,
+      targetAds: adSetCount,
       errors: errors,
-      success: errors.length === 0,
+      success: errors.length === 0 && adSets.length === adSetCount && ads.length === adSetCount,
       partialSuccess: errors.length > 0 && (adSets.length > 0 || ads.length > 0)
     };
+  }
+
+  /**
+   * Get EXACT original ad set configuration from Facebook API
+   * This ensures we copy ALL fields including attribution, targeting, etc.
+   */
+  async getOriginalAdSetFullConfig(originalCampaign) {
+    try {
+      // Get the first ad set ID from the campaign
+      const firstAdSetId = originalCampaign.adsets?.data?.[0]?.id;
+
+      if (!firstAdSetId) {
+        console.warn('⚠️ No ad set found in original campaign, using basic config');
+        return originalCampaign.adsets?.data?.[0] || {};
+      }
+
+      console.log(`🔍 Fetching full config for ad set: ${firstAdSetId}`);
+
+      // Fetch COMPLETE ad set configuration from Facebook
+      const response = await axios.get(
+        `${this.baseURL}/${firstAdSetId}`,
+        {
+          params: {
+            fields: 'id,name,billing_event,optimization_goal,bid_strategy,promoted_object,targeting,attribution_spec,performance_goal,daily_budget,lifetime_budget,status',
+            access_token: this.accessToken
+          }
+        }
+      );
+
+      console.log(`✅ Fetched EXACT configuration with all fields`);
+      return response.data;
+
+    } catch (error) {
+      console.error('Failed to fetch original ad set config:', error.message);
+      // Fallback to the basic config from campaign data
+      return originalCampaign.adsets?.data?.[0] || {};
+    }
   }
 
   /**
@@ -279,102 +363,139 @@ class StrategyForAllDuplicationService {
   }
 
   /**
-   * Create 50 ad sets using sequential API calls (proven to work)
+   * Create ad sets using sequential API calls with EXACT copy of 1st ad set
+   * @param {string} campaignId - Campaign ID to create ad sets in
+   * @param {string} postId - Post ID for ads
+   * @param {object} originalAdSetConfig - EXACT configuration from 1st ad set (NO modifications)
+   * @param {boolean} usesCBO - Whether campaign uses CBO
+   * @param {number} adSetCount - Number of ad sets to create (1-49)
+   * @param {number} budgetPerAdSet - Budget per ad set in dollars
    */
-  async create50AdSets(campaignId, postId, originalAdSetConfig, usesCBO) {
-    console.log(`📋 Creating 50 ad sets using sequential API calls...`);
+  async create50AdSets(campaignId, postId, originalAdSetConfig, usesCBO, adSetCount = 49, budgetPerAdSet = 1) {
+    console.log(`📋 Creating ${adSetCount} ad sets using sequential API calls...`);
     console.log(`💰 Budget configuration: ${usesCBO ? 'Campaign-level (CBO)' : 'Ad Set-level'}`);
+    console.log(`💵 Budget per ad set: $${budgetPerAdSet}`);
 
     const adSets = [];
     const errors = [];
-    let failedCount = 0;
+    const failedIndices = [];  // Track which indices failed for retry
 
     // Create ad sets sequentially with delays to avoid rate limits
-    for (let i = 1; i <= 50; i++) {
+    for (let i = 1; i <= adSetCount; i++) {
+      // EXACT COPY - Use original values without forcing defaults
       const adSetData = {
         name: `AdSet ${i}`,
         campaign_id: campaignId,
         status: 'ACTIVE',
-        billing_event: originalAdSetConfig?.billing_event || 'IMPRESSIONS',
-        optimization_goal: originalAdSetConfig?.optimization_goal || 'OFFSITE_CONVERSIONS',
-        targeting: JSON.stringify({
-          geo_locations: {
-            countries: ['US']
-          },
-          age_min: 18,
-          age_max: 65
-        }),
         access_token: this.accessToken
       };
 
-      // Only set ad set budget if campaign doesn't use CBO
-      if (!usesCBO) {
-        adSetData.daily_budget = 100; // $1.00 in cents
+      // Copy EXACT values from original ad set (NO forced defaults!)
+      if (originalAdSetConfig?.billing_event) {
+        adSetData.billing_event = originalAdSetConfig.billing_event;
+      }
+      if (originalAdSetConfig?.optimization_goal) {
+        adSetData.optimization_goal = originalAdSetConfig.optimization_goal;
       }
 
-      // Use original campaign's promoted_object
+      // Copy targeting EXACTLY as it was in 1st ad set
+      if (originalAdSetConfig?.targeting) {
+        adSetData.targeting = typeof originalAdSetConfig.targeting === 'string'
+          ? originalAdSetConfig.targeting
+          : JSON.stringify(originalAdSetConfig.targeting);
+      }
+
+      // Copy attribution spec EXACTLY (no forced 1_day_click_1_day_view)
+      if (originalAdSetConfig?.attribution_spec) {
+        adSetData.attribution_spec = typeof originalAdSetConfig.attribution_spec === 'string'
+          ? originalAdSetConfig.attribution_spec
+          : JSON.stringify(originalAdSetConfig.attribution_spec);
+      }
+
+      // Copy bid strategy EXACTLY
+      if (originalAdSetConfig?.bid_strategy) {
+        adSetData.bid_strategy = originalAdSetConfig.bid_strategy;
+      }
+
+      // Copy performance goal EXACTLY
+      if (originalAdSetConfig?.performance_goal) {
+        adSetData.performance_goal = originalAdSetConfig.performance_goal;
+      }
+
+      // Only set ad set budget if campaign doesn't use CBO
+      if (!usesCBO && budgetPerAdSet) {
+        adSetData.daily_budget = Math.round(budgetPerAdSet * 100);  // Convert dollars to cents
+      }
+
+      // Copy promoted_object EXACTLY from original ad set
       if (originalAdSetConfig?.promoted_object) {
-        adSetData.promoted_object = JSON.stringify(originalAdSetConfig.promoted_object);
-      } else if (this.pixelId) {
-        adSetData.promoted_object = JSON.stringify({
-          pixel_id: this.pixelId,
-          custom_event_type: 'PURCHASE'
-        });
+        adSetData.promoted_object = typeof originalAdSetConfig.promoted_object === 'string'
+          ? originalAdSetConfig.promoted_object
+          : JSON.stringify(originalAdSetConfig.promoted_object);
       }
 
       // Create single ad set with retry logic
-      try {
-        console.log(`⏳ Creating AdSet ${i}/50...`);
+      let success = false;
+      let retryCount = 0;
+      const maxRetries = 2;
 
-        const response = await axios.post(
-          `${this.baseURL}/act_${this.adAccountId}/adsets`,
-          null,
-          { params: adSetData }
-        );
+      while (!success && retryCount <= maxRetries) {
+        try {
+          if (retryCount > 0) {
+            console.log(`🔄 Retry ${retryCount}/${maxRetries} for AdSet ${i}/${adSetCount}...`);
+          } else {
+            console.log(`⏳ Creating AdSet ${i}/${adSetCount}...`);
+          }
 
-        adSets.push(response.data);
-        console.log(`✅ AdSet ${i} created: ${response.data.id}`);
+          const response = await axios.post(
+            `${this.baseURL}/act_${this.adAccountId}/adsets`,
+            null,
+            { params: adSetData }
+          );
 
-        // Add delay to avoid rate limits (500ms between ad sets)
-        if (i < 50) {
-          await this.delay(500);
+          adSets.push(response.data);
+          console.log(`✅ AdSet ${i} created: ${response.data.id}`);
+          success = true;
+
+          // Add delay to avoid rate limits (500ms between ad sets)
+          if (i < adSetCount) {
+            await this.delay(500);
+          }
+
+        } catch (error) {
+          const errorMessage = error.response?.data?.error?.message || error.message;
+          retryCount++;
+
+          if (retryCount > maxRetries) {
+            console.error(`❌ Failed to create AdSet ${i} after ${maxRetries} retries:`, errorMessage);
+            errors.push({
+              stage: 'ad_set_creation',
+              index: i,
+              name: `AdSet ${i}`,
+              message: errorMessage,
+              details: error.response?.data?.error,
+              retries: retryCount - 1
+            });
+            failedIndices.push(i);
+          } else {
+            console.warn(`⚠️ AdSet ${i} failed, will retry:`, errorMessage);
+            // Wait longer before retry
+            await this.delay(2000);
+          }
         }
-
-      } catch (error) {
-        const errorMessage = error.response?.data?.error?.message || error.message;
-        console.error(`❌ Failed to create AdSet ${i}:`, errorMessage);
-
-        errors.push({
-          stage: 'ad_set_creation',
-          index: i,
-          name: `AdSet ${i}`,
-          message: errorMessage,
-          details: error.response?.data?.error
-        });
-
-        failedCount++;
-
-        // If too many failures, stop trying
-        if (failedCount > 5) {
-          console.error('Too many failures, stopping ad set creation');
-          break;
-        }
-
-        // Wait longer before retrying after a failure
-        await this.delay(2000);
       }
     }
 
-    console.log(`✅ Created ${adSets.length}/50 ad sets successfully`);
+    console.log(`✅ Created ${adSets.length}/${adSetCount} ad sets successfully`);
     if (errors.length > 0) {
-      console.log(`⚠️ Failed to create ${errors.length} ad sets`);
+      console.log(`⚠️ Failed to create ${errors.length} ad sets: ${failedIndices.join(', ')}`);
     }
 
-    return { adSets, errors };
+    return { adSets, errors, failedIndices };
   }
 
   /**
-   * Create ads in ad sets using sequential API calls (proven to work)
+   * Create ads in ad sets using sequential API calls with retry logic
    */
   async createAdsInAdSets(adSets, postId) {
     console.log(`📋 Creating ads using sequential API calls...`);
@@ -382,7 +503,7 @@ class StrategyForAllDuplicationService {
 
     const ads = [];
     const errors = [];
-    let failedCount = 0;
+    const failedIndices = [];  // Track which ads failed for retry
 
     // Create one ad per ad set sequentially
     for (let i = 0; i < adSets.length; i++) {
@@ -400,55 +521,64 @@ class StrategyForAllDuplicationService {
         access_token: this.accessToken
       };
 
-      try {
-        console.log(`⏳ Creating Ad ${i + 1}/${adSets.length} for AdSet ${adSet.id}...`);
+      let success = false;
+      let retryCount = 0;
+      const maxRetries = 2;
 
-        const response = await axios.post(
-          `${this.baseURL}/act_${this.adAccountId}/ads`,
-          null,
-          { params: adData }
-        );
+      while (!success && retryCount <= maxRetries) {
+        try {
+          if (retryCount > 0) {
+            console.log(`🔄 Retry ${retryCount}/${maxRetries} for Ad ${i + 1}/${adSets.length}...`);
+          } else {
+            console.log(`⏳ Creating Ad ${i + 1}/${adSets.length} for AdSet ${adSet.id}...`);
+          }
 
-        ads.push(response.data);
-        console.log(`✅ Ad ${i + 1} created: ${response.data.id}`);
+          const response = await axios.post(
+            `${this.baseURL}/act_${this.adAccountId}/ads`,
+            null,
+            { params: adData }
+          );
 
-        // Add small delay to avoid rate limits (300ms between ads)
-        if (i < adSets.length - 1) {
-          await this.delay(300);
+          ads.push(response.data);
+          console.log(`✅ Ad ${i + 1} created: ${response.data.id}`);
+          success = true;
+
+          // Add small delay to avoid rate limits (300ms between ads)
+          if (i < adSets.length - 1) {
+            await this.delay(300);
+          }
+
+        } catch (error) {
+          const errorMessage = error.response?.data?.error?.message || error.message;
+          retryCount++;
+
+          if (retryCount > maxRetries) {
+            console.error(`❌ Failed to create Ad ${i + 1} after ${maxRetries} retries:`, errorMessage);
+            errors.push({
+              stage: 'ad_creation',
+              index: i + 1,
+              name: `Ad ${i + 1}`,
+              adSetId: adSet.id,
+              message: errorMessage,
+              details: error.response?.data?.error,
+              retries: retryCount - 1
+            });
+            failedIndices.push(i + 1);
+          } else {
+            console.warn(`⚠️ Ad ${i + 1} failed, will retry:`, errorMessage);
+            // Wait longer before retry
+            await this.delay(2000);
+          }
         }
-
-      } catch (error) {
-        const errorMessage = error.response?.data?.error?.message || error.message;
-        console.error(`❌ Failed to create Ad ${i + 1}:`, errorMessage);
-
-        errors.push({
-          stage: 'ad_creation',
-          index: i + 1,
-          name: `Ad ${i + 1}`,
-          adSetId: adSet.id,
-          message: errorMessage,
-          details: error.response?.data?.error
-        });
-
-        failedCount++;
-
-        // If too many failures, stop trying
-        if (failedCount > 10) {
-          console.error('Too many failures, stopping ad creation');
-          break;
-        }
-
-        // Wait before continuing after a failure
-        await this.delay(1000);
       }
     }
 
     console.log(`✅ Created ${ads.length}/${adSets.length} ads successfully`);
     if (errors.length > 0) {
-      console.log(`⚠️ Failed to create ${errors.length} ads`);
+      console.log(`⚠️ Failed to create ${errors.length} ads: ${failedIndices.join(', ')}`);
     }
 
-    return { ads, errors };
+    return { ads, errors, failedIndices };
   }
 
   /**
