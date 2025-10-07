@@ -1079,7 +1079,12 @@ class FacebookAPI {
       });
       
       const campaign = await this.createCampaign({
-        name: campaignData.campaignName
+        name: campaignData.campaignName,
+        objective: campaignData.objective, // Pass objective (OUTCOME_SALES, OUTCOME_LEADS, etc.)
+        bidStrategy: campaignData.bidStrategy, // Pass bid strategy
+        specialAdCategories: campaignData.specialAdCategories, // Pass special ad categories
+        dailyBudget: campaignData.campaignBudget?.dailyBudget, // Campaign-level budget if CBO
+        lifetimeBudget: campaignData.campaignBudget?.lifetimeBudget
       });
 
       const adSet = await this.createAdSet({
@@ -1089,6 +1094,9 @@ class FacebookAPI {
         dailyBudget: campaignData.dailyBudget,
         lifetimeBudget: campaignData.lifetimeBudget,
         conversionLocation: campaignData.conversionLocation || 'website',
+        conversionEvent: campaignData.conversionEvent, // Pass conversion event (Lead/Purchase)
+        performanceGoal: campaignData.performanceGoal, // Pass performance goal
+        bidStrategy: campaignData.bidStrategy, // Pass bid strategy
         schedule: campaignData.schedule,
         targeting: campaignData.targeting,
         placements: campaignData.placements
