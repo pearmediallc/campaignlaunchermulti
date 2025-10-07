@@ -215,6 +215,14 @@ class FacebookAPI {
           attributionSpec.push({ event_type: 'CLICK_THROUGH', window_days: 7 });
           console.log('  ✅ Using: 7-day click only');
         }
+        else if (adSetData.attributionSetting === '1_day_click_1_day_engaged_view_1_day_view') {
+          attributionSpec.push(
+            { event_type: 'CLICK_THROUGH', window_days: 1 },
+            { event_type: 'ENGAGED_VIEW', window_days: 1 },
+            { event_type: 'VIEW_THROUGH', window_days: 1 }
+          );
+          console.log('  ✅ Using: 1-day click + 1-day engaged-view + 1-day view');
+        }
         // Fallback to original logic for backward compatibility
         else {
           console.log('  ⚠️ Using fallback attribution window logic');

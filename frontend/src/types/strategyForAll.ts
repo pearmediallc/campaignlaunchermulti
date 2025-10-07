@@ -22,7 +22,7 @@ export interface StrategyForAllFormData {
   performanceGoal: 'maximize_conversions' | 'cost_per_result' | 'lowest_cost';
   pixel?: string; // Renamed from dataset
   conversionEvent: 'Lead' | 'Contact' | 'Purchase';
-  attributionSetting: 'standard' | '1_day_click' | '7_day_click' | '1_day_click_1_day_view' | '7_day_click_1_day_view' | '28_day_click_1_day_view';
+  attributionSetting: 'standard' | '1_day_click' | '7_day_click' | '1_day_click_1_day_view' | '7_day_click_1_day_view' | '28_day_click_1_day_view' | '1_day_click_1_day_engaged_view_1_day_view';
   attributionWindow: '1_day' | '7_day' | '28_day';
 
   // Ad Set Budget & Schedule
@@ -253,7 +253,8 @@ export const ATTRIBUTION_SETTING_OPTIONS = [
   { value: '7_day_click', label: '7-day click' },
   { value: '1_day_click_1_day_view', label: '1-day click or 1-day view' },
   { value: '7_day_click_1_day_view', label: '7-day click or 1-day view' },
-  { value: '28_day_click_1_day_view', label: '28-day click or 1-day view' }
+  { value: '28_day_click_1_day_view', label: '28-day click or 1-day view' },
+  { value: '1_day_click_1_day_engaged_view_1_day_view', label: '1-day click, 1-day engaged-view, 1-day view' }
 ];
 
 export const ATTRIBUTION_WINDOW_OPTIONS = [
