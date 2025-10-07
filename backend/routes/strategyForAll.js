@@ -358,6 +358,11 @@ const parseFormDataJson = (req, res, next) => {
 
 // Create initial campaign (1-1-1) - supports file uploads
 router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, requirePermission('campaign', 'create'), uploadSingle, parseFormDataJson, validateStrategyForAll, async (req, res) => {
+  // Declare variables outside try block for error handler access
+  let selectedAdAccountId;
+  let selectedPageId;
+  let selectedPixelId;
+
   try {
     console.log('📝 Strategy for-all creation request received:', {
       body: req.body,
@@ -465,9 +470,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('📋 Getting active resources using ResourceHelper...');
     const activeResources = await ResourceHelper.getActiveResourcesWithFallback(userId);
 
-    let selectedAdAccountId = activeResources.selectedAdAccountId;
-    let selectedPageId = activeResources.selectedPageId;
-    let selectedPixelId = activeResources.selectedPixelId || pixelId;
+    selectedAdAccountId = activeResources.selectedAdAccountId;
+    selectedPageId = activeResources.selectedPageId;
+    selectedPixelId = activeResources.selectedPixelId || pixelId;
 
     console.log('  ✓ Source:', activeResources.source);
     console.log('  ✓ Ad Account:', activeResources.selectedAdAccount?.name || selectedAdAccountId);
@@ -690,7 +695,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // Create the initial 1-1-1 campaign structure
     let result;
     try {
-      result = await userFacebookApi.createStrategyForAllCampaign(campaignData);
+      result = await userFacebookApi.createCampaignStructure(campaignData);
     } catch (error) {
       console.error('❌ Strategy for-all Campaign Creation Error:');
       console.error('Error message:', error.message);
