@@ -100,6 +100,7 @@ export interface TemplateData {
 
   // Duplication Settings
   duplicationSettings?: {
+    adSetCount?: number;
     defaultBudgetPerAdSet?: number;
     customBudgets?: Array<{
       adSetIndex: number;
