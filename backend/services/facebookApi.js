@@ -1097,6 +1097,10 @@ class FacebookAPI {
       // For Ad Set Budget (budgetLevel === 'adset'), do NOT set campaign budget
       const isCBO = campaignData.budgetLevel === 'campaign';
 
+      console.log('🔍 createCampaignStructure received:');
+      console.log('  attributionSetting:', campaignData.attributionSetting);
+      console.log('  attributionWindow:', JSON.stringify(campaignData.attributionWindow));
+
       const campaign = await this.createCampaign({
         name: campaignData.campaignName,
         objective: campaignData.objective, // Pass objective (OUTCOME_SALES, OUTCOME_LEADS, etc.)
