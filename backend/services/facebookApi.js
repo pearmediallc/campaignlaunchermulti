@@ -1103,6 +1103,8 @@ class FacebookAPI {
         conversionEvent: campaignData.conversionEvent, // Pass conversion event (Lead/Purchase)
         performanceGoal: campaignData.performanceGoal, // Pass performance goal
         bidStrategy: campaignData.bidStrategy, // Pass bid strategy
+        attributionSetting: campaignData.attributionSetting, // Pass attribution setting from user
+        attributionWindow: campaignData.attributionWindow, // Pass attribution window from user
         schedule: campaignData.schedule,
         targeting: campaignData.targeting,
         placements: campaignData.placements
@@ -1113,13 +1115,21 @@ class FacebookAPI {
       
       if (campaignData.mediaType === 'video' && campaignData.videoPath) {
         try {
+          console.log('🎬 Starting video upload...');
+          console.log('  Video path:', campaignData.videoPath);
           const videoId = await this.uploadVideo(campaignData.videoPath);
           if (videoId) {
             mediaAssets.videoId = videoId;
-            console.log('Video uploaded successfully:', videoId);
+            console.log('✅ Video uploaded successfully with ID:', videoId);
+          } else {
+            console.error('⚠️ Video upload returned no video ID');
           }
         } catch (error) {
-          console.error('Video upload error:', error.message);
+          console.error('❌ Video upload failed:');
+          console.error('  Error message:', error.message);
+          console.error('  Full error:', error);
+          // Re-throw to prevent ad creation without video
+          throw new Error(`Video upload failed: ${error.message}`);
         }
       } else if (campaignData.mediaType === 'carousel' && campaignData.imagePaths) {
         mediaAssets.carouselCards = [];

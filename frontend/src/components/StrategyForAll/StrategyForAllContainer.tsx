@@ -588,7 +588,7 @@ const StrategyForAllContainer: React.FC = () => {
             Strategy for All
           </Typography>
           <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
-            Create and manage your 1-campaign-50-adsets campaigns with advanced controls
+            Create and manage your campaigns with flexible ad set duplication (1-49 ad sets)
           </Typography>
 
           {/* Tab Navigation */}
@@ -610,7 +610,7 @@ const StrategyForAllContainer: React.FC = () => {
             {/* Existing Campaign Creation Flow */}
             <Box sx={{ mb: 4 }}>
               <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
-                Create 1 campaign with 1 ad set and 1 ad, then duplicate into 49 additional ad sets using the same creative
+                Create 1 campaign with 1 ad set and 1 ad, then duplicate into {adSetCount > 1 ? `${adSetCount - 1} additional ad sets` : 'your selected number of ad sets'} using the same creative
               </Typography>
 
               <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>

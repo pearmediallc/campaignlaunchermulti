@@ -694,11 +694,18 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('📤 Sending to Facebook API:');
     console.log('  Campaign Name:', campaignData.campaignName);
     console.log('  Objective:', campaignData.objective);
+    console.log('  Budget Level:', campaignData.budgetLevel);
     console.log('  Daily Budget:', campaignData.dailyBudget, typeof campaignData.dailyBudget);
     console.log('  Page ID:', campaignData.facebookPage || selectedPageId);
     console.log('  Pixel ID:', campaignData.pixel);
     console.log('  Media Type:', campaignData.mediaType);
     console.log('  Has Image:', !!campaignData.imagePath);
+    console.log('  Has Video:', !!campaignData.videoPath);
+    console.log('  Video Path:', campaignData.videoPath || 'Not set');
+    console.log('  Attribution Setting:', campaignData.attributionSetting || 'Not set');
+    console.log('  Attribution Window:', JSON.stringify(campaignData.attributionWindow) || 'Not set');
+    console.log('  Conversion Event:', campaignData.conversionEvent);
+    console.log('  Ad Set Count:', campaignData.duplicationSettings?.adSetCount || 'Not set');
 
     // Create the initial 1-1-1 campaign structure
     let result;
