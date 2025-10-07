@@ -103,6 +103,8 @@ const StrategyForAllContainer: React.FC = () => {
     console.log('  - Budget Type:', data.budgetType);
     console.log('  - Daily Budget:', data.adSetBudget?.dailyBudget || 'Not set');
     console.log('  - Conversion Event:', data.conversionEvent);
+    console.log('  - Attribution Setting:', data.attributionSetting);
+    console.log('  - Attribution Window:', data.attributionWindow);
 
     try {
       setFormData(data);
@@ -302,6 +304,9 @@ const StrategyForAllContainer: React.FC = () => {
       console.log('🔗 Endpoint: /api/campaigns/strategy-for-all/create');
       console.log('📦 Payload size:', JSON.stringify(workingCampaignData).length, 'bytes');
       console.log('📊 Request data:', workingCampaignData);
+      console.log('🔍 Attribution in workingCampaignData:');
+      console.log('  - attributionSetting:', workingCampaignData.attributionSetting);
+      console.log('  - attributionWindow:', workingCampaignData.attributionWindow);
 
       // Create FormData to handle file uploads properly
       const formData = new FormData();
