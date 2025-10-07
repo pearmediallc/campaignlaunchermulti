@@ -177,6 +177,10 @@ class FacebookAPI {
       }
 
       // Add attribution spec if provided
+      console.log('🔍 Attribution Settings Received:');
+      console.log('  attributionSetting:', adSetData.attributionSetting);
+      console.log('  attributionWindow:', JSON.stringify(adSetData.attributionWindow));
+
       if (adSetData.attributionSetting || adSetData.attributionWindow) {
         const attributionSpec = [];
 
@@ -186,6 +190,7 @@ class FacebookAPI {
             { event_type: 'CLICK_THROUGH', window_days: 1 },
             { event_type: 'VIEW_THROUGH', window_days: 1 }
           );
+          console.log('  ✅ Using: 1-day click + 1-day view');
         }
         // Handle other attribution settings
         else if (adSetData.attributionSetting === '7_day_click_1_day_view') {
@@ -193,21 +198,26 @@ class FacebookAPI {
             { event_type: 'CLICK_THROUGH', window_days: 7 },
             { event_type: 'VIEW_THROUGH', window_days: 1 }
           );
+          console.log('  ✅ Using: 7-day click + 1-day view');
         }
         else if (adSetData.attributionSetting === '28_day_click_1_day_view') {
           attributionSpec.push(
             { event_type: 'CLICK_THROUGH', window_days: 28 },
             { event_type: 'VIEW_THROUGH', window_days: 1 }
           );
+          console.log('  ✅ Using: 28-day click + 1-day view');
         }
         else if (adSetData.attributionSetting === '1_day_click') {
           attributionSpec.push({ event_type: 'CLICK_THROUGH', window_days: 1 });
+          console.log('  ✅ Using: 1-day click only');
         }
         else if (adSetData.attributionSetting === '7_day_click') {
           attributionSpec.push({ event_type: 'CLICK_THROUGH', window_days: 7 });
+          console.log('  ✅ Using: 7-day click only');
         }
         // Fallback to original logic for backward compatibility
         else {
+          console.log('  ⚠️ Using fallback attribution window logic');
           if (adSetData.attributionWindow?.click || adSetData.attributionWindow?.['1_day_click']) {
             attributionSpec.push({
               event_type: 'CLICK_THROUGH',
@@ -224,7 +234,12 @@ class FacebookAPI {
 
         if (attributionSpec.length > 0) {
           params.attribution_spec = JSON.stringify(attributionSpec);
+          console.log('  📤 Sending to Facebook:', params.attribution_spec);
+        } else {
+          console.log('  ⚠️ No attribution spec generated');
         }
+      } else {
+        console.log('  ⚠️ No attribution settings provided');
       }
       
       // Handle budget based on type - only if values are provided (skip for CBO)
@@ -1113,7 +1128,7 @@ class FacebookAPI {
       // Handle media upload based on type
       let mediaAssets = {};
       
-      if (campaignData.mediaType === 'video' && campaignData.videoPath) {
+      if ((campaignData.mediaType === 'video' || campaignData.mediaType === 'single_video') && campaignData.videoPath) {
         try {
           console.log('🎬 Starting video upload...');
           console.log('  Video path:', campaignData.videoPath);
@@ -1121,8 +1136,19 @@ class FacebookAPI {
           if (videoId) {
             mediaAssets.videoId = videoId;
             console.log('✅ Video uploaded successfully with ID:', videoId);
+
+            // Get thumbnail from Facebook with video path for fallback (Strategy150 pattern)
+            const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
+            if (thumbnailUrl) {
+              mediaAssets.videoThumbnail = thumbnailUrl;
+              console.log('✅ Video thumbnail ready for ad creation:', thumbnailUrl);
+            } else {
+              console.log('⚠️ No thumbnail available, cannot create video ad');
+              throw new Error('Video thumbnail is required for video ads');
+            }
           } else {
             console.error('⚠️ Video upload returned no video ID');
+            throw new Error('Video upload returned no video ID');
           }
         } catch (error) {
           console.error('❌ Video upload failed:');
@@ -1148,19 +1174,25 @@ class FacebookAPI {
             console.error(`Carousel image ${i + 1} upload error:`, error.message);
           }
         }
-      } else if (campaignData.imagePath) {
+      } else if (campaignData.mediaType === 'single_image' && campaignData.imagePath) {
         try {
+          console.log('📸 Starting image upload...');
+          console.log('  Image path:', campaignData.imagePath);
           const imageHash = await this.uploadImage(campaignData.imagePath);
           if (imageHash) {
             mediaAssets.imageHash = imageHash;
-            console.log('✅ Image uploaded successfully:', imageHash);
+            console.log('✅ Image uploaded successfully with hash:', imageHash);
           } else {
-            console.error('⚠️ Image upload returned no hash - ad will be created without image');
+            console.error('⚠️ Image upload returned no hash');
+            throw new Error('Image upload returned no hash');
           }
         } catch (error) {
           console.error('❌ Image upload error:', error.message);
           console.error('Full error:', error);
+          throw new Error(`Image upload failed: ${error.message}`);
         }
+      } else {
+        console.log('📷 No media detected or unsupported media type:', campaignData.mediaType);
       }
 
       const ads = [];
