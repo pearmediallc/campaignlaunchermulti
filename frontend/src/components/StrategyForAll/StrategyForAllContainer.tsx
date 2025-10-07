@@ -19,13 +19,6 @@ import CompletionSummary from './CompletionSummary/CompletionSummary';
 import CampaignManagementContainer from './CampaignManagement/CampaignManagementContainer';
 import MultiplyContainer from './MultiplySection/MultiplyContainer';
 
-const steps = [
-  'Campaign Setup (1-1-1)',
-  'Post ID Collection',
-  'Duplication (1-49-1)',
-  'Completion'
-];
-
 const StrategyForAllContainer: React.FC = () => {
   // Tab management
   const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create');
@@ -34,6 +27,15 @@ const StrategyForAllContainer: React.FC = () => {
   const [phase, setPhase] = useState<StrategyForAllPhase>('setup');
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<StrategyForAllFormData | null>(null);
+
+  // Dynamic steps based on user's ad set count selection
+  const adSetCount = formData?.duplicationSettings?.adSetCount || 50;
+  const steps = [
+    'Campaign Setup (1-1-1)',
+    'Post ID Collection',
+    `Duplication (1-${adSetCount}-1)`,
+    'Completion'
+  ];
   const [campaignResult, setCampaignResult] = useState<StrategyForAllResponse | null>(null);
   const [postId, setPostId] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -77,6 +79,7 @@ const StrategyForAllContainer: React.FC = () => {
             campaignResult={campaignResult}
             postId={postId}
             onCreateNew={handleCreateNew}
+            adSetCount={formData?.duplicationSettings?.adSetCount || 50}
           />
         );
       case 'error':

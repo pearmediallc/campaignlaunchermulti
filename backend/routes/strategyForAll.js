@@ -734,7 +734,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
         strategy_type: 'for-all',
         post_id: result.postId || null,
-        ad_set_count: 1, // Initial creation, will be 50 after duplication
+        ad_set_count: 1, // Initial creation, will be updated to full count after duplication
         status: 'ACTIVE'
       });
       console.log(`📊 Campaign ${result.campaign.id} added to tracking for management`);
@@ -754,7 +754,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         adAccount: facebookAuth.selectedAdAccount, // Add ad account info
         page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
         pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
-        postId: result.postId // Include postId from result
+        postId: result.postId, // Include postId from result
+        duplicationSettings: campaignData.duplicationSettings // Include duplication settings for frontend
       }
     });
   } catch (error) {

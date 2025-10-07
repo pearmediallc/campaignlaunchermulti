@@ -29,9 +29,13 @@ const Phase3Duplication: React.FC<Phase3DuplicationProps> = ({
   formData,
   onCompleted
 }) => {
+  // Get actual ad set count from formData (subtract 1 because initial ad set already created)
+  const actualAdSetCount = formData?.duplicationSettings?.adSetCount || 49;
+  const duplicateCount = actualAdSetCount - 1; // Already have 1 initial ad set
+
   const [progress, setProgress] = useState<DuplicationProgress>({
     completed: 0,
-    total: 49,
+    total: duplicateCount,
     currentOperation: 'Starting duplication process...',
     adSets: [],
     errors: []
@@ -60,7 +64,7 @@ const Phase3Duplication: React.FC<Phase3DuplicationProps> = ({
           originalAdSetId: campaignResult?.data?.adSet.id,
           postId: postId,
           formData: formData,
-          count: 49
+          count: duplicateCount // Use actual count from formData
         })
       });
 
@@ -120,7 +124,7 @@ const Phase3Duplication: React.FC<Phase3DuplicationProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <ContentCopy color="primary" sx={{ mr: 1 }} />
             <Typography variant="h6">
-              Duplicating Ad Sets (1-49-1)
+              Duplicating Ad Sets (Total: {actualAdSetCount} ad sets)
             </Typography>
           </Box>
 

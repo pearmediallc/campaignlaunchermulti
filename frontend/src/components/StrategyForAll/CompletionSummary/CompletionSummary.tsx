@@ -33,12 +33,14 @@ interface CompletionSummaryProps {
   campaignResult: StrategyForAllResponse | null;
   postId: string;
   onCreateNew: () => void;
+  adSetCount?: number; // Total ad set count from formData
 }
 
 const CompletionSummary: React.FC<CompletionSummaryProps> = ({
   campaignResult,
   postId,
-  onCreateNew
+  onCreateNew,
+  adSetCount = 50 // Default to 50 for backward compatibility
 }) => {
   const [showMultiplyDialog, setShowMultiplyDialog] = useState(false);
 
@@ -72,7 +74,8 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
   };
 
   const totalAdSets = campaignResult?.data?.duplicatedAdSets ?
-    1 + campaignResult.data.duplicatedAdSets.length : 50;
+    1 + campaignResult.data.duplicatedAdSets.length : adSetCount;
+  const duplicateCount = totalAdSets - 1; // Number of duplicates (excluding initial)
 
   return (
     <Box sx={{ py: 4 }}>
@@ -122,7 +125,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
                 {totalAdSets}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                1 original + 49 duplicates
+                1 original + {duplicateCount} duplicate{duplicateCount !== 1 ? 's' : ''}
               </Typography>
             </CardContent>
           </Card>
@@ -193,7 +196,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
             </ListItemIcon>
             <ListItemText
               primary="Ad Sets Duplicated"
-              secondary={`49 additional ad sets created with "Use Existing Post" setting`}
+              secondary={`${duplicateCount} additional ad set${duplicateCount !== 1 ? 's' : ''} created with "Use Existing Post" setting`}
             />
           </ListItem>
 
