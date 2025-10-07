@@ -727,6 +727,11 @@ class FacebookAPI {
             type: adData.callToAction || 'LEARN_MORE'
           }
         };
+
+        // Add display_link if provided
+        if (adData.displayLink) {
+          creative.object_story_spec.link_data.display_link = adData.displayLink;
+        }
       } else {
         // Single image ad (default)
         creative.object_story_spec.link_data = {
@@ -738,7 +743,12 @@ class FacebookAPI {
             type: adData.callToAction || 'LEARN_MORE'
           }
         };
-        
+
+        // Add display_link if provided
+        if (adData.displayLink) {
+          creative.object_story_spec.link_data.display_link = adData.displayLink;
+        }
+
         // Add image hash if available
         if (adData.imageHash) {
           creative.object_story_spec.link_data.image_hash = adData.imageHash;
