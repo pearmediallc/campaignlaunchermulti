@@ -1078,21 +1078,27 @@ class FacebookAPI {
         hasCarousel: !!campaignData.imagePaths
       });
       
+      // For CBO (budgetLevel === 'campaign'), set campaign budget
+      // For Ad Set Budget (budgetLevel === 'adset'), do NOT set campaign budget
+      const isCBO = campaignData.budgetLevel === 'campaign';
+
       const campaign = await this.createCampaign({
         name: campaignData.campaignName,
         objective: campaignData.objective, // Pass objective (OUTCOME_SALES, OUTCOME_LEADS, etc.)
         bidStrategy: campaignData.bidStrategy, // Pass bid strategy
         specialAdCategories: campaignData.specialAdCategories, // Pass special ad categories
-        daily_budget: campaignData.campaignBudget?.dailyBudget || campaignData.dailyBudget, // Campaign-level budget if CBO (snake_case!)
-        lifetime_budget: campaignData.campaignBudget?.lifetimeBudget || campaignData.lifetimeBudget // snake_case!
+        daily_budget: isCBO ? (campaignData.campaignBudget?.dailyBudget || campaignData.dailyBudget) : undefined, // Only for CBO
+        lifetime_budget: isCBO ? (campaignData.campaignBudget?.lifetimeBudget || campaignData.lifetimeBudget) : undefined // Only for CBO
       });
 
+      // For CBO: do NOT set ad set budget (already set at campaign level)
+      // For Ad Set Budget: set individual ad set budget
       const adSet = await this.createAdSet({
         campaignName: campaignData.campaignName,
         campaignId: campaign.id,
         budgetType: campaignData.budgetType || 'daily',
-        dailyBudget: campaignData.dailyBudget,
-        lifetimeBudget: campaignData.lifetimeBudget,
+        dailyBudget: isCBO ? undefined : campaignData.dailyBudget, // Skip budget for CBO
+        lifetimeBudget: isCBO ? undefined : campaignData.lifetimeBudget, // Skip budget for CBO
         conversionLocation: campaignData.conversionLocation || 'website',
         conversionEvent: campaignData.conversionEvent, // Pass conversion event (Lead/Purchase)
         performanceGoal: campaignData.performanceGoal, // Pass performance goal
