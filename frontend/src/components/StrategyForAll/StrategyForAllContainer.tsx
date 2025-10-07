@@ -226,6 +226,10 @@ const StrategyForAllContainer: React.FC = () => {
         costCap: campaignData.costCap,
         minRoas: campaignData.minRoas,
 
+        // Attribution settings - CRITICAL: Must be passed to backend
+        attributionSetting: campaignData.attributionSetting,
+        attributionWindow: campaignData.attributionWindow,
+
         // URL fields
         url: campaignData.url || '',
         urlType: (campaignData.urlType === 'lead_gen' || campaignData.urlType === 'call') ? campaignData.urlType : 'lead_gen',
@@ -271,6 +275,14 @@ const StrategyForAllContainer: React.FC = () => {
 
       // CRITICAL: Include adSetBudget with spendingLimits for ad set level controls
       workingCampaignData.adSetBudget = campaignData.adSetBudget;
+
+      // CRITICAL: Include campaign budget for CBO
+      if (campaignData.budgetLevel === 'campaign') {
+        workingCampaignData.campaignBudget = campaignData.campaignBudget;
+      }
+
+      // CRITICAL: Include duplication settings
+      workingCampaignData.duplicationSettings = campaignData.duplicationSettings;
 
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {
