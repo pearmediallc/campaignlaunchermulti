@@ -659,7 +659,15 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // Additional Meta options
       costCap: req.body.costCap,
       minRoas: req.body.minRoas,
-      conversionLocation: req.body.conversionLocation  // Required - user must select
+      conversionLocation: req.body.conversionLocation,  // Required - user must select
+
+      // Budget fields for createCampaignStructure (pass through both formats for compatibility)
+      dailyBudget: req.body.budgetLevel === 'campaign'
+        ? (req.body.campaignBudget?.dailyBudget || req.body.dailyBudget)
+        : (req.body.adSetBudget?.dailyBudget || req.body.dailyBudget),
+      lifetimeBudget: req.body.budgetLevel === 'campaign'
+        ? (req.body.campaignBudget?.lifetimeBudget || req.body.lifetimeBudget)
+        : (req.body.adSetBudget?.lifetimeBudget || req.body.lifetimeBudget)
     };
 
     console.log('🟢 Creating Strategy for-all campaign with data:', {
