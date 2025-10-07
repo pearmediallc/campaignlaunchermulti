@@ -25,7 +25,7 @@ import {
   Slider
 } from '@mui/material';
 import { Controller, useFormContext, useFieldArray } from 'react-hook-form';
-import { Settings, LocationOn, Add, Delete, Schedule } from '@mui/icons-material';
+import { Settings, LocationOn, Add, Delete, Schedule, Calculate } from '@mui/icons-material';
 import {
   PERFORMANCE_GOAL_OPTIONS,
   CONVERSION_EVENT_OPTIONS,
@@ -1108,59 +1108,183 @@ const AdSetSection: React.FC = () => {
           </>
         )}
 
+        {/* Duplication Settings Section - Conditional based on budgetLevel */}
         <Box sx={{ width: "100%" }}>
           <Divider sx={{ my: 2 }} />
           <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-            Duplication Settings for 49 Ad Sets
+            Duplication Settings
           </Typography>
         </Box>
 
-        {/* Default Budget for Duplicated Ad Sets */}
+        {/* Number of Ad Sets to Duplicate */}
         <Box sx={{ width: "100%" }}>
           <Controller
-            name="duplicationSettings.defaultBudgetPerAdSet"
+            name="duplicationSettings.adSetCount"
             control={control}
-            defaultValue={1}
-            render={({ field }) => (
+            defaultValue={49}
+            rules={{
+              required: 'Number of ad sets is required',
+              min: { value: 1, message: 'Minimum 1 ad set' },
+              max: { value: 49, message: 'Maximum 49 ad sets' }
+            }}
+            render={({ field, fieldState: { error } }) => (
               <TextField
                 {...field}
                 fullWidth
                 type="number"
-                label="Default Budget per Duplicated Ad Set"
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">$</InputAdornment>
+                label="Number of Ad Sets to Duplicate"
+                inputProps={{ min: 1, max: 49, step: 1 }}
+                helperText={error?.message || "Enter number of ad sets to create (1-49)"}
+                error={!!error}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 1;
+                  field.onChange(value);
+                  // Recalculate budgetPerAdSet when count changes
+                  const totalBudget = watch('duplicationSettings.totalBudget');
+                  if (totalBudget && value) {
+                    setValue('duplicationSettings.budgetPerAdSet', totalBudget / value);
+                  }
                 }}
-                helperText="Each of the 49 duplicated ad sets will have this budget (default: $1)"
               />
             )}
           />
         </Box>
 
-        {/* Budget Distribution Type */}
-        <Box sx={{ width: "100%" }}>
-          <Controller
-            name="duplicationSettings.budgetDistributionType"
-            control={control}
-            defaultValue="equal"
-            render={({ field }) => (
-              <FormControl fullWidth>
-                <InputLabel>Budget Distribution</InputLabel>
-                <Select {...field} label="Budget Distribution">
-                  <MenuItem value="equal">Equal Distribution ($1 each)</MenuItem>
-                  <MenuItem value="custom">Custom per Ad Set</MenuItem>
-                  <MenuItem value="weighted">Weighted Distribution</MenuItem>
-                </Select>
-                <FormHelperText>
-                  How to distribute budget across the 49 duplicated ad sets
-                </FormHelperText>
-              </FormControl>
-            )}
-          />
-        </Box>
+        {/* Conditional Budget Input - Only show for Ad Set Budget level */}
+        {budgetLevel === 'adset' ? (
+          <>
+            {/* Total Budget for Duplicated Ad Sets */}
+            <Box sx={{ width: "100%" }}>
+              <Controller
+                name="duplicationSettings.totalBudget"
+                control={control}
+                rules={{
+                  required: 'Total budget is required for Ad Set Budget level',
+                  min: { value: 1, message: 'Total budget must be at least $1' },
+                  validate: {
+                    minPerAdSet: (value) => {
+                      const adSetCount = watch('duplicationSettings.adSetCount') || 49;
+                      if (!value) return true;
+                      const budgetPerAdSet = value / adSetCount;
+                      return budgetPerAdSet >= 1 || `Budget per ad set must be at least $1 (currently $${budgetPerAdSet.toFixed(2)})`;
+                    },
+                    matchesBudgetSchedule: (value) => {
+                      const dailyBudget = watch('adSetBudget.dailyBudget');
+                      const adSetCount = watch('duplicationSettings.adSetCount') || 49;
 
+                      if (!dailyBudget || !value) return true;
+
+                      const budgetPerAdSet = value / adSetCount;
+                      const diff = Math.abs(dailyBudget - budgetPerAdSet);
+                      const tolerance = Math.max(0.01, budgetPerAdSet * 0.01);
+
+                      return diff <= tolerance ||
+                        `Budget mismatch! Budget & Schedule: $${dailyBudget}, Duplication: $${budgetPerAdSet.toFixed(2)} per ad set`;
+                    }
+                  }
+                }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    type="number"
+                    label="Total Budget for Duplicated Ad Sets"
+                    InputProps={{
+                      startAdornment: <InputAdornment position="start">$</InputAdornment>
+                    }}
+                    inputProps={{ min: 1, step: 0.01 }}
+                    helperText={error?.message || "Total budget to distribute across all ad sets"}
+                    error={!!error}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value);
+                      field.onChange(value);
+                      // Recalculate budgetPerAdSet when total budget changes
+                      const adSetCount = watch('duplicationSettings.adSetCount') || 49;
+                      if (value && adSetCount) {
+                        setValue('duplicationSettings.budgetPerAdSet', value / adSetCount);
+                      }
+                    }}
+                  />
+                )}
+              />
+            </Box>
+
+            {/* Calculated Budget Per Ad Set - Read-only display */}
+            <Box sx={{ width: "100%" }}>
+              <Alert severity="info" icon={<Calculate />}>
+                <Typography variant="body2">
+                  <strong>Budget per ad set:</strong> $
+                  {(() => {
+                    const totalBudget = watch('duplicationSettings.totalBudget');
+                    const adSetCount = watch('duplicationSettings.adSetCount') || 49;
+                    return totalBudget ? (totalBudget / adSetCount).toFixed(2) : '0.00';
+                  })()}
+                  {' '}
+                  ({watch('duplicationSettings.adSetCount') || 49} ad sets × $
+                  {(() => {
+                    const totalBudget = watch('duplicationSettings.totalBudget');
+                    const adSetCount = watch('duplicationSettings.adSetCount') || 49;
+                    return totalBudget ? (totalBudget / adSetCount).toFixed(2) : '0.00';
+                  })()}
+                  {' '}= $
+                  {watch('duplicationSettings.totalBudget') || 0})
+                </Typography>
+              </Alert>
+            </Box>
+
+            {/* High Spend Warning */}
+            {(() => {
+              const totalBudget = watch('duplicationSettings.totalBudget');
+              const budgetType = watch('budgetType');
+              if (totalBudget && budgetType === 'daily' && totalBudget > 500) {
+                return (
+                  <Box sx={{ width: "100%" }}>
+                    <Alert severity="warning">
+                      <Typography variant="body2">
+                        <strong>High spending alert:</strong> Daily budget of ${totalBudget}
+                        {' '}will result in ${(totalBudget * 30).toFixed(2)} over 30 days.
+                      </Typography>
+                    </Alert>
+                  </Box>
+                );
+              }
+              return null;
+            })()}
+          </>
+        ) : (
+          /* CBO Info Message */
+          <Box sx={{ width: "100%" }}>
+            <Alert severity="info">
+              <Typography variant="body2">
+                <strong>Campaign Budget Optimization (CBO) is enabled.</strong>
+                <br />
+                Facebook will automatically distribute your campaign budget across ad sets.
+                No individual ad set budgets are required.
+              </Typography>
+            </Alert>
+          </Box>
+        )}
+
+        {/* Overall Info */}
         <Box sx={{ width: "100%" }}>
           <Alert severity="info">
-            The initial ad set (1-1-1) will use the budget specified above. The 49 duplicated ad sets will each have $1 budget by default, which can be customized after creation.
+            {budgetLevel === 'adset' ? (
+              <Typography variant="body2">
+                The initial ad set will use the budget specified in "Budget & Schedule".
+                The {(watch('duplicationSettings.adSetCount') || 49) - 1} duplicated ad sets will each receive
+                {' '}$
+                {(() => {
+                  const totalBudget = watch('duplicationSettings.totalBudget');
+                  const adSetCount = watch('duplicationSettings.adSetCount') || 49;
+                  return totalBudget ? (totalBudget / adSetCount).toFixed(2) : '0.00';
+                })()} budget.
+              </Typography>
+            ) : (
+              <Typography variant="body2">
+                Campaign Budget Optimization will manage budget distribution automatically.
+                You'll create {watch('duplicationSettings.adSetCount') || 49} ad sets total.
+              </Typography>
+            )}
           </Alert>
         </Box>
       </Box>

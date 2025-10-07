@@ -233,10 +233,23 @@ const validateStrategyForAll = [
     .optional()
     .isInt({ min: 1, max: 49 })
     .withMessage('Ad set count must be between 1 and 49'),
+
+  // Require totalBudget when using Ad Set Budget level
   body('duplicationSettings.totalBudget')
-    .optional()
+    .if(body('budgetLevel').equals('adset'))
+    .notEmpty()
+    .withMessage('Total budget is required when using Ad Set Budget level')
     .isFloat({ min: 1 })
     .withMessage('Total budget must be at least $1'),
+
+  // Optional for CBO
+  body('duplicationSettings.totalBudget')
+    .if(body('budgetLevel').equals('campaign'))
+    .optional()
+    .isFloat({ min: 1 })
+    .withMessage('Total budget must be at least $1 if provided'),
+
+  // Legacy fields (backward compatibility)
   body('duplicationSettings.defaultBudgetPerAdSet')
     .optional()
     .isFloat({ min: 1 })
@@ -245,6 +258,58 @@ const validateStrategyForAll = [
     .optional()
     .isIn(['equal', 'custom', 'weighted']),
   body('duplicationSettings.customBudgets').optional().isArray(),
+
+  // Custom validation: Minimum $1 per ad set
+  body('duplicationSettings')
+    .custom((value, { req }) => {
+      if (req.body.budgetLevel === 'adset' && value?.totalBudget && value?.adSetCount) {
+        const budgetPerAdSet = value.totalBudget / value.adSetCount;
+        if (budgetPerAdSet < 1) {
+          throw new Error(
+            `Budget per ad set must be at least $1. ` +
+            `Current: $${budgetPerAdSet.toFixed(2)} ($${value.totalBudget} ÷ ${value.adSetCount})`
+          );
+        }
+      }
+      return true;
+    })
+    .withMessage('Total budget must provide at least $1 per ad set'),
+
+  // Custom validation: Budget sync between sections
+  body('duplicationSettings')
+    .custom((value, { req }) => {
+      // Only validate for Ad Set Budget level
+      if (req.body.budgetLevel !== 'adset') {
+        return true;
+      }
+
+      const adSetDailyBudget = req.body.adSetBudget?.dailyBudget || req.body.dailyBudget;
+      const totalDuplicationBudget = value?.totalBudget;
+      const adSetCount = value?.adSetCount ?? 49;
+
+      // Only validate if both budgets are provided
+      if (!adSetDailyBudget || !totalDuplicationBudget) {
+        return true;
+      }
+
+      // Calculate budget per ad set from duplication settings
+      const budgetPerAdSet = totalDuplicationBudget / adSetCount;
+
+      // Check if budgets match (allow 1% tolerance for rounding)
+      const tolerance = Math.max(0.01, budgetPerAdSet * 0.01);
+      const diff = Math.abs(adSetDailyBudget - budgetPerAdSet);
+
+      if (diff > tolerance) {
+        throw new Error(
+          `Budget mismatch: Budget & Schedule ($${adSetDailyBudget}) doesn't match ` +
+          `Duplication Settings ($${budgetPerAdSet.toFixed(2)} = $${totalDuplicationBudget} ÷ ${adSetCount}). ` +
+          `This could cause unexpected spending.`
+        );
+      }
+
+      return true;
+    })
+    .withMessage('Budget & Schedule must match Duplication Budget to prevent money loss'),
 
   // Process control
   body('publishDirectly').optional().isBoolean()

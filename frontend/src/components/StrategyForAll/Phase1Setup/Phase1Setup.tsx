@@ -105,8 +105,9 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
 
     // Duplication Settings
     duplicationSettings: {
-      defaultBudgetPerAdSet: 1,
-      budgetDistributionType: 'equal'
+      adSetCount: 49,           // Default to 49 ad sets
+      totalBudget: undefined,   // User must provide (for Ad Set Budget level)
+      budgetPerAdSet: undefined // Calculated automatically
     },
 
     // Budget type for consistency
