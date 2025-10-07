@@ -37,13 +37,36 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 }) => {
   if (!formData) return null;
 
-  // Calculate budget details
-  const initialBudget = formData.budgetLevel === 'campaign'
-    ? (formData.campaignBudget?.dailyBudget || 0)
-    : (formData.adSetBudget?.dailyBudget || 0);
+  // Calculate budget details based on budget level
+  const isCBO = formData.budgetLevel === 'campaign';
+  const adSetCount = formData.duplicationSettings?.adSetCount || 49; // Read from form data, fallback to 49
 
-  const duplicationBudget = 49 * 1; // 49 ad sets @ $1 each
-  const totalDailySpend = initialBudget + duplicationBudget;
+  let totalDailySpend: number;
+  let breakdownText: string[];
+
+  if (isCBO) {
+    // CBO: Campaign budget is THE total, distributed automatically by Facebook
+    const campaignBudget = formData.campaignBudget?.dailyBudget || 0;
+    totalDailySpend = campaignBudget; // CBO uses campaign budget only, NOT per-ad-set budgets
+    breakdownText = [
+      `• Phase 1 (Initial): 1 Ad Set (CBO manages budget)`,
+      `• Phase 2 (After Post ID): ${adSetCount - 1} Ad Sets (CBO manages budget)`,
+      `• Total: ${adSetCount} ad sets sharing $${campaignBudget}/day`
+    ];
+  } else {
+    // Ad Set Budget: Each ad set has individual budget
+    const initialAdSetBudget = formData.adSetBudget?.dailyBudget || 0;
+    const duplicationTotalBudget = formData.duplicationSettings?.totalBudget || ((adSetCount - 1) * 1); // Use totalBudget or fallback
+
+    totalDailySpend = initialAdSetBudget + duplicationTotalBudget;
+    const budgetPerDuplicatedAdSet = duplicationTotalBudget / (adSetCount - 1);
+
+    breakdownText = [
+      `• Phase 1 (Initial): 1 Ad Set @ $${initialAdSetBudget}/day`,
+      `• Phase 2 (After Post ID): ${adSetCount - 1} Ad Sets @ $${budgetPerDuplicatedAdSet.toFixed(2)}/day each`,
+      `• Total: ${adSetCount} ad sets`
+    ];
+  }
 
   // Format objective for display
   const formatObjective = (obj: string) => {
@@ -141,12 +164,12 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
             Strategy for All Breakdown:
           </Typography>
-          <Typography variant="body2" sx={{ mb: 0.5 }}>
-            • Phase 1 (Initial): 1 Ad Set @ ${initialBudget}/day
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            • Phase 2 (After Post ID): 49 Ad Sets @ $1/day each
-          </Typography>
+          {breakdownText.map((line, idx) => (
+            <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+              {line}
+            </Typography>
+          ))}
+          <Box sx={{ mb: 1 }} />
 
           <Box sx={{ p: 2, bgcolor: 'error.main', color: 'white', borderRadius: 1 }}>
             <Typography variant="h6" fontWeight={700}>
