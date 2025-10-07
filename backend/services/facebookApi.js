@@ -1083,8 +1083,8 @@ class FacebookAPI {
         objective: campaignData.objective, // Pass objective (OUTCOME_SALES, OUTCOME_LEADS, etc.)
         bidStrategy: campaignData.bidStrategy, // Pass bid strategy
         specialAdCategories: campaignData.specialAdCategories, // Pass special ad categories
-        dailyBudget: campaignData.campaignBudget?.dailyBudget, // Campaign-level budget if CBO
-        lifetimeBudget: campaignData.campaignBudget?.lifetimeBudget
+        daily_budget: campaignData.campaignBudget?.dailyBudget || campaignData.dailyBudget, // Campaign-level budget if CBO (snake_case!)
+        lifetime_budget: campaignData.campaignBudget?.lifetimeBudget || campaignData.lifetimeBudget // snake_case!
       });
 
       const adSet = await this.createAdSet({
