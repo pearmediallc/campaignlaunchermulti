@@ -369,14 +369,18 @@ class FacebookAPI {
         if (adSetData.targeting.locations.countries && adSetData.targeting.locations.countries.length > 0) {
           targeting.geo_locations.countries = adSetData.targeting.locations.countries;
         }
-        if (adSetData.targeting.locations.states && adSetData.targeting.locations.states.length > 0) {
+        // Check for both 'regions' (StrategyForAll) and 'states' (Strategy150) for compatibility
+        const stateList = adSetData.targeting.locations.regions || adSetData.targeting.locations.states;
+        if (stateList && stateList.length > 0) {
+          console.log(`📍 Processing ${stateList.length} states/regions:`, stateList);
           // Facebook API uses 'regions' for states with numeric IDs
-          targeting.geo_locations.regions = adSetData.targeting.locations.states.map(state => {
+          targeting.geo_locations.regions = stateList.map(state => {
             const regionId = this.stateToRegionId[state];
             if (regionId) {
+              console.log(`  ✅ ${state} → Region ID: ${regionId}`);
               return { key: regionId };
             } else {
-              console.warn(`Unknown state code: ${state}, using fallback`);
+              console.warn(`  ⚠️ Unknown state code: ${state}, using fallback`);
               return { key: `US:${state}` }; // Fallback for unknown states
             }
           });
