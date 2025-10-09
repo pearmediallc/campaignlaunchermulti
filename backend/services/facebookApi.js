@@ -1396,6 +1396,7 @@ class FacebookAPI {
       // DEBUG: Log spending limits before passing to createAdSet
       console.log('🔍 DEBUG - Before createAdSet:');
       console.log('  📦 campaignData.spendingLimits:', JSON.stringify(campaignData.spendingLimits, null, 2));
+      console.log('  📦 campaignData.adSetBudget:', JSON.stringify(campaignData.adSetBudget, null, 2));
       console.log('  📦 campaignData.adSetBudget?.spendingLimits:', JSON.stringify(campaignData.adSetBudget?.spendingLimits, null, 2));
       const spendingLimitsToPass = campaignData.spendingLimits || campaignData.adSetBudget?.spendingLimits;
       console.log('  📦 Final spendingLimits being passed:', JSON.stringify(spendingLimitsToPass, null, 2));
@@ -1424,8 +1425,10 @@ class FacebookAPI {
         minRoas: campaignData.minRoas,
         objective: campaignData.objective,
         specialAdCategories: campaignData.specialAdCategories,
-        // Pass spending limits from adSetBudget or root level
-        spendingLimits: spendingLimitsToPass
+        // Pass spending limits - check both locations for compatibility
+        spendingLimits: spendingLimitsToPass,
+        // Also pass the entire adSetBudget object if it exists (StrategyForAll format)
+        adSetBudget: campaignData.adSetBudget
       });
 
       if (!adSet || !adSet.id) {
@@ -1828,18 +1831,32 @@ class FacebookAPI {
             }
           }
 
+          // Clean targeting object - remove deprecated fields and add required new fields
+          const cleanedTargeting = { ...originalAdSet.targeting };
+
+          // Remove deprecated fields that Facebook no longer accepts
+          delete cleanedTargeting.targeting_optimization;
+          delete cleanedTargeting.targeting_relaxation_types;
+
+          // Add required targeting_automation field with advantage_audience flag
+          cleanedTargeting.targeting_automation = {
+            advantage_audience: 0  // Disable Advantage Audience to respect manual targeting
+          };
+
+          console.log(`  🧹 Cleaned targeting object (removed deprecated fields, added targeting_automation)`);
+
           // Create new ad set with same settings + forced 1-day attribution
           console.log(`  ⚙️ Setting attribution to 1-day click, 1-day view for copy ${i + 1}`);
           const newAdSetData = {
             name: `${originalAdSet.name} - Copy ${i + 1}`,
             campaign_id: campaignId,
-            targeting: originalAdSet.targeting,
+            targeting: JSON.stringify(cleanedTargeting),  // Must be stringified for Facebook API
             daily_budget: originalAdSet.daily_budget,
             lifetime_budget: originalAdSet.lifetime_budget,
             optimization_goal: originalAdSet.optimization_goal,
             billing_event: originalAdSet.billing_event,
             bid_strategy: originalAdSet.bid_strategy,
-            promoted_object: originalAdSet.promoted_object,
+            promoted_object: JSON.stringify(originalAdSet.promoted_object),  // Must be stringified
             // FORCE 1-DAY CLICK, 1-DAY VIEW ATTRIBUTION FROM THE START
             attribution_spec: JSON.stringify([
               { event_type: 'CLICK_THROUGH', window_days: 1 },
