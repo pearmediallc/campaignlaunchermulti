@@ -370,16 +370,34 @@ class FacebookAPI {
 
       if (adSetData.targeting?.locations) {
         targeting.geo_locations = {};
-        if (adSetData.targeting.locations.countries && adSetData.targeting.locations.countries.length > 0) {
+
+        // Check for both 'regions' (StrategyForAll) and 'states' (Strategy150) for compatibility
+        const stateList = adSetData.targeting.locations.regions || adSetData.targeting.locations.states;
+        const citiesList = adSetData.targeting.locations.cities;
+        const zipsList = adSetData.targeting.locations.custom;
+
+        console.log('  🔍 Location targeting check:');
+        console.log('    - regions:', adSetData.targeting.locations.regions);
+        console.log('    - states:', adSetData.targeting.locations.states);
+        console.log('    - cities:', citiesList);
+        console.log('    - zips:', zipsList);
+        console.log('    - countries:', adSetData.targeting.locations.countries);
+
+        // IMPORTANT: Facebook doesn't allow overlapping location targeting
+        // If specific regions/cities/zips are selected, DON'T send countries
+        // Only send countries if no specific sub-locations are targeted
+        const hasSpecificLocations = (stateList && stateList.length > 0) ||
+                                     (citiesList && citiesList.length > 0) ||
+                                     (zipsList && zipsList.length > 0);
+
+        if (hasSpecificLocations) {
+          console.log('  ℹ️ User selected specific locations (states/cities/zips)');
+          console.log('  ℹ️ NOT sending countries to avoid overlap error from Facebook');
+        } else if (adSetData.targeting.locations.countries && adSetData.targeting.locations.countries.length > 0) {
+          // Only send countries if no specific sub-locations
           targeting.geo_locations.countries = adSetData.targeting.locations.countries;
           console.log('  ✅ Added countries:', adSetData.targeting.locations.countries);
         }
-        // Check for both 'regions' (StrategyForAll) and 'states' (Strategy150) for compatibility
-        const stateList = adSetData.targeting.locations.regions || adSetData.targeting.locations.states;
-        console.log('  🔍 stateList check:');
-        console.log('    - regions:', adSetData.targeting.locations.regions);
-        console.log('    - states:', adSetData.targeting.locations.states);
-        console.log('    - stateList result:', stateList);
 
         if (stateList && stateList.length > 0) {
           console.log(`📍 Processing ${stateList.length} states/regions:`, stateList);
