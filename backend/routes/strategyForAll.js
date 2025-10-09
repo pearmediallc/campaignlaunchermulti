@@ -1051,6 +1051,14 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       startedAt: Date.now()
     });
 
+    // Pass progress update callback to duplication function
+    duplicateData.progressCallback = (update) => {
+      const job = duplicationJobs.get(campaignId);
+      if (job) {
+        Object.assign(job, update);
+      }
+    };
+
     userFacebookApi.duplicateAdSetsWithExistingPost(duplicateData);
 
     res.json({

@@ -291,13 +291,16 @@ class FacebookAPI {
       // DEBUG: Log what createAdSet received
       console.log('🔍 DEBUG - Inside createAdSet:');
       console.log('  📦 adSetData.spendingLimits:', JSON.stringify(adSetData.spendingLimits, null, 2));
-      console.log('  📦 adSetData.spendingLimits?.enabled:', adSetData.spendingLimits?.enabled);
+      console.log('  📦 adSetData.adSetBudget:', JSON.stringify(adSetData.adSetBudget, null, 2));
+      console.log('  📦 adSetData.adSetBudget?.spendingLimits:', JSON.stringify(adSetData.adSetBudget?.spendingLimits, null, 2));
       console.log('  📦 adSetData.dailyBudget:', adSetData.dailyBudget);
       console.log('  📦 adSetData.lifetimeBudget:', adSetData.lifetimeBudget);
 
       // Apply ad set spending limits if enabled
-      if (adSetData.spendingLimits && adSetData.spendingLimits.enabled) {
-        const limits = adSetData.spendingLimits;
+      // Check BOTH locations: adSetData.spendingLimits (Strategy150) and adSetData.adSetBudget.spendingLimits (StrategyForAll)
+      const spendingLimits = adSetData.adSetBudget?.spendingLimits || adSetData.spendingLimits;
+      if (spendingLimits && spendingLimits.enabled) {
+        const limits = spendingLimits;
         const budgetAmount = adSetData.dailyBudget || adSetData.lifetimeBudget || 50;
 
         console.log('  📊 Applying Spending Limits...');
@@ -1665,10 +1668,17 @@ class FacebookAPI {
     }
   }
 
-  async duplicateAdSetsWithExistingPost({ campaignId, originalAdSetId, postId, count, formData, userId }) {
+  async duplicateAdSetsWithExistingPost({ campaignId, originalAdSetId, postId, count, formData, userId, progressCallback }) {
     const results = {
       adSets: [],
       errors: []
+    };
+
+    // Helper to update progress
+    const updateProgress = (update) => {
+      if (progressCallback && typeof progressCallback === 'function') {
+        progressCallback(update);
+      }
     };
 
     try {
@@ -1769,9 +1779,23 @@ class FacebookAPI {
 
       const newAdSetIds = [];
 
+      // Update progress: Starting duplication
+      updateProgress({
+        completed: 0,
+        total: count,
+        currentOperation: `Starting duplication of ${count} ad sets...`,
+        adSets: [],
+        errors: []
+      });
+
       for (let i = 0; i < count; i++) {
         try {
           console.log(`  Creating copy ${i + 1} of ${count}...`);
+
+          // Update progress: Creating ad set
+          updateProgress({
+            currentOperation: `Creating ad set copy ${i + 1} of ${count}...`
+          });
 
           // For AD SET copies, we don't use campaign_id or deep_copy
           // We create a new ad set with the same settings
@@ -1837,6 +1861,16 @@ class FacebookAPI {
           if (copyResponse.data && copyResponse.data.id) {
             newAdSetIds.push(copyResponse.data.id);
             console.log(`  ✅ Created ad set copy: ${copyResponse.data.id}`);
+
+            // Update progress: Ad set created successfully
+            updateProgress({
+              completed: i + 1,
+              currentOperation: `Created ad set copy ${i + 1} of ${count}`,
+              adSets: newAdSetIds.map((id, idx) => ({
+                id: id,
+                name: `Ad Set Copy ${idx + 1}`
+              }))
+            });
           }
 
           // Add small delay between copies to avoid rate limits
@@ -1861,10 +1895,23 @@ class FacebookAPI {
             error: errorMessage,
             fullError: fbError
           });
+
+          // Update progress: Error occurred
+          updateProgress({
+            errors: results.errors.map(err => ({
+              adSetIndex: err.copyNumber || err.adSetIndex,
+              error: err.error
+            }))
+          });
         }
       }
 
       console.log(`✅ Created ${newAdSetIds.length} ad set copies`);
+
+      // Update progress: Starting ad creation phase
+      updateProgress({
+        currentOperation: `Ad sets created. Now creating ads for ${newAdSetIds.length} ad sets...`
+      });
 
       // Now create ads for each copied adset
       if (newAdSetIds.length > 0) {
@@ -1905,6 +1952,12 @@ class FacebookAPI {
 
               console.log(`✅ Created ad for AdSet copy ${i + 1}: ${newAdSetId}`);
               adCreated = true;
+
+              // Update progress: Ad created successfully
+              updateProgress({
+                currentOperation: `Created ads for ${i + 1} of ${newAdSetIds.length} ad sets`
+              });
+
               break; // Success - exit retry loop
 
             } catch (adError) {
@@ -1938,11 +1991,25 @@ class FacebookAPI {
               errorCode: fbError?.code,
               isTransient: fbError?.is_transient
             });
+
+            // Update progress: Ad creation error
+            updateProgress({
+              errors: results.errors.map(err => ({
+                adSetIndex: err.copyNumber || err.adSetIndex,
+                error: err.error
+              }))
+            });
           }
         }
 
         // After all ad sets and ads are created, ensure attribution is correct
         console.log('\n🔧 Verifying attribution settings for all duplicated ad sets...');
+
+        // Update progress: Starting attribution verification
+        updateProgress({
+          currentOperation: `Verifying attribution settings for ${newAdSetIds.length} ad sets...`
+        });
+
         const attributionResults = [];
 
         for (let j = 0; j < newAdSetIds.length; j++) {
@@ -2014,10 +2081,31 @@ class FacebookAPI {
         }))
       };
 
+      // Update progress: Completed
+      updateProgress({
+        completed: count,
+        total: count,
+        currentOperation: totalFailed > 0
+          ? `Duplication complete with ${totalFailed} errors. ${totalSuccess} of ${totalExpected} ad sets created successfully.`
+          : `🎉 Duplication complete! All ${totalSuccess} ad sets created successfully.`,
+        status: 'completed'
+      });
+
       return results;
 
     } catch (error) {
       console.error('Error in duplicateAdSetsWithExistingPost:', error);
+
+      // Update progress: Fatal error
+      updateProgress({
+        currentOperation: `❌ Fatal error during duplication: ${error.message}`,
+        status: 'error',
+        errors: [{
+          adSetIndex: -1,
+          error: error.message
+        }]
+      });
+
       throw error;
     }
   }
