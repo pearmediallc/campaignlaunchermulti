@@ -1185,7 +1185,11 @@ class FacebookAPI {
         attributionWindow: campaignData.attributionWindow, // Pass attribution window from user
         schedule: campaignData.schedule,
         targeting: campaignData.targeting,
-        placements: campaignData.placements
+        placements: campaignData.placements,
+        placementType: campaignData.placementType,
+        // CRITICAL: Pass spending limits for StrategyForAll
+        spendingLimits: campaignData.spendingLimits || campaignData.adSetBudget?.spendingLimits,
+        adSetBudget: campaignData.adSetBudget
       });
 
       // Handle media upload based on type
