@@ -364,13 +364,23 @@ class FacebookAPI {
       }
 
       // Add location targeting with correct structure
+      console.log('🔍 DEBUG - Targeting object received:');
+      console.log('  adSetData.targeting:', JSON.stringify(adSetData.targeting, null, 2));
+      console.log('  adSetData.targeting?.locations:', JSON.stringify(adSetData.targeting?.locations, null, 2));
+
       if (adSetData.targeting?.locations) {
         targeting.geo_locations = {};
         if (adSetData.targeting.locations.countries && adSetData.targeting.locations.countries.length > 0) {
           targeting.geo_locations.countries = adSetData.targeting.locations.countries;
+          console.log('  ✅ Added countries:', adSetData.targeting.locations.countries);
         }
         // Check for both 'regions' (StrategyForAll) and 'states' (Strategy150) for compatibility
         const stateList = adSetData.targeting.locations.regions || adSetData.targeting.locations.states;
+        console.log('  🔍 stateList check:');
+        console.log('    - regions:', adSetData.targeting.locations.regions);
+        console.log('    - states:', adSetData.targeting.locations.states);
+        console.log('    - stateList result:', stateList);
+
         if (stateList && stateList.length > 0) {
           console.log(`📍 Processing ${stateList.length} states/regions:`, stateList);
           // Facebook API uses 'regions' for states with numeric IDs

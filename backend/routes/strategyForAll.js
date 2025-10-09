@@ -1038,6 +1038,19 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       duplicateData.customBudgets = Array(count).fill(1.00);
     }
 
+    // Store job info for progress tracking
+    duplicationJobs.set(campaignId, {
+      campaignId,
+      count,
+      completed: 0,
+      total: count,
+      status: 'in_progress',
+      currentOperation: 'Starting duplication...',
+      adSets: [],
+      errors: [],
+      startedAt: Date.now()
+    });
+
     userFacebookApi.duplicateAdSetsWithExistingPost(duplicateData);
 
     res.json({
@@ -1065,21 +1078,24 @@ router.get('/progress/:campaignId', authenticate, async (req, res) => {
   try {
     const { campaignId } = req.params;
 
-    // This would typically fetch progress from a database or cache
-    // For now, return mock progress data
-    const progress = {
-      completed: Math.floor(Math.random() * 50),
-      total: 49,
-      currentOperation: 'Creating ad set copy 23...',
-      adSets: [
-        { id: 'adset_1', name: 'Test AdSet - Copy 1' },
-        { id: 'adset_2', name: 'Test AdSet - Copy 2' },
-        // ... more ad sets
-      ],
-      errors: []
-    };
+    // Get actual progress from duplication jobs storage
+    const progress = duplicationJobs.get(campaignId);
 
-    res.json(progress);
+    if (progress) {
+      // Return actual progress from stored job
+      res.json(progress);
+    } else {
+      // No job found - either completed long ago or never started
+      // Return completed status with unknown count
+      res.json({
+        completed: 0,
+        total: 0,
+        status: 'not_found',
+        currentOperation: 'No active duplication found',
+        adSets: [],
+        errors: []
+      });
+    }
   } catch (error) {
     console.error('Progress fetch error:', error);
     res.status(500).json({
@@ -1091,6 +1107,7 @@ router.get('/progress/:campaignId', authenticate, async (req, res) => {
 
 // In-memory job storage (use Redis in production)
 const multiplicationJobs = new Map();
+const duplicationJobs = new Map(); // Store duplication progress by campaignId
 
 // Helper to generate unique job ID
 function generateJobId() {
