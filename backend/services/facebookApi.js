@@ -467,6 +467,12 @@ class FacebookAPI {
         // Meta will optimize placement automatically
       }
       
+      // Add targeting_automation field with advantage_audience flag (required by Facebook API)
+      // Set to 0 to disable Advantage Audience and respect user's manual targeting
+      targeting.targeting_automation = {
+        advantage_audience: 0
+      };
+
       console.log('Targeting object before stringify:', JSON.stringify(targeting, null, 2));
       params.targeting = JSON.stringify(targeting);
       
