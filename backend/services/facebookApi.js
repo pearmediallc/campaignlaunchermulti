@@ -218,10 +218,10 @@ class FacebookAPI {
         else if (adSetData.attributionSetting === '1_day_click_1_day_engaged_view_1_day_view') {
           attributionSpec.push(
             { event_type: 'CLICK_THROUGH', window_days: 1 },
-            { event_type: 'ENGAGED_VIEW', window_days: 1 },
+            { event_type: 'ENGAGED_VIDEO_VIEW', window_days: 1 },
             { event_type: 'VIEW_THROUGH', window_days: 1 }
           );
-          console.log('  ✅ Using: 1-day click + 1-day engaged-view + 1-day view');
+          console.log('  ✅ Using: 1-day click + 1-day engaged-video-view + 1-day view');
         }
         // Fallback to original logic for backward compatibility
         else {
