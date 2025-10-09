@@ -599,7 +599,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         lifetimeBudget: parseBudget(req.body.adSetBudget?.lifetimeBudget) ?? parseBudget(req.body.lifetimeBudget),
         scheduleType: req.body.adSetBudget?.scheduleType  // Required - user must select
       } : {
-        // When using CBO, still preserve spendingLimits (they apply at ad set level)
+        // When using CBO, still preserve spendingLimits AND dailyBudget (they apply at ad set level)
+        // dailyBudget is needed for spending limits calculation even though campaign uses CBO
+        dailyBudget: parseBudget(req.body.adSetBudget?.dailyBudget) ?? parseBudget(req.body.dailyBudget),
         spendingLimits: req.body.adSetBudget?.spendingLimits,
         scheduleType: req.body.adSetBudget?.scheduleType  // Required - user must select
       },
