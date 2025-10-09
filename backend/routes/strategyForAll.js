@@ -215,12 +215,12 @@ const validateStrategyForAll = [
   body('headline')
     .notEmpty()
     .withMessage('Headline is required')
-    .isLength({ max: 40 })
-    .withMessage('Headline must be 40 characters or less'),
+    .isLength({ max: 255 })
+    .withMessage('Headline must be 255 characters or less'),
   body('description')
     .optional()
-    .isLength({ max: 30 })
-    .withMessage('Description must be 30 characters or less'),
+    .isLength({ max: 255 })
+    .withMessage('Description must be 255 characters or less'),
   body('callToAction').optional(),
   body('displayLink').optional(),
 

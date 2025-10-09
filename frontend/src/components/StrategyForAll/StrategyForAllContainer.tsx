@@ -106,6 +106,29 @@ const StrategyForAllContainer: React.FC = () => {
     console.log('  - Attribution Setting:', data.attributionSetting);
     console.log('  - Attribution Window:', data.attributionWindow);
 
+    console.log('\n🔍 ========== USER SELECTIONS DEBUG ==========');
+    console.log('🎯 PLACEMENTS:');
+    console.log('  placementType:', data.placementType);
+    console.log('  placements.facebook:', data.placements?.facebook);
+    console.log('  placements.instagram:', data.placements?.instagram);
+    console.log('  placements.messenger:', data.placements?.messenger);
+    console.log('  placements.audienceNetwork:', data.placements?.audienceNetwork);
+    console.log('  placements.devices:', data.placements?.devices);
+    console.log('  placements.platforms:', data.placements?.platforms);
+
+    console.log('\n📍 TARGETING:');
+    console.log('  targeting object:', data.targeting);
+    console.log('  targeting.locations:', data.targeting?.locations);
+    console.log('  targeting.locations.countries:', data.targeting?.locations?.countries);
+    console.log('  targeting.locations.regions:', data.targeting?.locations?.regions);
+    console.log('  targeting.locations.cities:', data.targeting?.locations?.cities);
+    console.log('  targeting.ageMin:', data.targeting?.ageMin);
+    console.log('  targeting.ageMax:', data.targeting?.ageMax);
+    console.log('  targeting.genders:', data.targeting?.genders);
+    console.log('  targeting.detailedTargeting:', data.targeting?.detailedTargeting);
+    console.log('  targeting.customAudiences:', data.targeting?.customAudiences);
+    console.log('========================================\n');
+
     try {
       setFormData(data);
       setPhase('creating');
@@ -179,11 +202,9 @@ const StrategyForAllContainer: React.FC = () => {
         // Targeting
         targeting: data.targeting || {
           locations: { countries: ['US'] },
-          demographics: {
-            ageMin: 18,
-            ageMax: 65,
-            genders: ['all']
-          }
+          ageMin: 18,
+          ageMax: 65,
+          genders: ['all']
         },
 
         // Placements
@@ -245,11 +266,12 @@ const StrategyForAllContainer: React.FC = () => {
         // Required field for CampaignFormData
         conversionLocation: campaignData.conversionLocation || 'website',
 
-        // Targeting in working format
-        targeting: {
-          locations: campaignData.targeting?.locations || { countries: ['US'] },
+        // Targeting - Pass complete user selections
+        targeting: campaignData.targeting || {
+          locations: { countries: ['US'] },
           ageMin: 18,
           ageMax: 65,
+          genders: ['all']
         },
 
         // Media
@@ -259,14 +281,40 @@ const StrategyForAllContainer: React.FC = () => {
         video: campaignData.video,
         images: campaignData.images,
 
-        // Placements
-        placements: {
-          facebook: campaignData.placements?.facebook || ['feed'],
-          instagram: campaignData.placements?.instagram || ['stream'],
-          audience_network: campaignData.placements?.audienceNetwork || [],
-          messenger: campaignData.placements?.messenger || []
-        }
+        // Placements - Pass exactly what user selected
+        placementType: campaignData.placementType || 'automatic'
       };
+
+      // Only add placements if user selected manual placement
+      if (campaignData.placementType === 'manual' && campaignData.placements) {
+        console.log('🎯 Manual placements selected, passing user choices to backend');
+        workingCampaignData.placements = {
+          facebook: campaignData.placements.facebook || [],
+          instagram: campaignData.placements.instagram || [],
+          audience_network: campaignData.placements.audienceNetwork || [],
+          messenger: campaignData.placements.messenger || [],
+          devices: campaignData.placements.devices || [],
+          platforms: campaignData.placements.platforms || []
+        };
+      } else {
+        console.log('🎯 Automatic placements selected, letting Facebook optimize');
+        // Don't send placements object for automatic placement
+      }
+
+      // Log what we're sending to backend
+      console.log('\n📤 ========== SENDING TO BACKEND ==========');
+      console.log('🎯 Placements:');
+      console.log('  placementType:', workingCampaignData.placementType);
+      console.log('  placements:', workingCampaignData.placements);
+      console.log('\n📍 Targeting:');
+      console.log('  targeting:', workingCampaignData.targeting);
+      console.log('  targeting.locations:', workingCampaignData.targeting?.locations);
+      console.log('  targeting.locations.countries:', workingCampaignData.targeting?.locations?.countries);
+      console.log('  targeting.locations.regions:', workingCampaignData.targeting?.locations?.regions);
+      console.log('  targeting.ageMin:', workingCampaignData.targeting?.ageMin);
+      console.log('  targeting.ageMax:', workingCampaignData.targeting?.ageMax);
+      console.log('  targeting.genders:', workingCampaignData.targeting?.genders);
+      console.log('========================================\n');
 
       // Add budget based on type (make sure to get the actual values)
       if (campaignData.budgetType === 'lifetime') {
