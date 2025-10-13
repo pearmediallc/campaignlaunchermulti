@@ -440,7 +440,13 @@ class FacebookAPI {
       if (adSetData.placementType === 'manual' && adSetData.placements) {
         const platforms = [];
         const positions = {};
-        
+
+        // Add device platforms (mobile/desktop)
+        if (adSetData.placements.devices && adSetData.placements.devices.length > 0) {
+          targeting.device_platforms = adSetData.placements.devices;
+          console.log('Device platforms:', adSetData.placements.devices);
+        }
+
         if (adSetData.placements.facebook && adSetData.placements.facebook.length > 0) {
           platforms.push('facebook');
           positions.facebook_positions = adSetData.placements.facebook;
@@ -457,7 +463,7 @@ class FacebookAPI {
           platforms.push('messenger');
           positions.messenger_positions = adSetData.placements.messenger;
         }
-        
+
         if (platforms.length > 0) {
           targeting.publisher_platforms = platforms;
           Object.assign(targeting, positions);
