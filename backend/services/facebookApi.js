@@ -3582,9 +3582,7 @@ class FacebookAPI {
         adName = `${originalAdData.name} - Copy ${copyNumber}`;
 
       } else {
-        // CUSTOM VARIATION: Clone and modify object_story_spec
-        console.log(`    ✅ Custom variation: Creating new post with modifications`);
-
+        // CUSTOM VARIATION or FALLBACK: Clone and modify object_story_spec
         if (!originalAdData.creative?.object_story_spec) {
           throw new Error('Original ad does not have object_story_spec. Cannot create variations.');
         }
@@ -3592,10 +3590,15 @@ class FacebookAPI {
         // Deep clone the original object_story_spec
         const newSpec = JSON.parse(JSON.stringify(originalAdData.creative.object_story_spec));
 
-        // Override fields if provided in variation
-        if (newSpec.video_data) {
-          // Video ad variation
-          if (variation.videoId) {
+        // Check if we have variations to apply
+        if (variation && Object.keys(variation).filter(k => k !== 'variationNumber').length > 0) {
+          // CUSTOM VARIATION: Apply modifications
+          console.log(`    ✅ Custom variation: Creating new post with modifications`);
+
+          // Override fields if provided in variation
+          if (newSpec.video_data) {
+            // Video ad variation
+            if (variation.videoId) {
             console.log(`      🎥 Using new video ID: ${variation.videoId}`);
             newSpec.video_data.video_id = variation.videoId;
           }
@@ -3650,11 +3653,16 @@ class FacebookAPI {
           }
         }
 
+        } else {
+          // QUICK DUPLICATE FALLBACK: No object_story_id available, clone object_story_spec without modifications
+          console.log(`    ✅ Quick duplicate fallback: Cloning object_story_spec (creates new post)`);
+        }
+
         creative = {
           object_story_spec: newSpec
         };
 
-        adName = variation.variationNumber
+        adName = variation?.variationNumber
           ? `${originalAdData.name} - Variation ${variation.variationNumber}`
           : `${originalAdData.name} - Copy ${copyNumber}`;
       }
