@@ -3681,6 +3681,18 @@ class FacebookAPI {
 
       // Create ad
       const url = `${this.baseURL}/act_${this.adAccountId}/ads`;
+
+      // Log the full request for debugging
+      console.log('    🔍 Ad creation request:', {
+        url,
+        params: {
+          ...params,
+          creative: JSON.parse(params.creative),
+          tracking_specs: params.tracking_specs ? JSON.parse(params.tracking_specs) : undefined,
+          access_token: '[REDACTED]'
+        }
+      });
+
       const response = await axios.post(url, null, { params });
 
       console.log(`    ✅ Ad created successfully: ${response.data.id}`);
@@ -3694,6 +3706,19 @@ class FacebookAPI {
     } catch (error) {
       const fbError = error.response?.data?.error || error;
       console.error(`    ❌ Failed to create ad (Attempt ${attempt}):`, fbError.message || error.message);
+
+      // Log detailed Facebook error information
+      if (error.response?.data?.error) {
+        console.error('    📋 Detailed Facebook Error:', JSON.stringify({
+          message: fbError.message,
+          type: fbError.type,
+          code: fbError.code,
+          error_subcode: fbError.error_subcode,
+          error_user_title: fbError.error_user_title,
+          error_user_msg: fbError.error_user_msg,
+          fbtrace_id: fbError.fbtrace_id
+        }, null, 2));
+      }
 
       // Check if transient error and should retry
       const isTransient = fbError?.is_transient || fbError?.code === 2;
