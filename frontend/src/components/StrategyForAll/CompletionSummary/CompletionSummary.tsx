@@ -24,10 +24,12 @@ import {
   Share,
   Add,
   OpenInNew,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  Psychology as VariationIcon
 } from '@mui/icons-material';
 import { StrategyForAllResponse } from '../../../types/strategyForAll';
 import MultiplyContainer from '../MultiplySection/MultiplyContainer';
+import AdDuplicationModal from '../AdDuplication/AdDuplicationModal';
 
 interface CompletionSummaryProps {
   campaignResult: StrategyForAllResponse | null;
@@ -43,6 +45,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
   adSetCount = 50 // Default to 50 for backward compatibility
 }) => {
   const [showMultiplyDialog, setShowMultiplyDialog] = useState(false);
+  const [showAdDuplicationDialog, setShowAdDuplicationDialog] = useState(false);
 
   // Store campaign data in session storage for multiplication
   useEffect(() => {
@@ -73,9 +76,32 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
     // Optionally refresh or show a success message
   };
 
+  const handleOpenAdDuplication = () => {
+    setShowAdDuplicationDialog(true);
+  };
+
+  const handleCloseAdDuplication = () => {
+    setShowAdDuplicationDialog(false);
+  };
+
   const totalAdSets = campaignResult?.data?.duplicatedAdSets ?
     1 + campaignResult.data.duplicatedAdSets.length : adSetCount;
   const duplicateCount = totalAdSets - 1; // Number of duplicates (excluding initial)
+
+  // Prepare ad set list for duplication modal
+  const availableAdSets = [
+    {
+      id: campaignResult?.data?.adSet?.id || '',
+      name: campaignResult?.data?.adSet?.name || 'Original Ad Set'
+    },
+    ...(campaignResult?.data?.duplicatedAdSets?.map((adSet: any) => ({
+      id: adSet.id,
+      name: adSet.name
+    })) || [])
+  ];
+
+  // Get the first ad ID from the ads array
+  const originalAdId = campaignResult?.data?.ads?.[0]?.id || '';
 
   return (
     <Box sx={{ py: 4 }}>
@@ -271,6 +297,17 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         </Button>
 
         <Button
+          variant="contained"
+          size="large"
+          color="info"
+          startIcon={<VariationIcon />}
+          onClick={handleOpenAdDuplication}
+          sx={{ minWidth: 200 }}
+        >
+          Duplicate Ads
+        </Button>
+
+        <Button
           variant="outlined"
           size="large"
           startIcon={<Add />}
@@ -330,6 +367,15 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
           <Button onClick={handleCloseMultiply}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Ad Duplication Dialog */}
+      <AdDuplicationModal
+        open={showAdDuplicationDialog}
+        onClose={handleCloseAdDuplication}
+        campaignId={campaignResult?.data?.campaign?.id || ''}
+        originalAdId={originalAdId}
+        availableAdSets={availableAdSets}
+      />
     </Box>
   );
 };

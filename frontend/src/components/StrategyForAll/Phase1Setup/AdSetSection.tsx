@@ -980,7 +980,7 @@ const AdSetSection: React.FC = () => {
               <Controller
                 name="placements.facebook"
                 control={control}
-                defaultValue={['feed', 'stories']}
+                defaultValue={['feed', 'story']}
                 render={({ field }) => (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.facebook.map(placement => (
@@ -1013,7 +1013,7 @@ const AdSetSection: React.FC = () => {
               <Controller
                 name="placements.instagram"
                 control={control}
-                defaultValue={['stream', 'stories']}
+                defaultValue={['stream', 'story']}
                 render={({ field }) => (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.instagram.map(placement => (

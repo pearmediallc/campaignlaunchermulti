@@ -270,25 +270,23 @@ export const PLACEMENT_OPTIONS = {
     { value: 'instant_article', label: 'Instant Articles' },
     { value: 'marketplace', label: 'Marketplace' },
     { value: 'video_feeds', label: 'Video Feeds' },
-    { value: 'stories', label: 'Stories' },
+    { value: 'story', label: 'Stories' },
     { value: 'search', label: 'Search Results' },
-    { value: 'reels', label: 'Reels' },
-    { value: 'shops', label: 'Shops' },
-    { value: 'groups', label: 'Groups Feed' }
+    { value: 'facebook_reels', label: 'Reels' },
+    { value: 'profile_feed', label: 'Groups Feed' }
   ],
   instagram: [
     { value: 'stream', label: 'Feed' },
-    { value: 'stories', label: 'Stories' },
+    { value: 'story', label: 'Stories' },
     { value: 'reels', label: 'Reels' },
     { value: 'profile_feed', label: 'Profile Feed' },
     { value: 'explore', label: 'Explore' },
     { value: 'explore_home', label: 'Explore Home' },
-    { value: 'shops', label: 'Shop' },
-    { value: 'search', label: 'Search Results' }
+    { value: 'ig_search', label: 'Search Results' },
+    { value: 'profile_reels', label: 'Profile Reels' }
   ],
   messenger: [
-    { value: 'inbox', label: 'Inbox' },
-    { value: 'stories', label: 'Stories' },
+    { value: 'story', label: 'Stories' },
     { value: 'sponsored_messages', label: 'Sponsored Messages' }
   ],
   audience_network: [

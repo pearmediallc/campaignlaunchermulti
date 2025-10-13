@@ -3515,6 +3515,377 @@ class FacebookAPI {
       this.handleError(error);
     }
   }
+
+  // ========== AD DUPLICATION WITH VARIATIONS METHODS ==========
+
+  /**
+   * Fetch original ad data including complete object_story_spec and tracking_specs
+   * @param {string} adId - Original ad ID to fetch
+   * @returns {Promise<Object>} Complete ad data structure
+   */
+  async fetchOriginalAdData(adId) {
+    try {
+      console.log(`📋 Fetching original ad data for ad ${adId}...`);
+
+      const url = `${this.baseURL}/${adId}`;
+      const params = {
+        fields: 'id,name,creative{id,object_story_spec,object_story_id,effective_object_story_id},tracking_specs',
+        access_token: this.accessToken
+      };
+
+      const response = await axios.get(url, { params });
+      const adData = response.data;
+
+      console.log('✅ Original ad data fetched successfully');
+      console.log('  📦 Ad ID:', adData.id);
+      console.log('  📦 Ad Name:', adData.name);
+      console.log('  📦 Has object_story_spec:', !!adData.creative?.object_story_spec);
+      console.log('  📦 Has object_story_id:', !!adData.creative?.object_story_id);
+      console.log('  📦 Has tracking_specs:', !!adData.tracking_specs);
+
+      return adData;
+
+    } catch (error) {
+      console.error('❌ Failed to fetch original ad data:', error.response?.data || error.message);
+      throw new Error(`Failed to fetch original ad: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a single ad with variation (or use original data)
+   * @param {Object} params - Creation parameters
+   * @returns {Promise<Object>} Created ad data
+   */
+  async createAdWithVariation({ adSetId, originalAdData, variation, copyNumber, attempt = 1 }) {
+    try {
+      console.log(`  📝 Creating ad copy ${copyNumber} (Attempt ${attempt})...`);
+
+      // Determine if this is a quick duplicate or custom variation
+      const isQuickDuplicate = !variation || Object.keys(variation).filter(k => k !== 'variationNumber').length === 0;
+
+      let creative;
+      let adName;
+
+      if (isQuickDuplicate && originalAdData.creative?.object_story_id) {
+        // QUICK DUPLICATE: Reuse object_story_id (same post, preserves engagement)
+        console.log(`    ✅ Quick duplicate: Using object_story_id (same post)`);
+        creative = {
+          object_story_id: originalAdData.creative.object_story_id
+        };
+        adName = `${originalAdData.name} - Copy ${copyNumber}`;
+
+      } else {
+        // CUSTOM VARIATION: Clone and modify object_story_spec
+        console.log(`    ✅ Custom variation: Creating new post with modifications`);
+
+        if (!originalAdData.creative?.object_story_spec) {
+          throw new Error('Original ad does not have object_story_spec. Cannot create variations.');
+        }
+
+        // Deep clone the original object_story_spec
+        const newSpec = JSON.parse(JSON.stringify(originalAdData.creative.object_story_spec));
+
+        // Override fields if provided in variation
+        if (newSpec.video_data) {
+          // Video ad variation
+          if (variation.videoId) {
+            console.log(`      🎥 Using new video ID: ${variation.videoId}`);
+            newSpec.video_data.video_id = variation.videoId;
+          }
+          if (variation.primaryText !== undefined) {
+            console.log(`      📝 Using new primary text (${variation.primaryText.length} chars)`);
+            newSpec.video_data.message = variation.primaryText;
+          }
+          if (variation.headline !== undefined) {
+            console.log(`      📰 Using new headline: ${variation.headline}`);
+            newSpec.video_data.title = variation.headline;
+          }
+          if (variation.description !== undefined) {
+            console.log(`      📄 Using new description: ${variation.description}`);
+            newSpec.video_data.link_description = variation.description;
+          }
+          if (variation.websiteUrl !== undefined) {
+            console.log(`      🔗 Using new URL: ${variation.websiteUrl}`);
+            newSpec.video_data.call_to_action.value.link = variation.websiteUrl;
+          }
+          if (variation.callToAction !== undefined) {
+            console.log(`      🔘 Using new CTA: ${variation.callToAction}`);
+            newSpec.video_data.call_to_action.type = variation.callToAction;
+          }
+          if (variation.imageHash) {
+            console.log(`      🖼️ Using new thumbnail: ${variation.imageHash}`);
+            newSpec.video_data.image_hash = variation.imageHash;
+          }
+
+        } else if (newSpec.link_data) {
+          // Image ad variation
+          if (variation.imageHash) {
+            console.log(`      🖼️ Using new image hash: ${variation.imageHash}`);
+            newSpec.link_data.image_hash = variation.imageHash;
+          }
+          if (variation.primaryText !== undefined) {
+            newSpec.link_data.message = variation.primaryText;
+          }
+          if (variation.headline !== undefined) {
+            newSpec.link_data.name = variation.headline;
+          }
+          if (variation.description !== undefined) {
+            newSpec.link_data.description = variation.description;
+          }
+          if (variation.websiteUrl !== undefined) {
+            newSpec.link_data.link = variation.websiteUrl;
+          }
+          if (variation.displayLink !== undefined) {
+            newSpec.link_data.display_link = variation.displayLink;
+          }
+          if (variation.callToAction !== undefined) {
+            newSpec.link_data.call_to_action.type = variation.callToAction;
+          }
+        }
+
+        creative = {
+          object_story_spec: newSpec
+        };
+
+        adName = variation.variationNumber
+          ? `${originalAdData.name} - Variation ${variation.variationNumber}`
+          : `${originalAdData.name} - Copy ${copyNumber}`;
+      }
+
+      // Create ad params
+      const params = {
+        name: adName,
+        adset_id: adSetId,
+        creative: JSON.stringify(creative),
+        status: 'ACTIVE',
+        access_token: this.accessToken
+      };
+
+      // Copy tracking_specs from original if available
+      if (originalAdData.tracking_specs) {
+        params.tracking_specs = JSON.stringify(originalAdData.tracking_specs);
+      } else if (this.pixelId) {
+        // Fallback to default pixel tracking
+        params.tracking_specs = JSON.stringify([{
+          'action.type': ['offsite_conversion'],
+          'fb_pixel': [this.pixelId]
+        }]);
+      }
+
+      // Create ad
+      const url = `${this.baseURL}/act_${this.adAccountId}/ads`;
+      const response = await axios.post(url, null, { params });
+
+      console.log(`    ✅ Ad created successfully: ${response.data.id}`);
+
+      return {
+        adId: response.data.id,
+        name: adName,
+        adSetId: adSetId
+      };
+
+    } catch (error) {
+      const fbError = error.response?.data?.error || error;
+      console.error(`    ❌ Failed to create ad (Attempt ${attempt}):`, fbError.message || error.message);
+
+      // Check if transient error and should retry
+      const isTransient = fbError?.is_transient || fbError?.code === 2;
+
+      if (isTransient && attempt < 3) {
+        const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+        console.log(`    ⏳ Transient error, waiting ${waitTime/1000}s before retry...`);
+        await this.delay(waitTime);
+
+        // Retry
+        return await this.createAdWithVariation({
+          adSetId,
+          originalAdData,
+          variation,
+          copyNumber,
+          attempt: attempt + 1
+        });
+      }
+
+      // Non-transient or max retries reached
+      throw new Error(`Failed to create ad after ${attempt} attempts: ${fbError.message || error.message}`);
+    }
+  }
+
+  /**
+   * Duplicate ads with variations across multiple ad sets
+   * @param {Object} params - Duplication parameters
+   * @returns {Promise<Object>} Duplication results
+   */
+  async duplicateAdsWithVariations({
+    campaignId,
+    originalAdId,
+    adSets,
+    variations = [],
+    duplicationType,
+    progressCallback
+  }) {
+    console.log('\n🎨 ========== AD DUPLICATION WITH VARIATIONS START ==========');
+    console.log('📋 Campaign ID:', campaignId);
+    console.log('📋 Original Ad ID:', originalAdId);
+    console.log('📋 Duplication Type:', duplicationType);
+    console.log('📋 Ad Sets:', adSets.length);
+    console.log('📋 Variations Provided:', variations.length);
+
+    const results = {
+      totalExpected: 0,
+      totalCreated: 0,
+      results: [],
+      errors: []
+    };
+
+    // Helper to update progress
+    const updateProgress = (update) => {
+      if (progressCallback && typeof progressCallback === 'function') {
+        progressCallback(update);
+      }
+    };
+
+    try {
+      // Step 1: Fetch original ad data
+      updateProgress({
+        currentOperation: 'Fetching original ad data...'
+      });
+
+      const originalAdData = await this.fetchOriginalAdData(originalAdId);
+
+      // Step 2: Calculate total ads to create
+      results.totalExpected = adSets.reduce((sum, adSet) => sum + adSet.numberOfCopies, 0);
+      console.log(`📊 Total ads to create: ${results.totalExpected}`);
+
+      updateProgress({
+        totalAdsToCreate: results.totalExpected,
+        currentOperation: `Creating ${results.totalExpected} ads across ${adSets.length} ad sets...`
+      });
+
+      // Step 3: Process each ad set
+      for (let i = 0; i < adSets.length; i++) {
+        const adSet = adSets[i];
+        const adSetResult = {
+          adSetId: adSet.adSetId,
+          adSetName: adSet.adSetName || `Ad Set ${i + 1}`,
+          adsCreated: [],
+          errors: []
+        };
+
+        console.log(`\n📁 Processing Ad Set ${i + 1}/${adSets.length}: ${adSetResult.adSetName}`);
+        console.log(`   Creating ${adSet.numberOfCopies} ad(s)...`);
+
+        updateProgress({
+          currentOperation: `Creating ads for ${adSetResult.adSetName} (${i + 1}/${adSets.length})...`
+        });
+
+        // Create ads for this ad set
+        for (let j = 1; j <= adSet.numberOfCopies; j++) {
+          try {
+            // Determine which variation to use
+            // Variation index: j-1 (0-based), cycle through variations if more copies than variations
+            const variationIndex = (j - 1) % Math.max(variations.length, 1);
+            const variation = variations[variationIndex] || null;
+
+            // Check if this variation has "applyToRemaining" flag
+            // If so, use this variation for all remaining ads in this ad set
+            let effectiveVariation = variation;
+            if (variation && variation.applyToRemaining && j > 1) {
+              // Use the same variation as before
+              effectiveVariation = variations.find(v => v.applyToRemaining);
+            }
+
+            console.log(`   Creating ad ${j}/${adSet.numberOfCopies}...`);
+            if (effectiveVariation && effectiveVariation.variationNumber) {
+              console.log(`     Using Variation ${effectiveVariation.variationNumber}`);
+            } else {
+              console.log(`     Using original ad data`);
+            }
+
+            // Create ad
+            const createdAd = await this.createAdWithVariation({
+              adSetId: adSet.adSetId,
+              originalAdData,
+              variation: effectiveVariation,
+              copyNumber: j
+            });
+
+            adSetResult.adsCreated.push(createdAd);
+            results.totalCreated++;
+
+            // Update progress
+            updateProgress({
+              adsCreated: results.totalCreated,
+              currentOperation: `Created ad ${results.totalCreated}/${results.totalExpected}...`,
+              results: [...results.results] // Send copy of results so far
+            });
+
+            // Small delay to avoid rate limits
+            if (j < adSet.numberOfCopies) {
+              await this.delay(500);
+            }
+
+          } catch (error) {
+            console.error(`   ❌ Failed to create ad ${j}:`, error.message);
+
+            adSetResult.errors.push({
+              copyNumber: j,
+              error: error.message
+            });
+
+            results.errors.push({
+              adSetId: adSet.adSetId,
+              adSetName: adSetResult.adSetName,
+              copyNumber: j,
+              error: error.message
+            });
+
+            // Update progress with error
+            updateProgress({
+              errors: [...results.errors]
+            });
+          }
+        }
+
+        // Add this ad set result to overall results
+        results.results.push(adSetResult);
+
+        console.log(`✅ Ad Set ${i + 1} complete: ${adSetResult.adsCreated.length}/${adSet.numberOfCopies} ads created`);
+      }
+
+      // Final summary
+      const successRate = results.totalExpected > 0
+        ? Math.round((results.totalCreated / results.totalExpected) * 100)
+        : 0;
+
+      console.log('\n🎯 ========== AD DUPLICATION SUMMARY ==========');
+      console.log(`📊 Total Expected: ${results.totalExpected}`);
+      console.log(`✅ Successfully Created: ${results.totalCreated}/${results.totalExpected} (${successRate}%)`);
+
+      if (results.errors.length > 0) {
+        console.log(`❌ Failed: ${results.errors.length}/${results.totalExpected}`);
+        console.log('\n📋 Failed Ads:');
+        results.errors.forEach((err, idx) => {
+          console.log(`   ${idx + 1}. ${err.adSetName} - Copy ${err.copyNumber}: ${err.error}`);
+        });
+      } else {
+        console.log(`🎉 All ${results.totalCreated} ads created successfully!`);
+      }
+      console.log('==========================================\n');
+
+      return results;
+
+    } catch (error) {
+      console.error('❌ Fatal error during ad duplication:', error);
+
+      updateProgress({
+        currentOperation: `❌ Fatal error: ${error.message}`,
+        status: 'error'
+      });
+
+      throw error;
+    }
+  }
 }
 
 module.exports = FacebookAPI;
