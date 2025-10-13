@@ -1039,16 +1039,39 @@ const AdSetSection: React.FC = () => {
                 name="placements.instagram"
                 control={control}
                 defaultValue={['stream', 'story']}
-                render={({ field }) => (
+                render={({ field }) => {
+                  // Migration: Clean old Instagram placement values
+                  const migrateInstagramValue = (value: string): string | null => {
+                    const migrations: Record<string, string | null> = {
+                      'stories': 'story',
+                      'search': 'ig_search',
+                      'shops': null // Remove if invalid
+                    };
+                    return migrations[value] ?? value;
+                  };
+
+                  // Clean field value
+                  const cleanedValue = Array.from(new Set(
+                    (field.value as string[] || [])
+                      .map(migrateInstagramValue)
+                      .filter((v): v is string => v !== null)
+                  ));
+
+                  // Update field if cleaned
+                  if (JSON.stringify(cleanedValue) !== JSON.stringify(field.value)) {
+                    field.onChange(cleanedValue);
+                  }
+
+                  return (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.instagram.map(placement => (
                       <FormControlLabel
                         key={placement.value}
                         control={
                           <Checkbox
-                            checked={(field.value as string[])?.includes(placement.value)}
+                            checked={cleanedValue.includes(placement.value)}
                             onChange={(e) => {
-                              const current = field.value as string[] || [];
+                              const current = cleanedValue;
                               if (e.target.checked) {
                                 field.onChange([...current, placement.value]);
                               } else {
@@ -1061,7 +1084,8 @@ const AdSetSection: React.FC = () => {
                       />
                     ))}
                   </FormGroup>
-                )}
+                  );
+                }}
               />
             </Box>
 
@@ -1072,16 +1096,38 @@ const AdSetSection: React.FC = () => {
                 name="placements.messenger"
                 control={control}
                 defaultValue={[]}
-                render={({ field }) => (
+                render={({ field }) => {
+                  // Migration: Clean old Messenger placement values
+                  const migrateMessengerValue = (value: string): string | null => {
+                    const migrations: Record<string, string | null> = {
+                      'stories': 'story',
+                      'inbox': null // Remove invalid value
+                    };
+                    return migrations[value] ?? value;
+                  };
+
+                  // Clean field value
+                  const cleanedValue = Array.from(new Set(
+                    (field.value as string[] || [])
+                      .map(migrateMessengerValue)
+                      .filter((v): v is string => v !== null)
+                  ));
+
+                  // Update field if cleaned
+                  if (JSON.stringify(cleanedValue) !== JSON.stringify(field.value)) {
+                    field.onChange(cleanedValue);
+                  }
+
+                  return (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.messenger.map(placement => (
                       <FormControlLabel
                         key={placement.value}
                         control={
                           <Checkbox
-                            checked={(field.value as string[])?.includes(placement.value)}
+                            checked={cleanedValue.includes(placement.value)}
                             onChange={(e) => {
-                              const current = field.value as string[] || [];
+                              const current = cleanedValue;
                               if (e.target.checked) {
                                 field.onChange([...current, placement.value]);
                               } else {
@@ -1094,7 +1140,8 @@ const AdSetSection: React.FC = () => {
                       />
                     ))}
                   </FormGroup>
-                )}
+                  );
+                }}
               />
             </Box>
 
