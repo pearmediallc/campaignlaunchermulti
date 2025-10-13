@@ -72,8 +72,8 @@ router.post(
       // Get active resources using ResourceHelper
       const resources = await ResourceHelper.getActiveResources(userId);
       console.log('📋 Using Active Resources:');
-      console.log('  ✓ Ad Account:', resources.adAccountName);
-      console.log('  ✓ Page:', resources.pageName);
+      console.log('  ✓ Ad Account:', resources.selectedAdAccount?.name || resources.selectedAdAccountId);
+      console.log('  ✓ Page:', resources.selectedPage?.name || resources.selectedPageId);
 
       const accessToken = decryptToken(facebookAuth.accessToken);
       if (!accessToken) {
@@ -86,9 +86,9 @@ router.post(
       console.log('✅ Access token decrypted successfully, length:', accessToken.length);
       console.log('🔍 Initializing FacebookAPI with:');
       console.log('  - Access Token: [EXISTS]', !!accessToken);
-      console.log('  - Ad Account ID:', resources.adAccountId);
-      console.log('  - Page ID:', resources.pageId);
-      console.log('  - Pixel ID:', resources.pixelId);
+      console.log('  - Ad Account ID:', resources.selectedAdAccountId);
+      console.log('  - Page ID:', resources.selectedPageId);
+      console.log('  - Pixel ID:', resources.selectedPixelId);
 
       // Calculate total ads to create
       const totalAdsToCreate = adSets.reduce((sum, adSet) => sum + adSet.numberOfCopies, 0);
@@ -125,12 +125,12 @@ router.post(
           job.currentOperation = 'Initializing Facebook API...';
 
           // Initialize FacebookAPI
-          const facebookAPI = new FacebookAPI(
-            accessToken,
-            resources.adAccountId,
-            resources.pageId,
-            resources.pixelId
-          );
+          const facebookAPI = new FacebookAPI({
+            accessToken: accessToken,
+            adAccountId: resources.selectedAdAccountId,
+            pageId: resources.selectedPageId,
+            pixelId: resources.selectedPixelId
+          });
 
           // Progress callback
           const progressCallback = (update) => {
