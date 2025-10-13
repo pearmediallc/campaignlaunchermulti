@@ -629,7 +629,19 @@ const StrategyForAllContainer: React.FC = () => {
     }
   };
 
-  const handleDuplicationCompleted = () => {
+  const handleDuplicationCompleted = (duplicatedAdSets: Array<{ id: string; name: string }>) => {
+    // Update campaignResult with duplicated ad sets data
+    setCampaignResult(prev => {
+      if (!prev || !prev.data) return prev;
+
+      return {
+        ...prev,
+        data: {
+          ...prev.data,
+          duplicatedAdSets: duplicatedAdSets
+        }
+      };
+    });
     setPhase('completed');
     setActiveStep(3);
   };

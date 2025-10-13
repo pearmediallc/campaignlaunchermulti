@@ -20,7 +20,7 @@ interface Phase3DuplicationProps {
   campaignResult: StrategyForAllResponse | null;
   postId: string;
   formData: StrategyForAllFormData | null;
-  onCompleted: () => void;
+  onCompleted: (duplicatedAdSets: Array<{ id: string; name: string }>) => void;
 }
 
 const Phase3Duplication: React.FC<Phase3DuplicationProps> = ({
@@ -99,7 +99,8 @@ const Phase3Duplication: React.FC<Phase3DuplicationProps> = ({
         if (progressData.completed >= progressData.total) {
           setIsCompleted(true);
           setTimeout(() => {
-            onCompleted();
+            // Pass duplicated ad sets to parent
+            onCompleted(progressData.adSets);
           }, 2000);
         } else {
           // Continue polling

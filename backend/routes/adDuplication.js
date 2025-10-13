@@ -79,9 +79,16 @@ router.post(
       if (!accessToken) {
         return res.status(401).json({
           success: false,
-          error: 'Invalid Facebook access token'
+          error: 'Failed to decrypt Facebook access token'
         });
       }
+
+      console.log('✅ Access token decrypted successfully, length:', accessToken.length);
+      console.log('🔍 Initializing FacebookAPI with:');
+      console.log('  - Access Token: [EXISTS]', !!accessToken);
+      console.log('  - Ad Account ID:', resources.adAccountId);
+      console.log('  - Page ID:', resources.pageId);
+      console.log('  - Pixel ID:', resources.pixelId);
 
       // Calculate total ads to create
       const totalAdsToCreate = adSets.reduce((sum, adSet) => sum + adSet.numberOfCopies, 0);

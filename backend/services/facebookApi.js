@@ -3533,6 +3533,13 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
+      console.log('🔍 Fetching ad data with:', {
+        url,
+        adId,
+        hasAccessToken: !!params.access_token,
+        tokenLength: params.access_token?.length
+      });
+
       const response = await axios.get(url, { params });
       const adData = response.data;
 
