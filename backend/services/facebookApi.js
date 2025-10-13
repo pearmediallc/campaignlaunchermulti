@@ -3637,6 +3637,10 @@ class FacebookAPI {
             console.log(`      🖼️ Using new thumbnail: ${variation.imageHash}`);
             newSpec.video_data.image_hash = variation.imageHash;
           }
+          if (variation.displayLink !== undefined) {
+            console.log(`      🔗 Using new display link: ${variation.displayLink}`);
+            newSpec.video_data.display_link = variation.displayLink;
+          }
 
         } else if (newSpec.link_data) {
           // Image ad variation
@@ -3719,15 +3723,40 @@ class FacebookAPI {
       const url = `${this.baseURL}/act_${this.adAccountId}/ads`;
 
       // Log the full request for debugging
+      const parsedCreative = JSON.parse(params.creative);
       console.log('    🔍 Ad creation request:', {
         url,
         params: {
           ...params,
-          creative: JSON.parse(params.creative),
+          creative: parsedCreative,
           tracking_specs: params.tracking_specs ? JSON.parse(params.tracking_specs) : undefined,
           access_token: '[REDACTED]'
         }
       });
+
+      // Detailed creative logging for debugging
+      if (parsedCreative.object_story_spec) {
+        const spec = parsedCreative.object_story_spec;
+        if (spec.video_data) {
+          console.log('    📹 Video Creative Details:', {
+            title: spec.video_data.title,
+            message: spec.video_data.message?.substring(0, 50),
+            link_description: spec.video_data.link_description,
+            display_link: spec.video_data.display_link,
+            cta_type: spec.video_data.call_to_action?.type,
+            cta_link: spec.video_data.call_to_action?.value?.link
+          });
+        } else if (spec.link_data) {
+          console.log('    🖼️ Image Creative Details:', {
+            name: spec.link_data.name,
+            message: spec.link_data.message?.substring(0, 50),
+            description: spec.link_data.description,
+            display_link: spec.link_data.display_link,
+            link: spec.link_data.link,
+            cta_type: spec.link_data.call_to_action?.type
+          });
+        }
+      }
 
       const response = await axios.post(url, null, { params });
 
