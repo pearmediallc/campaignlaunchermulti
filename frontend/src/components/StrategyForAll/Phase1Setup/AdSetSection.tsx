@@ -981,16 +981,40 @@ const AdSetSection: React.FC = () => {
                 name="placements.facebook"
                 control={control}
                 defaultValue={['feed', 'story']}
-                render={({ field }) => (
+                render={({ field }) => {
+                  // Migration: Clean old placement values
+                  const migratePlacementValue = (value: string): string | null => {
+                    const migrations: Record<string, string | null> = {
+                      'stories': 'story',
+                      'reels': 'facebook_reels',
+                      'groups': 'profile_feed',
+                      'shops': null // Remove invalid value
+                    };
+                    return migrations[value] ?? value;
+                  };
+
+                  // Clean field value on render
+                  const cleanedValue = Array.from(new Set(
+                    (field.value as string[] || [])
+                      .map(migratePlacementValue)
+                      .filter((v): v is string => v !== null)
+                  ));
+
+                  // Update field if cleaned
+                  if (JSON.stringify(cleanedValue) !== JSON.stringify(field.value)) {
+                    field.onChange(cleanedValue);
+                  }
+
+                  return (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.facebook.map(placement => (
                       <FormControlLabel
                         key={placement.value}
                         control={
                           <Checkbox
-                            checked={(field.value as string[])?.includes(placement.value)}
+                            checked={cleanedValue.includes(placement.value)}
                             onChange={(e) => {
-                              const current = field.value as string[] || [];
+                              const current = cleanedValue;
                               if (e.target.checked) {
                                 field.onChange([...current, placement.value]);
                               } else {
@@ -1003,7 +1027,8 @@ const AdSetSection: React.FC = () => {
                       />
                     ))}
                   </FormGroup>
-                )}
+                  );
+                }}
               />
             </Box>
 
