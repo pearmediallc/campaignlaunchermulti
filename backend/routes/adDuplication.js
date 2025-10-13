@@ -124,10 +124,10 @@ router.post(
           job.status = 'in_progress';
           job.currentOperation = 'Initializing Facebook API...';
 
-          // Initialize FacebookAPI
+          // Initialize FacebookAPI (strip act_ prefix as FacebookAPI adds it back)
           const facebookAPI = new FacebookAPI({
             accessToken: accessToken,
-            adAccountId: resources.selectedAdAccountId,
+            adAccountId: resources.selectedAdAccountId.replace('act_', ''),
             pageId: resources.selectedPageId,
             pixelId: resources.selectedPixelId
           });

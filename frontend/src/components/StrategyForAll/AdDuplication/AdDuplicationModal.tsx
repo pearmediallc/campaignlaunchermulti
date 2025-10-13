@@ -52,6 +52,12 @@ const AdDuplicationModal: React.FC<AdDuplicationModalProps> = ({
     totalAdsToCreate: number;
     currentOperation: string;
     status: string;
+    errors?: Array<{
+      adSetIndex?: number;
+      adSetName?: string;
+      copyNumber?: number;
+      error: string;
+    }>;
   } | null>(null);
 
   const steps = ['Select Type', 'Choose Ad Sets', 'Configure Variations'];
@@ -83,7 +89,8 @@ const AdDuplicationModal: React.FC<AdDuplicationModalProps> = ({
           adsCreated: jobData.adsCreated || 0,
           totalAdsToCreate: jobData.totalAdsToCreate || 0,
           currentOperation: jobData.currentOperation || '',
-          status: jobData.status
+          status: jobData.status,
+          errors: jobData.errors || []
         });
 
         // Stop polling if complete or error
@@ -91,11 +98,21 @@ const AdDuplicationModal: React.FC<AdDuplicationModalProps> = ({
           clearInterval(pollInterval);
           setLoading(false);
 
-          if (jobData.status === 'completed') {
-            // Show success for 2 seconds, then close
+          // Check if there are any errors even in completed status
+          const hasErrors = jobData.errors && jobData.errors.length > 0;
+          const allFailed = jobData.adsCreated === 0;
+
+          if (jobData.status === 'completed' && !hasErrors) {
+            // Only auto-close if truly successful (no errors)
             setTimeout(() => {
               onClose();
             }, 2000);
+          } else if (hasErrors || allFailed) {
+            // Show error details if any ads failed
+            const errorMsg = allFailed
+              ? `Failed to create all ${jobData.totalAdsToCreate} ads. See details below.`
+              : `${jobData.errors.length} ad(s) failed to create. ${jobData.adsCreated} created successfully.`;
+            setError(errorMsg);
           } else {
             setError(jobData.currentOperation || 'Duplication failed');
           }
@@ -322,10 +339,32 @@ const AdDuplicationModal: React.FC<AdDuplicationModalProps> = ({
         {!loading && !jobId && renderStepContent()}
 
         {/* Success State */}
-        {progress?.status === 'completed' && (
+        {progress?.status === 'completed' && !progress?.errors?.length && (
           <Alert severity="success" sx={{ mt: 2 }}>
             All ads created successfully! Modal will close automatically...
           </Alert>
+        )}
+
+        {/* Error Details */}
+        {progress?.errors && progress.errors.length > 0 && (
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Failed Ads ({progress.errors.length}):
+              </Typography>
+              {progress.errors.slice(0, 5).map((err, index) => (
+                <Typography key={index} variant="body2" sx={{ mt: 1 }}>
+                  • {err.adSetName || `Ad Set ${err.adSetIndex || '?'}`}
+                  {err.copyNumber ? ` - Copy ${err.copyNumber}` : ''}: {err.error}
+                </Typography>
+              ))}
+              {progress.errors.length > 5 && (
+                <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
+                  ...and {progress.errors.length - 5} more errors
+                </Typography>
+              )}
+            </Alert>
+          </Box>
         )}
       </DialogContent>
 
