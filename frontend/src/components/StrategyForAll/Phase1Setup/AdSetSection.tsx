@@ -982,22 +982,25 @@ const AdSetSection: React.FC = () => {
                 control={control}
                 defaultValue={['feed', 'story']}
                 render={({ field }) => {
-                  // Migration: Clean old placement values
-                  const migratePlacementValue = (value: string): string | null => {
-                    const migrations: Record<string, string | null> = {
-                      'stories': 'story',
-                      'reels': 'facebook_reels',
-                      'groups': 'profile_feed',
-                      'shops': null // Remove invalid value
-                    };
-                    return migrations[value] ?? value;
+                  // WHITELIST: Only Meta API validated facebook_positions values
+                  const VALID_FACEBOOK_POSITIONS = [
+                    'feed', 'right_hand_column', 'marketplace', 'video_feeds',
+                    'story', 'search', 'instream_video', 'facebook_reels',
+                    'facebook_reels_overlay', 'profile_feed', 'instant_article'
+                  ];
+
+                  // Migration map for old values
+                  const migrations: Record<string, string> = {
+                    'stories': 'story',
+                    'reels': 'facebook_reels',
+                    'groups': 'profile_feed'
                   };
 
-                  // Clean field value on render
+                  // Clean: migrate old values, then filter to whitelist
                   const cleanedValue = Array.from(new Set(
                     (field.value as string[] || [])
-                      .map(migratePlacementValue)
-                      .filter((v): v is string => v !== null)
+                      .map(v => migrations[v] || v)
+                      .filter(v => VALID_FACEBOOK_POSITIONS.includes(v))
                   ));
 
                   // Update field if cleaned
@@ -1040,21 +1043,23 @@ const AdSetSection: React.FC = () => {
                 control={control}
                 defaultValue={['stream', 'story']}
                 render={({ field }) => {
-                  // Migration: Clean old Instagram placement values
-                  const migrateInstagramValue = (value: string): string | null => {
-                    const migrations: Record<string, string | null> = {
-                      'stories': 'story',
-                      'search': 'ig_search',
-                      'shops': null // Remove if invalid
-                    };
-                    return migrations[value] ?? value;
+                  // WHITELIST: Only Meta API validated instagram_positions values
+                  const VALID_INSTAGRAM_POSITIONS = [
+                    'stream', 'story', 'explore', 'explore_home', 'reels',
+                    'profile_feed', 'ig_search', 'profile_reels'
+                  ];
+
+                  // Migration map
+                  const migrations: Record<string, string> = {
+                    'stories': 'story',
+                    'search': 'ig_search'
                   };
 
-                  // Clean field value
+                  // Clean: migrate old values, then filter to whitelist
                   const cleanedValue = Array.from(new Set(
                     (field.value as string[] || [])
-                      .map(migrateInstagramValue)
-                      .filter((v): v is string => v !== null)
+                      .map(v => migrations[v] || v)
+                      .filter(v => VALID_INSTAGRAM_POSITIONS.includes(v))
                   ));
 
                   // Update field if cleaned
@@ -1097,20 +1102,19 @@ const AdSetSection: React.FC = () => {
                 control={control}
                 defaultValue={[]}
                 render={({ field }) => {
-                  // Migration: Clean old Messenger placement values
-                  const migrateMessengerValue = (value: string): string | null => {
-                    const migrations: Record<string, string | null> = {
-                      'stories': 'story',
-                      'inbox': null // Remove invalid value
-                    };
-                    return migrations[value] ?? value;
+                  // WHITELIST: Only Meta API validated messenger_positions values
+                  const VALID_MESSENGER_POSITIONS = ['story', 'sponsored_messages'];
+
+                  // Migration map
+                  const migrations: Record<string, string> = {
+                    'stories': 'story'
                   };
 
-                  // Clean field value
+                  // Clean: migrate old values, then filter to whitelist
                   const cleanedValue = Array.from(new Set(
                     (field.value as string[] || [])
-                      .map(migrateMessengerValue)
-                      .filter((v): v is string => v !== null)
+                      .map(v => migrations[v] || v)
+                      .filter(v => VALID_MESSENGER_POSITIONS.includes(v))
                   ));
 
                   // Update field if cleaned
