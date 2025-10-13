@@ -730,6 +730,11 @@ class FacebookAPI {
           }
         };
 
+        // Add display_link if provided (for video ads)
+        if (adData.displayLink) {
+          creative.object_story_spec.video_data.display_link = adData.displayLink;
+        }
+
         // Add thumbnail if available (Facebook requires this for video ads)
         if (adData.videoThumbnail) {
           // Check if it's an image hash (from extracted frame) or URL
@@ -3662,6 +3667,23 @@ class FacebookAPI {
         } else {
           // QUICK DUPLICATE FALLBACK: No object_story_id available, clone object_story_spec without modifications
           console.log(`    ✅ Quick duplicate fallback: Cloning object_story_spec (creates new post)`);
+        }
+
+        // Clean up redundant fields that Facebook doesn't allow
+        // Facebook error 1443051: Only one of image_url and image_hash should be specified
+        if (newSpec.video_data) {
+          if (newSpec.video_data.image_hash && newSpec.video_data.image_url) {
+            // Keep image_hash, remove image_url
+            console.log(`    🧹 Removing redundant image_url (keeping image_hash)`);
+            delete newSpec.video_data.image_url;
+          }
+        }
+        if (newSpec.link_data) {
+          if (newSpec.link_data.image_hash && newSpec.link_data.image_url) {
+            // Keep image_hash, remove image_url
+            console.log(`    🧹 Removing redundant image_url (keeping image_hash)`);
+            delete newSpec.link_data.image_url;
+          }
         }
 
         creative = {
