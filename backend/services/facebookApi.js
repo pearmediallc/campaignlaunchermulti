@@ -736,9 +736,13 @@ class FacebookAPI {
           }
         };
 
-        // Add display_link if provided (for video ads)
+        // NOTE: Facebook API does NOT support display_link in video_data (Error 1443050)
+        // display_link only works for link_data (image ads), not video ads
+        // For video ads with additional links, use Meta's "site_links" feature (Advantage+ Creative)
         if (adData.displayLink) {
-          creative.object_story_spec.video_data.display_link = adData.displayLink;
+          console.log('⚠️ Display link for video ads not supported by Facebook API (Error 1443050)');
+          console.log('   Provided value ignored:', adData.displayLink);
+          console.log('   Note: Use site_links feature for multiple URLs in video ads');
         }
 
         // Add thumbnail if available (Facebook requires this for video ads)
@@ -3646,9 +3650,11 @@ class FacebookAPI {
             console.log(`      🖼️ Using new thumbnail: ${variation.imageHash}`);
             newSpec.video_data.image_hash = variation.imageHash;
           }
+          // NOTE: Facebook API does NOT support display_link in video_data (Error 1443050)
+          // display_link only works for image ads, not video ads
           if (variation.displayLink !== undefined) {
-            console.log(`      🔗 Using new display link: ${variation.displayLink}`);
-            newSpec.video_data.display_link = variation.displayLink;
+            console.log(`      ⚠️ Display link for video ads not supported (Facebook API Error 1443050)`);
+            console.log(`         Provided value ignored: ${variation.displayLink}`);
           }
 
         } else if (newSpec.link_data) {
