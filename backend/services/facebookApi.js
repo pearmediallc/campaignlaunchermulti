@@ -706,6 +706,12 @@ class FacebookAPI {
   async createAd(adData) {
     try {
       console.log('Creating Ad with App ID from env:', process.env.FB_APP_ID);
+      console.log('📋 Ad Data Received:', {
+        mediaType: adData.mediaType,
+        displayLink: adData.displayLink,
+        headline: adData.headline,
+        url: adData.url
+      });
       const url = `${this.baseURL}/act_${this.adAccountId}/ads`;
       
       const creative = {
@@ -1304,6 +1310,7 @@ class FacebookAPI {
             primaryText: variation.primaryText || campaignData.primaryText,
             headline: variation.headline || campaignData.headline,
             description: variation.description || campaignData.description,
+            displayLink: variation.displayLink || campaignData.displayLink,
             callToAction: variation.callToAction || campaignData.callToAction || 'LEARN_MORE',
             mediaType: variation.mediaType || campaignData.mediaType || 'single_image',
             ...variationMediaAssets
@@ -1318,6 +1325,7 @@ class FacebookAPI {
           primaryText: campaignData.primaryText,
           headline: campaignData.headline,
           description: campaignData.description,
+          displayLink: campaignData.displayLink,
           callToAction: campaignData.callToAction || 'LEARN_MORE',
           mediaType: campaignData.mediaType || 'single_image',
           ...mediaAssets
@@ -1521,6 +1529,7 @@ class FacebookAPI {
         primaryText: campaignData.primaryText,
         headline: campaignData.headline,
         description: campaignData.description,
+        displayLink: campaignData.displayLink,
         callToAction: campaignData.callToAction || 'LEARN_MORE',
         mediaType: campaignData.mediaType || 'single_image',
         publishDirectly: campaignData.publishDirectly,
