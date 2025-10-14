@@ -22,7 +22,7 @@ export interface Strategy150FormData {
   performanceGoal: 'maximize_conversions' | 'cost_per_result' | 'lowest_cost';
   pixel?: string; // Renamed from dataset
   conversionEvent: 'Lead' | 'Contact' | 'Purchase';
-  attributionSetting: 'standard' | '1_day_click' | '7_day_click' | '1_day_click_1_day_view' | '7_day_click_1_day_view' | '28_day_click_1_day_view';
+  attributionSetting: 'standard' | '1_day_click' | '7_day_click' | '1_day_click_1_day_view' | '7_day_click_1_day_view' | '28_day_click_1_day_view' | '1_day_click_1_day_engaged_view_1_day_view';
   attributionWindow: '1_day' | '7_day' | '28_day';
 
   // Ad Set Budget & Schedule
@@ -249,7 +249,8 @@ export const ATTRIBUTION_SETTING_OPTIONS = [
   { value: '7_day_click', label: '7-day click' },
   { value: '1_day_click_1_day_view', label: '1-day click or 1-day view' },
   { value: '7_day_click_1_day_view', label: '7-day click or 1-day view' },
-  { value: '28_day_click_1_day_view', label: '28-day click or 1-day view' }
+  { value: '28_day_click_1_day_view', label: '28-day click or 1-day view' },
+  { value: '1_day_click_1_day_engaged_view_1_day_view', label: '1-day click, 1-day engaged-view, 1-day view' }
 ];
 
 export const ATTRIBUTION_WINDOW_OPTIONS = [
@@ -258,32 +259,30 @@ export const ATTRIBUTION_WINDOW_OPTIONS = [
   { value: '28_day', label: '28 days' }
 ];
 
-// Placement Options
+// Placement Options (matches StrategyForAll - validated Meta API values)
 export const PLACEMENT_OPTIONS = {
   facebook: [
     { value: 'feed', label: 'Feed' },
     { value: 'instant_article', label: 'Instant Articles' },
     { value: 'marketplace', label: 'Marketplace' },
     { value: 'video_feeds', label: 'Video Feeds' },
-    { value: 'stories', label: 'Stories' },
+    { value: 'story', label: 'Stories' },
     { value: 'search', label: 'Search Results' },
-    { value: 'reels', label: 'Reels' },
-    { value: 'shops', label: 'Shops' },
-    { value: 'groups', label: 'Groups Feed' }
+    { value: 'facebook_reels', label: 'Reels' },
+    { value: 'profile_feed', label: 'Groups Feed' }
   ],
   instagram: [
     { value: 'stream', label: 'Feed' },
-    { value: 'stories', label: 'Stories' },
+    { value: 'story', label: 'Stories' },
     { value: 'reels', label: 'Reels' },
     { value: 'profile_feed', label: 'Profile Feed' },
     { value: 'explore', label: 'Explore' },
     { value: 'explore_home', label: 'Explore Home' },
-    { value: 'shops', label: 'Shop' },
-    { value: 'search', label: 'Search Results' }
+    { value: 'ig_search', label: 'Search Results' },
+    { value: 'profile_reels', label: 'Profile Reels' }
   ],
   messenger: [
-    { value: 'inbox', label: 'Inbox' },
-    { value: 'stories', label: 'Stories' },
+    { value: 'story', label: 'Stories' },
     { value: 'sponsored_messages', label: 'Sponsored Messages' }
   ],
   audience_network: [

@@ -980,17 +980,44 @@ const AdSetSection: React.FC = () => {
               <Controller
                 name="placements.facebook"
                 control={control}
-                defaultValue={['feed', 'stories']}
-                render={({ field }) => (
+                defaultValue={['feed', 'story']}
+                render={({ field }) => {
+                  // WHITELIST: Only Meta API validated facebook_positions values
+                  const VALID_FACEBOOK_POSITIONS = [
+                    'feed', 'right_hand_column', 'marketplace', 'video_feeds',
+                    'story', 'search', 'instream_video', 'facebook_reels',
+                    'facebook_reels_overlay', 'profile_feed', 'instant_article'
+                  ];
+
+                  // Migration map for old values
+                  const migrations: Record<string, string> = {
+                    'stories': 'story',
+                    'reels': 'facebook_reels',
+                    'groups': 'profile_feed'
+                  };
+
+                  // Clean: migrate old values, then filter to whitelist
+                  const cleanedValue = Array.from(new Set(
+                    (field.value as string[] || [])
+                      .map(v => migrations[v] || v)
+                      .filter(v => VALID_FACEBOOK_POSITIONS.includes(v))
+                  ));
+
+                  // Update field if cleaned
+                  if (JSON.stringify(cleanedValue) !== JSON.stringify(field.value)) {
+                    field.onChange(cleanedValue);
+                  }
+
+                  return (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.facebook.map(placement => (
                       <FormControlLabel
                         key={placement.value}
                         control={
                           <Checkbox
-                            checked={(field.value as string[])?.includes(placement.value)}
+                            checked={cleanedValue.includes(placement.value)}
                             onChange={(e) => {
-                              const current = field.value as string[] || [];
+                              const current = cleanedValue;
                               if (e.target.checked) {
                                 field.onChange([...current, placement.value]);
                               } else {
@@ -1003,7 +1030,8 @@ const AdSetSection: React.FC = () => {
                       />
                     ))}
                   </FormGroup>
-                )}
+                  );
+                }}
               />
             </Box>
 
@@ -1013,17 +1041,42 @@ const AdSetSection: React.FC = () => {
               <Controller
                 name="placements.instagram"
                 control={control}
-                defaultValue={['stream', 'stories']}
-                render={({ field }) => (
+                defaultValue={['stream', 'story']}
+                render={({ field }) => {
+                  // WHITELIST: Only Meta API validated instagram_positions values
+                  const VALID_INSTAGRAM_POSITIONS = [
+                    'stream', 'story', 'explore', 'explore_home', 'reels',
+                    'profile_feed', 'ig_search', 'profile_reels'
+                  ];
+
+                  // Migration map
+                  const migrations: Record<string, string> = {
+                    'stories': 'story',
+                    'search': 'ig_search'
+                  };
+
+                  // Clean: migrate old values, then filter to whitelist
+                  const cleanedValue = Array.from(new Set(
+                    (field.value as string[] || [])
+                      .map(v => migrations[v] || v)
+                      .filter(v => VALID_INSTAGRAM_POSITIONS.includes(v))
+                  ));
+
+                  // Update field if cleaned
+                  if (JSON.stringify(cleanedValue) !== JSON.stringify(field.value)) {
+                    field.onChange(cleanedValue);
+                  }
+
+                  return (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.instagram.map(placement => (
                       <FormControlLabel
                         key={placement.value}
                         control={
                           <Checkbox
-                            checked={(field.value as string[])?.includes(placement.value)}
+                            checked={cleanedValue.includes(placement.value)}
                             onChange={(e) => {
-                              const current = field.value as string[] || [];
+                              const current = cleanedValue;
                               if (e.target.checked) {
                                 field.onChange([...current, placement.value]);
                               } else {
@@ -1036,7 +1089,8 @@ const AdSetSection: React.FC = () => {
                       />
                     ))}
                   </FormGroup>
-                )}
+                  );
+                }}
               />
             </Box>
 
@@ -1047,16 +1101,38 @@ const AdSetSection: React.FC = () => {
                 name="placements.messenger"
                 control={control}
                 defaultValue={[]}
-                render={({ field }) => (
+                render={({ field }) => {
+                  // WHITELIST: Only Meta API validated messenger_positions values
+                  const VALID_MESSENGER_POSITIONS = ['story', 'sponsored_messages'];
+
+                  // Migration map
+                  const migrations: Record<string, string> = {
+                    'stories': 'story',
+                    'inbox': '' // Remove invalid 'inbox' placement
+                  };
+
+                  // Clean: migrate old values, then filter to whitelist
+                  const cleanedValue = Array.from(new Set(
+                    (field.value as string[] || [])
+                      .map(v => migrations[v] || v)
+                      .filter(v => v && VALID_MESSENGER_POSITIONS.includes(v))
+                  ));
+
+                  // Update field if cleaned
+                  if (JSON.stringify(cleanedValue) !== JSON.stringify(field.value)) {
+                    field.onChange(cleanedValue);
+                  }
+
+                  return (
                   <FormGroup row>
                     {PLACEMENT_OPTIONS.messenger.map(placement => (
                       <FormControlLabel
                         key={placement.value}
                         control={
                           <Checkbox
-                            checked={(field.value as string[])?.includes(placement.value)}
+                            checked={cleanedValue.includes(placement.value)}
                             onChange={(e) => {
-                              const current = field.value as string[] || [];
+                              const current = cleanedValue;
                               if (e.target.checked) {
                                 field.onChange([...current, placement.value]);
                               } else {
@@ -1069,7 +1145,8 @@ const AdSetSection: React.FC = () => {
                       />
                     ))}
                   </FormGroup>
-                )}
+                  );
+                }}
               />
             </Box>
 

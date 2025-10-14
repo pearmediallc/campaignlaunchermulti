@@ -2743,7 +2743,29 @@ class FacebookAPI {
       const newCampaignId = newCampaignResponse.data.id;
       console.log(`  ✅ Created campaign: ${newCampaignId}`);
 
-      // Step 2: Clone all ad sets to new campaign with smart delays
+      // Step 2: Fetch source campaign's attribution setting to preserve user's choice
+      let sourceAttributionSpec = null;
+      try {
+        console.log('📋 Fetching source campaign attribution settings...');
+        const sourceAdSetUrl = `${this.baseURL}/${sourceAdSetIds[0]}`;
+        const sourceAdSetResponse = await axios.get(sourceAdSetUrl, {
+          params: {
+            fields: 'attribution_spec',
+            access_token: this.accessToken
+          }
+        });
+        sourceAttributionSpec = sourceAdSetResponse.data.attribution_spec;
+        console.log('  ✓ Source attribution:', JSON.stringify(sourceAttributionSpec));
+      } catch (error) {
+        console.log('  ⚠️ Could not fetch source attribution, will use default 1-day click/view');
+        // Fallback to safe default if fetch fails
+        sourceAttributionSpec = [
+          { event_type: 'CLICK_THROUGH', window_days: 1 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        ];
+      }
+
+      // Step 3: Clone all ad sets to new campaign with smart delays
       const clonedAdSets = [];
       const clonedAds = [];
       let successfulAdSets = 0;
@@ -2768,7 +2790,7 @@ class FacebookAPI {
         if (updateProgress) updateProgress(`Cloning ad set ${i + 1}/${sourceAdSetIds.length}...`);
 
         try {
-          console.log(`    ⚙️ Forcing 1-day click, 1-day view attribution on ad set ${i + 1}`);
+          console.log(`    ⚙️ Using source campaign attribution settings`);
           // Use Facebook's copy endpoint for ad sets
           const copyUrl = `${this.baseURL}/${sourceAdSetId}/copies`;
           const copyParams = {
@@ -2778,11 +2800,8 @@ class FacebookAPI {
             rename_options: JSON.stringify({
               rename_suffix: `_Copy${copyNumber}`
             }),
-            // FORCE 1-DAY CLICK, 1-DAY VIEW ATTRIBUTION FROM THE START
-            attribution_spec: JSON.stringify([
-              { event_type: 'CLICK_THROUGH', window_days: 1 },
-              { event_type: 'VIEW_THROUGH', window_days: 1 }
-            ]),
+            // Use source campaign's attribution (preserves user's original choice)
+            attribution_spec: JSON.stringify(sourceAttributionSpec),
             access_token: this.accessToken
           };
 

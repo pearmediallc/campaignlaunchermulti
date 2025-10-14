@@ -548,8 +548,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // Placement settings
       placementType: req.body.placementType || 'automatic',
       placements: req.body.placements || {
-        facebook: ['feed', 'stories'],
-        instagram: ['stream', 'stories'],
+        facebook: ['feed', 'story'],
+        instagram: ['stream', 'story'],
         audienceNetwork: ['classic'],
         messenger: [],
         devices: ['mobile', 'desktop'],
