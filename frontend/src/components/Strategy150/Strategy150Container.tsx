@@ -236,11 +236,11 @@ const Strategy150Container: React.FC = () => {
         // Required field for CampaignFormData
         conversionLocation: campaignData.conversionLocation || 'website',
 
-        // Targeting in working format
+        // Targeting in working format (preserve user's selections)
         targeting: {
           locations: campaignData.targeting?.locations || { countries: ['US'] },
-          ageMin: 18,
-          ageMax: 65,
+          ageMin: campaignData.targeting?.ageMin || 18,
+          ageMax: campaignData.targeting?.ageMax || 65,
         },
 
         // Media
@@ -250,13 +250,20 @@ const Strategy150Container: React.FC = () => {
         video: campaignData.video,
         images: campaignData.images,
 
-        // Placements
+        // Placements (preserve all user selections including devices)
         placements: {
           facebook: campaignData.placements?.facebook || ['feed'],
           instagram: campaignData.placements?.instagram || ['stream'],
           audience_network: campaignData.placements?.audienceNetwork || [],
-          messenger: campaignData.placements?.messenger || []
-        }
+          messenger: campaignData.placements?.messenger || [],
+          devices: campaignData.placements?.devices || ['mobile', 'desktop'],
+          platforms: campaignData.placements?.platforms || ['all']
+        },
+        placementType: campaignData.placementType || 'automatic',
+
+        // Attribution settings (preserve user's selection)
+        attributionSetting: campaignData.attributionSetting || '1_day_click_1_day_view',
+        attributionWindow: campaignData.attributionWindow || '7_day'
       };
 
       // Add budget based on type (make sure to get the actual values)
