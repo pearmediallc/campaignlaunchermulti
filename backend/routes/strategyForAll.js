@@ -987,7 +987,8 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       postId,
       formData,
       count = 49,
-      duplicateBudgets = [] // Array of custom budgets for each duplicate
+      duplicateBudgets = [], // Array of custom budgets for each duplicate
+      adVariationConfig = null // Ad variation config for Strategy for Ads
     } = req.body;
 
     if (!campaignId || !originalAdSetId) {
@@ -1029,7 +1030,8 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       postId: postId,
       count,
       formData,
-      userId: req.user.id
+      userId: req.user.id,
+      adVariationConfig // Pass ad variation config for Strategy for Ads
     };
 
     // If custom budgets provided, use them; otherwise default to $1 for each

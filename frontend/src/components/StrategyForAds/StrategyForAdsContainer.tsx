@@ -462,13 +462,19 @@ const StrategyForAdsContainer: React.FC = () => {
           success: true,
           message: enhancedMessage,
           data: {
-            phase: 'completed', // Strategy for Ads completes in one step
+            phase: 'waiting', // Set to waiting since we'll capture Post ID next
             campaign: result.data?.campaign || {
               id: 'unknown',
               name: data.campaignName
             },
-            adSets: result.data?.adSets || [], // Multiple ad sets created
-            ads: result.data?.ads || [] // Multiple ads created
+            adSet: result.data?.adSet || {
+              id: 'unknown',
+              name: `${data.campaignName} - Ad Set 1`
+            },
+            ads: result.data?.ads || [{
+              id: 'unknown',
+              name: `${data.campaignName} - Ad 1`
+            }]
           }
         };
 
@@ -482,9 +488,22 @@ const StrategyForAdsContainer: React.FC = () => {
           console.log('📢 Some fields were skipped for successful creation:', result.data.adSet._skippedFields);
         }
 
-        // Strategy for Ads completes in one step - go directly to completion
-        setPhase('completed');
-        setActiveStep(2);
+        setPhase('waiting');
+
+        // Extract ad ID from the first ad for Post ID capture
+        const adId = result.data?.ads?.[0]?.id;
+        console.log('🎯 Extracted ad ID for Post ID capture:', adId);
+
+        if (adId) {
+          // Start automatic post ID capture with extracted ad ID
+          setTimeout(() => {
+            console.log('⏰ Starting Post ID capture for ad:', adId);
+            handleAutoPostCapture(adId);
+          }, 30000); // Wait 30 seconds before trying to fetch post ID
+        } else {
+          console.warn('⚠️ No ad ID found in response, switching to manual input');
+          setPhase('manual');
+        }
       } else {
         // Handle errors (CampaignResponse only has 'error' field)
         throw new Error(result.error || 'Failed to create campaign');

@@ -1347,167 +1347,6 @@ class FacebookAPI {
     }
   }
 
-  // Strategy for Ads: Create campaign with ad variations in selected ad sets
-  async createCampaignWithAdVariations(campaignData) {
-    try {
-      console.log('🎨 Starting Strategy for Ads campaign creation');
-      console.log('📊 Ad Variation Config:', {
-        selectedAdSetIndices: campaignData.adVariationConfig?.selectedAdSetIndices,
-        adsPerAdSet: campaignData.adVariationConfig?.adsPerAdSet,
-        variationCount: campaignData.adVariationConfig?.variations?.length
-      });
-
-      const isCBO = campaignData.budgetLevel === 'campaign';
-
-      // Step 1: Create Campaign
-      const campaign = await this.createCampaign({
-        name: campaignData.campaignName,
-        objective: campaignData.objective,
-        bidStrategy: campaignData.bidStrategy,
-        specialAdCategories: campaignData.specialAdCategories,
-        daily_budget: isCBO ? (campaignData.campaignBudget?.dailyBudget || campaignData.dailyBudget) : undefined,
-        lifetime_budget: isCBO ? (campaignData.campaignBudget?.lifetimeBudget || campaignData.lifetimeBudget) : undefined
-      });
-
-      console.log('✅ Campaign created:', campaign.id);
-
-      const adSetCount = campaignData.duplicationSettings?.adSetCount || 1;
-      const selectedIndices = campaignData.adVariationConfig?.selectedAdSetIndices || [];
-      const adsPerAdSet = campaignData.adVariationConfig?.adsPerAdSet || 1;
-      const variations = campaignData.adVariationConfig?.variations || [];
-
-      // Upload original media first
-      let originalMediaAssets = {};
-      if (campaignData.mediaType === 'single_image' && campaignData.imagePath) {
-        const imageHash = await this.uploadImage(campaignData.imagePath);
-        if (imageHash) originalMediaAssets.imageHash = imageHash;
-      } else if ((campaignData.mediaType === 'video' || campaignData.mediaType === 'single_video') && campaignData.videoPath) {
-        const videoId = await this.uploadVideo(campaignData.videoPath);
-        if (videoId) {
-          originalMediaAssets.videoId = videoId;
-          const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
-          if (thumbnailUrl) originalMediaAssets.videoThumbnail = thumbnailUrl;
-        }
-      }
-
-      const allAdSets = [];
-      const allAds = [];
-      let originalPostId = null;
-
-      // Step 2: Create all ad sets with their ads
-      for (let i = 0; i < adSetCount; i++) {
-        const adSetName = `${campaignData.campaignName} - Ad Set ${i + 1}`;
-
-        // Create ad set
-        const adSet = await this.createAdSet({
-          campaignName: adSetName,
-          campaignId: campaign.id,
-          budgetType: campaignData.budgetType || 'daily',
-          dailyBudget: isCBO ? undefined : campaignData.dailyBudget,
-          lifetimeBudget: isCBO ? undefined : campaignData.lifetimeBudget,
-          conversionLocation: campaignData.conversionLocation || 'website',
-          conversionEvent: campaignData.conversionEvent,
-          performanceGoal: campaignData.performanceGoal,
-          bidStrategy: campaignData.bidStrategy,
-          attributionSetting: campaignData.attributionSetting,
-          attributionWindow: campaignData.attributionWindow,
-          targeting: campaignData.targeting,
-          placements: campaignData.placements,
-          placementType: campaignData.placementType,
-          spendingLimits: campaignData.spendingLimits || campaignData.adSetBudget?.spendingLimits,
-          adSetBudget: campaignData.adSetBudget
-        });
-
-        allAdSets.push(adSet);
-
-        // Check if this ad set should have variations
-        const hasVariations = selectedIndices.includes(i);
-
-        if (hasVariations && variations.length > 0) {
-          console.log(`🎨 Creating ${adsPerAdSet} ad variations for Ad Set ${i + 1}`);
-
-          // Create multiple ads (variations)
-          for (let v = 0; v < Math.min(adsPerAdSet, variations.length); v++) {
-            const variation = variations[v];
-
-            // Handle variation-specific media
-            let variationMediaAssets = { ...originalMediaAssets };
-            if (variation.mediaFile && !variation.useOriginalMedia) {
-              if (variation.mediaFile.type?.startsWith('image/')) {
-                const imageHash = await this.uploadImage(variation.mediaFile.path);
-                if (imageHash) variationMediaAssets = { imageHash };
-              } else if (variation.mediaFile.type?.startsWith('video/')) {
-                const videoId = await this.uploadVideo(variation.mediaFile.path);
-                if (videoId) {
-                  variationMediaAssets = { videoId };
-                  const thumbnailUrl = await this.getVideoThumbnail(videoId, variation.mediaFile.path);
-                  if (thumbnailUrl) variationMediaAssets.videoThumbnail = thumbnailUrl;
-                }
-              }
-            }
-
-            const ad = await this.createAd({
-              name: `${adSetName} - Ad ${v + 1}`,
-              campaignName: adSetName,
-              adsetId: adSet.id,
-              url: variation.websiteUrl || campaignData.url,
-              primaryText: variation.primaryText || campaignData.primaryText,
-              headline: variation.headline || campaignData.headline,
-              description: variation.description || campaignData.description,
-              displayLink: variation.displayLink || campaignData.displayLink,
-              callToAction: variation.callToAction || campaignData.callToAction || 'LEARN_MORE',
-              mediaType: campaignData.mediaType || 'single_image',
-              ...variationMediaAssets
-            });
-
-            allAds.push(ad);
-          }
-        } else {
-          console.log(`📝 Creating single ad for Ad Set ${i + 1} (reusing original post ID)`);
-
-          // Create single ad
-          const ad = await this.createAd({
-            name: `${adSetName} - Ad 1`,
-            campaignName: adSetName,
-            adsetId: adSet.id,
-            url: campaignData.url,
-            primaryText: campaignData.primaryText,
-            headline: campaignData.headline,
-            description: campaignData.description,
-            displayLink: campaignData.displayLink,
-            callToAction: campaignData.callToAction || 'LEARN_MORE',
-            mediaType: campaignData.mediaType || 'single_image',
-            ...originalMediaAssets,
-            // If we have an original post ID, reuse it
-            object_story_id: originalPostId || undefined
-          });
-
-          allAds.push(ad);
-
-          // Store the first post ID for reuse
-          if (!originalPostId && ad.effective_object_story_id) {
-            originalPostId = ad.effective_object_story_id;
-            console.log('✅ Original post ID captured:', originalPostId);
-          }
-        }
-      }
-
-      console.log('✅ Strategy for Ads campaign complete:', {
-        campaign: campaign.id,
-        adSets: allAdSets.length,
-        ads: allAds.length
-      });
-
-      return {
-        campaign,
-        adSets: allAdSets,
-        ads: allAds
-      };
-    } catch (error) {
-      this.handleError(error);
-    }
-  }
-
   // Strategy 150 specific methods
   async createStrategy150Campaign(campaignData) {
     console.log('\n🎯 ========== STRATEGY 1-50-1 START ==========');
@@ -1866,7 +1705,7 @@ class FacebookAPI {
     }
   }
 
-  async duplicateAdSetsWithExistingPost({ campaignId, originalAdSetId, postId, count, formData, userId, progressCallback }) {
+  async duplicateAdSetsWithExistingPost({ campaignId, originalAdSetId, postId, count, formData, userId, progressCallback, adVariationConfig }) {
     const results = {
       adSets: [],
       errors: []
@@ -2131,22 +1970,88 @@ class FacebookAPI {
         // Create ads for each copied adset with retry logic
         for (let i = 0; i < newAdSetIds.length; i++) {
           const newAdSetId = newAdSetIds[i];
-          let adCreated = false;
-          let lastError = null;
 
-          // Create ad using existing post
-          const adData = {
-            name: `${formData.campaignName} - Ad Copy ${i + 1}`,
-            adset_id: newAdSetId,
-            creative: JSON.stringify({
-              object_story_id: actualPostId,
-              page_id: this.pageId
-            }),
-            status: 'ACTIVE',
-            access_token: this.accessToken
-          };
+          // Check if this ad set should have variations (Strategy for Ads)
+          const hasVariations = adVariationConfig &&
+                                adVariationConfig.selectedAdSetIndices &&
+                                adVariationConfig.selectedAdSetIndices.includes(i);
 
-          console.log(`🔄 Creating Ad for AdSet ${newAdSetId} (Copy ${i + 1})...`);
+          if (hasVariations && adVariationConfig.variations && adVariationConfig.variations.length > 0) {
+            // Strategy for Ads: Create multiple ads with variations
+            const adsPerAdSet = Math.min(adVariationConfig.adsPerAdSet || 1, adVariationConfig.variations.length);
+            console.log(`🎨 Creating ${adsPerAdSet} ad variations for AdSet ${i + 1} (${newAdSetId})...`);
+
+            for (let v = 0; v < adsPerAdSet; v++) {
+              const variation = adVariationConfig.variations[v];
+
+              try {
+                // Create ad with variation content
+                const variationAdData = {
+                  name: `${formData.campaignName} - Ad Set ${i + 1} - Ad ${v + 1}`,
+                  adset_id: newAdSetId,
+                  creative: JSON.stringify({
+                    name: `Ad Variation ${v + 1}`,
+                    object_story_spec: {
+                      page_id: this.pageId,
+                      link_data: {
+                        message: variation.primaryText || formData.primaryText,
+                        name: variation.headline || formData.headline,
+                        description: variation.description || formData.description,
+                        link: variation.websiteUrl || formData.url,
+                        call_to_action: {
+                          type: variation.callToAction || formData.callToAction || 'LEARN_MORE'
+                        }
+                        // Note: Media handling would go here if variation has custom media
+                      }
+                    }
+                  }),
+                  status: 'ACTIVE',
+                  access_token: this.accessToken
+                };
+
+                await axios.post(
+                  `${this.baseURL}/act_${campaignAccountId}/ads`,
+                  null,
+                  { params: variationAdData }
+                );
+
+                console.log(`✅ Created ad variation ${v + 1}/${adsPerAdSet} for AdSet ${i + 1}`);
+              } catch (adError) {
+                console.error(`❌ Failed to create ad variation ${v + 1} for AdSet ${i + 1}:`, adError.response?.data?.error?.message || adError.message);
+                results.errors.push({
+                  adSetIndex: i + 1,
+                  variationIndex: v + 1,
+                  error: adError.response?.data?.error?.message || adError.message
+                });
+              }
+            }
+
+            results.adSets.push({
+              id: newAdSetId,
+              name: `AdSet Copy ${i + 1} (with ${adsPerAdSet} variations)`
+            });
+
+            updateProgress({
+              currentOperation: `Created ${adsPerAdSet} ad variations for ad set ${i + 1} of ${newAdSetIds.length}`
+            });
+
+          } else {
+            // Standard duplication: Create single ad using existing post (preserves social proof)
+            let adCreated = false;
+            let lastError = null;
+
+            const adData = {
+              name: `${formData.campaignName} - Ad Copy ${i + 1}`,
+              adset_id: newAdSetId,
+              creative: JSON.stringify({
+                object_story_id: actualPostId,
+                page_id: this.pageId
+              }),
+              status: 'ACTIVE',
+              access_token: this.accessToken
+            };
+
+            console.log(`🔄 Creating Ad for AdSet ${newAdSetId} (Copy ${i + 1}) using original post ID...`);
 
           // Retry up to 3 times with exponential backoff
           for (let attempt = 1; attempt <= 3; attempt++) {
@@ -2212,6 +2117,7 @@ class FacebookAPI {
               }))
             });
           }
+          } // Close else block for standard duplication
         }
 
         // After all ad sets and ads are created, ensure attribution is correct

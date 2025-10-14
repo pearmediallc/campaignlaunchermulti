@@ -61,10 +61,11 @@ const Phase3Duplication: React.FC<Phase3DuplicationProps> = ({
         },
         body: JSON.stringify({
           campaignId: campaignResult?.data?.campaign.id,
-          originalAdSetId: campaignResult?.data?.adSet.id,
+          originalAdSetId: campaignResult?.data?.adSet?.id,
           postId: postId,
           formData: formData,
-          count: duplicateCount // Use actual count from formData
+          count: duplicateCount, // Use actual count from formData
+          adVariationConfig: formData?.adVariationConfig // Pass ad variation config for Strategy for Ads
         })
       });
 

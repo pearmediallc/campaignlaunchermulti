@@ -131,8 +131,12 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
               variationNumber={variation.variationNumber}
               variation={variation}
               originalAdData={{
+                id: 'temp-ad-id',
+                name: 'Original Ad',
                 creative: {
+                  id: 'temp-creative-id',
                   object_story_spec: {
+                    page_id: watch('facebookPage') || '',
                     link_data: {
                       message: originalAdData.primaryText || '',
                       name: originalAdData.headline || '',

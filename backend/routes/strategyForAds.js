@@ -718,20 +718,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Conversion Event:', campaignData.conversionEvent);
     console.log('  Ad Set Count:', campaignData.duplicationSettings?.adSetCount || 'Not set');
 
-    // Create campaign with or without ad variations
+    // Create initial 1-1-1 campaign structure
+    // Ad variations will be applied during Phase 3 duplication
     let result;
     try {
-      if (campaignData.adVariationConfig &&
-          campaignData.adVariationConfig.selectedAdSetIndices &&
-          campaignData.adVariationConfig.selectedAdSetIndices.length > 0) {
-        // Strategy for Ads: Create campaign with ad variations
-        console.log('🎨 Creating campaign WITH ad variations');
-        result = await userFacebookApi.createCampaignWithAdVariations(campaignData);
-      } else {
-        // Basic campaign creation (StrategyForAll compatible)
-        console.log('📝 Creating standard campaign structure');
-        result = await userFacebookApi.createCampaignStructure(campaignData);
-      }
+      console.log('📝 Creating initial 1-1-1 campaign structure');
+      console.log('🎨 Ad variation config will be used during duplication phase');
+      result = await userFacebookApi.createCampaignStructure(campaignData);
     } catch (error) {
       console.error('❌ Strategy for Ads Campaign Creation Error:');
       console.error('Error message:', error.message);

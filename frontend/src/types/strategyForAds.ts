@@ -187,7 +187,10 @@ export interface StrategyForAdsResponse {
   data?: {
     phase: 'initial' | 'waiting' | 'duplicating' | 'completed';
     campaign: { id: string; name: string };
-    adSet: {
+    // For Strategy for Ads, we have multiple ad sets
+    adSets?: Array<{ id: string; name: string }>;
+    // Keep adSet for backward compatibility with single ad set responses
+    adSet?: {
       id: string;
       name: string;
       _skippedFields?: any; // Fields that were skipped in safe mode
