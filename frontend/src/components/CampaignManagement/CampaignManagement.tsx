@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './CampaignManagement.css';
 import CampaignActions from './CampaignActions';
+import FacebookCampaignManager from './FacebookStyleManager/FacebookCampaignManager';
 
 interface Campaign {
   campaign_id: string;
@@ -51,6 +52,9 @@ interface CampaignDetails {
 }
 
 const CampaignManagement: React.FC = () => {
+  // Feature flag for Facebook-style UI
+  const [useFacebookStyle, setUseFacebookStyle] = useState(false);
+
   const [trackedCampaigns, setTrackedCampaigns] = useState<Campaign[]>([]);
   const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
   const [viewMode, setViewMode] = useState<'tracked' | 'all'>('tracked');
@@ -74,46 +78,7 @@ const CampaignManagement: React.FC = () => {
   const [hasMoreAccounts, setHasMoreAccounts] = useState(true);
   const [currentAccountName, setCurrentAccountName] = useState<string>('');
 
-  useEffect(() => {
-    fetchTrackedCampaigns();
-  }, []);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (autoRefresh && selectedCampaign) {
-      interval = setInterval(() => {
-        fetchCampaignDetails(selectedCampaign);
-      }, 30000); // Refresh every 30 seconds
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefresh, selectedCampaign]);
-
-  // Fetch accounts when switching to "all" mode
-  useEffect(() => {
-    if (viewMode === 'all' && accounts.length === 0) {
-      fetchAccounts();
-    }
-  }, [viewMode]);
-
-  // Debounced account search
-  useEffect(() => {
-    if (viewMode === 'all') {
-      const timer = setTimeout(() => {
-        fetchAccounts(accountSearch);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [accountSearch]);
-
-  // Fetch campaigns when account changes
-  useEffect(() => {
-    if (selectedAccount && viewMode === 'all') {
-      fetchAllCampaigns(datePreset, undefined, selectedAccount);
-    }
-  }, [selectedAccount, datePreset]);
-
+  // Define functions first before hooks use them
   const fetchTrackedCampaigns = async () => {
     try {
       const response = await axios.get('/api/campaigns/manage/tracked');
@@ -130,21 +95,18 @@ const CampaignManagement: React.FC = () => {
     try {
       const params: any = { date_preset: datePreset, limit: 50 };
       if (after) params.after = after;
-      if (accountId) params.ad_account_id = accountId;  // NEW: Pass specific account
+      if (accountId) params.ad_account_id = accountId;
 
       const response = await axios.get('/api/campaigns/manage/all', { params });
 
       if (after && response.data.campaigns) {
-        // Append to existing campaigns for pagination
         setAllCampaigns(prev => [...prev, ...response.data.campaigns]);
       } else {
-        // Replace campaigns for new fetch
         setAllCampaigns(response.data.campaigns || []);
       }
 
       setPaging(response.data.paging);
 
-      // Store account info
       if (response.data.accountInfo) {
         setCurrentAccountName(response.data.accountInfo.adAccountName);
       }
@@ -175,13 +137,11 @@ const CampaignManagement: React.FC = () => {
       setHasMoreAccounts(response.data.hasMore);
       setAccountsOffset(offset + 20);
 
-      // Set active account if not selected
       if (!selectedAccount && response.data.activeAccountId) {
         setSelectedAccount(response.data.activeAccountId);
       }
     } catch (error: any) {
       console.error('Error fetching accounts:', error);
-      // Don't show error for accounts - graceful degradation
     } finally {
       setLoadingAccounts(false);
     }
@@ -202,6 +162,71 @@ const CampaignManagement: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // All hooks must be called before any conditional returns
+  useEffect(() => {
+    if (!useFacebookStyle) {
+      fetchTrackedCampaigns();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useFacebookStyle]);
+
+  useEffect(() => {
+    if (!useFacebookStyle) {
+      let interval: NodeJS.Timeout;
+      if (autoRefresh && selectedCampaign) {
+        interval = setInterval(() => {
+          fetchCampaignDetails(selectedCampaign);
+        }, 30000);
+      }
+      return () => {
+        if (interval) clearInterval(interval);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, selectedCampaign, useFacebookStyle]);
+
+  useEffect(() => {
+    if (!useFacebookStyle && viewMode === 'all' && accounts.length === 0) {
+      fetchAccounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, useFacebookStyle, accounts.length]);
+
+  useEffect(() => {
+    if (!useFacebookStyle && viewMode === 'all') {
+      const timer = setTimeout(() => {
+        fetchAccounts(accountSearch);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountSearch, useFacebookStyle, viewMode]);
+
+  useEffect(() => {
+    if (!useFacebookStyle && selectedAccount && viewMode === 'all') {
+      fetchAllCampaigns(datePreset, undefined, selectedAccount);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount, datePreset, useFacebookStyle, viewMode]);
+
+  // If Facebook-style UI is enabled, render new manager
+  if (useFacebookStyle) {
+    return (
+      <div className="container campaign-management mt-4">
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <h2>Campaign Management</h2>
+          <button
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => setUseFacebookStyle(false)}
+          >
+            Switch to Classic View
+          </button>
+        </div>
+        <FacebookCampaignManager />
+      </div>
+    );
+  }
 
   const updateCampaignStatus = async (campaignId: string, newStatus: string) => {
     setError(null);
@@ -289,7 +314,15 @@ const CampaignManagement: React.FC = () => {
 
   return (
     <div className="container campaign-management mt-4">
-      <h2 className="mb-4">Campaign Management</h2>
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2>Campaign Management</h2>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setUseFacebookStyle(true)}
+        >
+          🚀 Try New Facebook-Style View
+        </button>
+      </div>
 
       {error && (
         <div className="alert alert-danger alert-dismissible" role="alert">
