@@ -485,7 +485,7 @@ const StrategyForAdsContainer: React.FC = () => {
         if (result.data?.adSet?._skippedFields) {
           setSkippedFields(result.data.adSet._skippedFields);
           setFallbackUsed(true);
-          console.log('📢 Some fields were skipped for successful creation:', result.data.adSet._skippedFields);
+          console.log('📢 Some fields were skipped for successful creation:', result.data.adSet?._skippedFields);
         }
 
         setPhase('waiting');

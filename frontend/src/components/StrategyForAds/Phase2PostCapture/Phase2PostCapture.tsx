@@ -124,7 +124,7 @@ const Phase2PostCapture: React.FC<Phase2PostCaptureProps> = ({
                   size="small"
                 />
                 <Chip
-                  label={`Ad Set: ${campaignResult.data.adSet.name}`}
+                  label={`Ad Set: ${campaignResult.data.adSet?.name || 'Unknown'}`}
                   variant="outlined"
                   size="small"
                 />
