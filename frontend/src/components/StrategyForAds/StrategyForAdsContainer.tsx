@@ -11,7 +11,7 @@ import {
   Tabs,
   Tab
 } from '@mui/material';
-import { StrategyForAllFormData, StrategyForAllPhase, StrategyForAllResponse } from '../../types/strategyForAll';
+import { StrategyForAdsFormData, StrategyForAdsPhase, StrategyForAdsResponse } from '../../types/strategyForAds';
 import Phase1Setup from './Phase1Setup/Phase1Setup';
 import Phase2PostCapture from './Phase2PostCapture/Phase2PostCapture';
 import Phase3Duplication from './Phase3Duplication/Phase3Duplication';
@@ -19,24 +19,23 @@ import CompletionSummary from './CompletionSummary/CompletionSummary';
 import CampaignManagementContainer from './CampaignManagement/CampaignManagementContainer';
 import MultiplyContainer from './MultiplySection/MultiplyContainer';
 
-const StrategyForAllContainer: React.FC = () => {
+const StrategyForAdsContainer: React.FC = () => {
   // Tab management
   const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create');
 
   // Existing state for campaign creation
-  const [phase, setPhase] = useState<StrategyForAllPhase>('setup');
+  const [phase, setPhase] = useState<StrategyForAdsPhase>('setup');
   const [activeStep, setActiveStep] = useState(0);
-  const [formData, setFormData] = useState<StrategyForAllFormData | null>(null);
+  const [formData, setFormData] = useState<StrategyForAdsFormData | null>(null);
 
   // Dynamic steps based on user's ad set count selection
   const adSetCount = formData?.duplicationSettings?.adSetCount || 50;
   const steps = [
-    'Campaign Setup (1-1-1)',
-    'Post ID Collection',
-    `Duplication (1-${adSetCount}-1)`,
+    'Campaign Setup',
+    'Creation with Variations',
     'Completion'
   ];
-  const [campaignResult, setCampaignResult] = useState<StrategyForAllResponse | null>(null);
+  const [campaignResult, setCampaignResult] = useState<StrategyForAdsResponse | null>(null);
   const [postId, setPostId] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [skippedFields, setSkippedFields] = useState<any>(null);
@@ -94,8 +93,8 @@ const StrategyForAllContainer: React.FC = () => {
     }
   };
 
-  const handlePhase1Submit = async (data: StrategyForAllFormData) => {
-    console.log('\n🎯 ========== STRATEGY FOR ALL CLIENT START ==========');
+  const handlePhase1Submit = async (data: StrategyForAdsFormData) => {
+    console.log('\n🎯 ========== STRATEGY FOR ADS CLIENT START ==========');
     console.log('📄 Form Data Received:', data);
     console.log('📊 Key Parameters:');
     console.log('  - Campaign Name:', data.campaignName);
@@ -105,6 +104,10 @@ const StrategyForAllContainer: React.FC = () => {
     console.log('  - Conversion Event:', data.conversionEvent);
     console.log('  - Attribution Setting:', data.attributionSetting);
     console.log('  - Attribution Window:', data.attributionWindow);
+    console.log('\n🎨 AD VARIATION CONFIG:');
+    console.log('  - Selected Ad Sets:', data.adVariationConfig?.selectedAdSetIndices);
+    console.log('  - Ads Per Ad Set:', data.adVariationConfig?.adsPerAdSet);
+    console.log('  - Variations:', data.adVariationConfig?.variations?.length || 0);
 
     console.log('\n🔍 ========== USER SELECTIONS DEBUG ==========');
     console.log('🎯 PLACEMENTS:');
@@ -334,6 +337,9 @@ const StrategyForAllContainer: React.FC = () => {
       // CRITICAL: Include duplication settings
       workingCampaignData.duplicationSettings = campaignData.duplicationSettings;
 
+      // CRITICAL: Include ad variation config for Strategy for Ads
+      workingCampaignData.adVariationConfig = data.adVariationConfig;
+
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {
         budgetType: workingCampaignData.budgetType,
@@ -349,12 +355,14 @@ const StrategyForAllContainer: React.FC = () => {
       });
 
       console.log('\n📤 Sending Request to Backend...');
-      console.log('🔗 Endpoint: /api/campaigns/strategy-for-all/create');
+      console.log('🔗 Endpoint: /api/campaigns/strategy-for-ads/create');
       console.log('📦 Payload size:', JSON.stringify(workingCampaignData).length, 'bytes');
       console.log('📊 Request data:', workingCampaignData);
       console.log('🔍 Attribution in workingCampaignData:');
       console.log('  - attributionSetting:', workingCampaignData.attributionSetting);
       console.log('  - attributionWindow:', workingCampaignData.attributionWindow);
+      console.log('🎨 Ad Variation Config:');
+      console.log('  - adVariationConfig:', workingCampaignData.adVariationConfig);
 
       // Create FormData to handle file uploads properly
       const formData = new FormData();
@@ -419,7 +427,7 @@ const StrategyForAllContainer: React.FC = () => {
         formData.set('adSetBudget', JSON.stringify(adSetBudget));
       }
 
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/campaigns/strategy-for-all/create`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/campaigns/strategy-for-ads/create`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -449,29 +457,23 @@ const StrategyForAllContainer: React.FC = () => {
 📱 Page: ${pageName}
 🎯 Pixel: ${pixelId}`;
 
-        // Transform CampaignResponse to StrategyForAllResponse format
-        const strategyForAllResult: StrategyForAllResponse = {
+        // Transform CampaignResponse to StrategyForAdsResponse format
+        const strategyForAdsResult: StrategyForAdsResponse = {
           success: true,
           message: enhancedMessage,
           data: {
-            phase: 'waiting', // Set to waiting since we'll capture Post ID next
+            phase: 'completed', // Strategy for Ads completes in one step
             campaign: result.data?.campaign || {
               id: 'unknown',
               name: data.campaignName
             },
-            adSet: result.data?.adSet || {
-              id: 'unknown',
-              name: `${data.campaignName} - Ad Set 1`
-            },
-            ads: result.data?.ads || [{
-              id: 'unknown',
-              name: `${data.campaignName} - Ad 1`
-            }]
+            adSets: result.data?.adSets || [], // Multiple ad sets created
+            ads: result.data?.ads || [] // Multiple ads created
           }
         };
 
-        console.log('📝 Transformed response:', strategyForAllResult);
-        setCampaignResult(strategyForAllResult);
+        console.log('📝 Transformed response:', strategyForAdsResult);
+        setCampaignResult(strategyForAdsResult);
 
         // Check if fallback was used (fields were skipped)
         if (result.data?.adSet?._skippedFields) {
@@ -480,29 +482,16 @@ const StrategyForAllContainer: React.FC = () => {
           console.log('📢 Some fields were skipped for successful creation:', result.data.adSet._skippedFields);
         }
 
-        setPhase('waiting');
-
-        // Extract ad ID from the first ad for Post ID capture
-        const adId = result.data?.ads?.[0]?.id;
-        console.log('🎯 Extracted ad ID for Post ID capture:', adId);
-
-        if (adId) {
-          // Start automatic post ID capture with extracted ad ID
-          setTimeout(() => {
-            console.log('⏰ Starting Post ID capture for ad:', adId);
-            handleAutoPostCapture(adId);
-          }, 30000); // Wait 30 seconds before trying to fetch post ID
-        } else {
-          console.warn('⚠️ No ad ID found in response, switching to manual input');
-          setPhase('manual');
-        }
+        // Strategy for Ads completes in one step - go directly to completion
+        setPhase('completed');
+        setActiveStep(2);
       } else {
         // Handle errors (CampaignResponse only has 'error' field)
         throw new Error(result.error || 'Failed to create campaign');
       }
     } catch (error: any) {
-      console.error('\n❌ ========== STRATEGY FOR ALL FAILED ==========');
-      console.error('🔴 Phase 1 error:', error);
+      console.error('\n❌ ========== STRATEGY FOR ADS FAILED ==========');
+      console.error('🔴 Campaign creation error:', error);
       console.error('📍 Error Type:', error.name);
       console.error('📍 Error Status:', error.response?.status);
       console.error('📍 Error URL:', error.config?.url);
@@ -753,4 +742,4 @@ const StrategyForAllContainer: React.FC = () => {
   );
 };
 
-export default StrategyForAllContainer;
+export default StrategyForAdsContainer;

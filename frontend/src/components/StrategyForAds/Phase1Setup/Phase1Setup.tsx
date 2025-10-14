@@ -11,10 +11,12 @@ import {
   CircularProgress
 } from '@mui/material';
 import { FormProvider, useForm } from 'react-hook-form';
-import { StrategyForAllFormData } from '../../../types/strategyForAll';
+import { StrategyForAdsFormData } from '../../../types/strategyForAds';
 import CampaignSection from './CampaignSection';
 import AdSetSection from './AdSetSection';
 import AdSection from './AdSection';
+import AdVariationSetup from './AdVariationSetup';
+import AdVariationForms from './AdVariationForms';
 import TemplateManager from '../../Templates/TemplateManager';
 import { TemplateData, templateApi } from '../../../services/templateApi';
 import { ConfirmationDialog } from '../ConfirmationDialog';
@@ -22,18 +24,18 @@ import { useFacebookResources } from '../../../hooks/useFacebookResources';
 
 
 interface Phase1SetupProps {
-  onSubmit: (data: StrategyForAllFormData) => void;
+  onSubmit: (data: StrategyForAdsFormData) => void;
   error?: string;
 }
 
 const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
   const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [pendingFormData, setPendingFormData] = useState<StrategyForAllFormData | null>(null);
+  const [pendingFormData, setPendingFormData] = useState<StrategyForAdsFormData | null>(null);
   const { resources } = useFacebookResources();
 
   // System default values (fallback if no user template)
-  const systemDefaults: StrategyForAllFormData = {
+  const systemDefaults: StrategyForAdsFormData = {
     // Campaign Level Defaults
     campaignName: '',
     buyingType: 'AUCTION',
@@ -110,11 +112,18 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
       budgetPerAdSet: undefined // Calculated automatically
     },
 
+    // Ad Variation Configuration (NEW for Strategy for Ads)
+    adVariationConfig: {
+      selectedAdSetIndices: [],  // No ad sets selected for variations by default
+      adsPerAdSet: 3,            // Default 3 ads per ad set
+      variations: []             // Will be populated by AdVariationForms
+    },
+
     // Budget type for consistency
     budgetType: 'daily'
   };
 
-  const methods = useForm<StrategyForAllFormData>({
+  const methods = useForm<StrategyForAdsFormData>({
     defaultValues: systemDefaults
   });
 
@@ -171,7 +180,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
     return item && typeof item === 'object' && !Array.isArray(item);
   };
 
-  const handleFormSubmit = methods.handleSubmit((data: StrategyForAllFormData) => {
+  const handleFormSubmit = methods.handleSubmit((data: StrategyForAdsFormData) => {
     // Show confirmation dialog before submitting
     setPendingFormData(data);
     setConfirmDialogOpen(true);
@@ -197,7 +206,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
     Object.keys(templateData).forEach((key) => {
       const value = templateData[key as keyof TemplateData];
       if (value !== undefined && value !== null) {
-        methods.setValue(key as keyof StrategyForAllFormData, value);
+        methods.setValue(key as keyof StrategyForAdsFormData, value);
       }
     });
   };
@@ -264,6 +273,32 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
         {/* Ad Section */}
         <AdSection />
 
+        {/* Ad Variation Setup - Show only if ad sets are configured */}
+        {methods.watch('duplicationSettings.adSetCount') > 0 && (
+          <>
+            <AdVariationSetup
+              adSetCount={methods.watch('duplicationSettings.adSetCount') || 0}
+            />
+
+            {/* Ad Variation Forms - Show only if ad sets are selected for variations */}
+            {(methods.watch('adVariationConfig.selectedAdSetIndices') || []).length > 0 &&
+              methods.watch('adVariationConfig.adsPerAdSet') > 0 && (
+              <AdVariationForms
+                adsPerAdSet={methods.watch('adVariationConfig.adsPerAdSet') || 3}
+                originalAdData={{
+                  primaryText: methods.watch('primaryText') || '',
+                  headline: methods.watch('headline') || '',
+                  description: methods.watch('description') || '',
+                  url: methods.watch('url') || '',
+                  displayLink: methods.watch('displayLink') || '',
+                  callToAction: methods.watch('callToAction') || 'LEARN_MORE',
+                  mediaType: methods.watch('mediaType') || 'single_image'
+                }}
+              />
+            )}
+          </>
+        )}
+
         {/* Submit Button */}
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
           <Button
@@ -273,13 +308,14 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
             sx={{ minWidth: 300, py: 1.5 }}
             color="primary"
           >
-            Create Initial Campaign (1-1-1)
+            Create Campaign with Ad Variations
           </Button>
         </Box>
 
         {/* Info Alert */}
         <Alert severity="info" sx={{ mt: 3 }}>
-          After creating the initial campaign, you'll be able to capture the Post ID and duplicate it into 49 additional ad sets with $1 budget each.
+          Strategy for Ads will create your campaign with ad variations in selected ad sets.
+          Ad sets without variations will reuse the original post ID to preserve social proof.
         </Alert>
 
         {/* Budget Confirmation Dialog */}
