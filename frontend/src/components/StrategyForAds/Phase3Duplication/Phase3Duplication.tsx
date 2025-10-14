@@ -14,12 +14,12 @@ import {
   Alert
 } from '@mui/material';
 import { CheckCircle, Error as ErrorIcon, ContentCopy } from '@mui/icons-material';
-import { StrategyForAllResponse, StrategyForAllFormData, DuplicationProgress } from '../../../types/strategyForAll';
+import { StrategyForAdsResponse, StrategyForAdsFormData, DuplicationProgress } from '../../../types/strategyForAds';
 
 interface Phase3DuplicationProps {
-  campaignResult: StrategyForAllResponse | null;
+  campaignResult: StrategyForAdsResponse | null;
   postId: string;
-  formData: StrategyForAllFormData | null;
+  formData: StrategyForAdsFormData | null;
   onCompleted: (duplicatedAdSets: Array<{ id: string; name: string }>) => void;
 }
 
