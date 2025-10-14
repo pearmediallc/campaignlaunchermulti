@@ -1810,6 +1810,35 @@ class FacebookAPI {
         console.log(`⚠️ Using fallback account ID: ${campaignAccountId}`);
       }
 
+      // Fetch original ad's creative data for variations (needed for video/image assets)
+      let originalCreativeData = null;
+      if (adVariationConfig && adVariationConfig.selectedAdSetIndices && adVariationConfig.selectedAdSetIndices.length > 0) {
+        console.log('🎨 Fetching original ad creative data for variations...');
+        try {
+          const adsResponse = await axios.get(
+            `${this.baseURL}/${originalAdSetId}/ads`,
+            {
+              params: {
+                fields: 'creative{object_story_spec,effective_object_story_id}',
+                access_token: this.accessToken,
+                limit: 1
+              }
+            }
+          );
+
+          if (adsResponse.data?.data?.[0]?.creative?.object_story_spec) {
+            originalCreativeData = adsResponse.data.data[0].creative.object_story_spec;
+            console.log('✅ Original creative data fetched:', {
+              hasVideoData: !!originalCreativeData.video_data,
+              hasLinkData: !!originalCreativeData.link_data,
+              videoId: originalCreativeData.video_data?.video_id || 'N/A'
+            });
+          }
+        } catch (error) {
+          console.error('⚠️ Could not fetch original creative data:', error.message);
+        }
+      }
+
       // Facebook's /copies endpoint for AD SETS - different from campaign copies
       console.log(`📋 Creating ${count} copies of ad set ${originalAdSetId} in campaign ${campaignId}...`);
       console.log(`📊 Using account ID ${campaignAccountId} for ad set creation`);
@@ -1985,25 +2014,62 @@ class FacebookAPI {
               const variation = adVariationConfig.variations[v];
 
               try {
+                // Build object_story_spec based on media type
+                let objectStorySpec = {
+                  page_id: this.pageId
+                };
+
+                // Check if original ad has video or image data
+                if (originalCreativeData?.video_data) {
+                  // VIDEO AD - use video_data
+                  console.log(`  📹 Creating video ad variation ${v + 1} with video_id: ${originalCreativeData.video_data.video_id}`);
+                  objectStorySpec.video_data = {
+                    video_id: originalCreativeData.video_data.video_id,
+                    title: variation.headline || formData.headline,
+                    message: variation.primaryText || formData.primaryText,
+                    link_description: variation.description || formData.description,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                      value: {
+                        link: variation.websiteUrl || formData.url
+                      }
+                    },
+                    image_url: originalCreativeData.video_data.image_url // Video thumbnail
+                  };
+                } else if (originalCreativeData?.link_data) {
+                  // IMAGE/LINK AD - use link_data
+                  console.log(`  📸 Creating image ad variation ${v + 1}`);
+                  objectStorySpec.link_data = {
+                    message: variation.primaryText || formData.primaryText,
+                    name: variation.headline || formData.headline,
+                    description: variation.description || formData.description,
+                    link: variation.websiteUrl || formData.url,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE'
+                    },
+                    picture: originalCreativeData.link_data.picture // Image hash/URL
+                  };
+                } else {
+                  // Fallback to link_data if no creative data found
+                  console.warn(`  ⚠️ No original creative data found, using link_data fallback`);
+                  objectStorySpec.link_data = {
+                    message: variation.primaryText || formData.primaryText,
+                    name: variation.headline || formData.headline,
+                    description: variation.description || formData.description,
+                    link: variation.websiteUrl || formData.url,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE'
+                    }
+                  };
+                }
+
                 // Create ad with variation content
                 const variationAdData = {
                   name: `${formData.campaignName} - Ad Set ${i + 1} - Ad ${v + 1}`,
                   adset_id: newAdSetId,
                   creative: JSON.stringify({
                     name: `Ad Variation ${v + 1}`,
-                    object_story_spec: {
-                      page_id: this.pageId,
-                      link_data: {
-                        message: variation.primaryText || formData.primaryText,
-                        name: variation.headline || formData.headline,
-                        description: variation.description || formData.description,
-                        link: variation.websiteUrl || formData.url,
-                        call_to_action: {
-                          type: variation.callToAction || formData.callToAction || 'LEARN_MORE'
-                        }
-                        // Note: Media handling would go here if variation has custom media
-                      }
-                    }
+                    object_story_spec: objectStorySpec
                   }),
                   status: 'ACTIVE',
                   access_token: this.accessToken
