@@ -134,12 +134,12 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
                 creative: {
                   object_story_spec: {
                     link_data: {
-                      message: originalAdData.primaryText,
-                      name: originalAdData.headline,
-                      description: originalAdData.description,
-                      link: originalAdData.url,
+                      message: originalAdData.primaryText || '',
+                      name: originalAdData.headline || '',
+                      description: originalAdData.description || '',
+                      link: originalAdData.url || '',
                       call_to_action: {
-                        type: originalAdData.callToAction
+                        type: originalAdData.callToAction || 'LEARN_MORE'
                       }
                     }
                   }
