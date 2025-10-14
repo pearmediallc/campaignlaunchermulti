@@ -63,17 +63,23 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
 
   const formatCurrency = (value?: number) => {
     if (!value) return '$0.00';
-    return `$${(value / 100).toFixed(2)}`;
+    const numValue = Number(value);
+    if (isNaN(numValue)) return '$0.00';
+    return `$${(numValue / 100).toFixed(2)}`;
   };
 
   const formatNumber = (value?: number) => {
     if (!value) return '0';
-    return value.toLocaleString();
+    const numValue = Number(value);
+    if (isNaN(numValue)) return '0';
+    return numValue.toLocaleString();
   };
 
   const formatPercentage = (value?: number) => {
     if (!value) return '0.00%';
-    return `${value.toFixed(2)}%`;
+    const numValue = Number(value);
+    if (isNaN(numValue)) return '0.00%';
+    return `${numValue.toFixed(2)}%`;
   };
 
   const getCellValue = (columnId: string) => {
