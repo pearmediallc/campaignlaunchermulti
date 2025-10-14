@@ -174,11 +174,9 @@ const Strategy150Container: React.FC = () => {
         // Targeting
         targeting: data.targeting || {
           locations: { countries: ['US'] },
-          demographics: {
-            ageMin: 18,
-            ageMax: 65,
-            genders: ['all']
-          }
+          ageMin: 18,
+          ageMax: 65,
+          genders: ['all']
         },
 
         // Placements
