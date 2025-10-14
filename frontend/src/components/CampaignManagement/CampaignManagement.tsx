@@ -302,7 +302,7 @@ const CampaignManagement: React.FC = () => {
     if (!amount) return '$0.00';
     const numAmount = Number(amount);
     if (isNaN(numAmount)) return '$0.00';
-    return `$${(numAmount / 100).toFixed(2)}`;
+    return `$${numAmount.toFixed(2)}`;
   };
 
   const formatNumber = (num?: number | string) => {

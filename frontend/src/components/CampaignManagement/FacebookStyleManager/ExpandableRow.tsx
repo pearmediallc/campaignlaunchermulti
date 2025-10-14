@@ -65,7 +65,7 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
     if (!value) return '$0.00';
     const numValue = Number(value);
     if (isNaN(numValue)) return '$0.00';
-    return `$${(numValue / 100).toFixed(2)}`;
+    return `$${numValue.toFixed(2)}`;
   };
 
   const formatNumber = (value?: number) => {
