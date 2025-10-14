@@ -27,12 +27,12 @@ import {
   ContentCopy as CopyIcon,
   Psychology as VariationIcon
 } from '@mui/icons-material';
-import { StrategyForAllResponse } from '../../../types/strategyForAll';
+import { StrategyForAdsResponse } from '../../../types/strategyForAds';
 import MultiplyContainer from '../MultiplySection/MultiplyContainer';
 import AdDuplicationModal from '../AdDuplication/AdDuplicationModal';
 
 interface CompletionSummaryProps {
-  campaignResult: StrategyForAllResponse | null;
+  campaignResult: StrategyForAdsResponse | null;
   postId: string;
   onCreateNew: () => void;
   adSetCount?: number; // Total ad set count from formData

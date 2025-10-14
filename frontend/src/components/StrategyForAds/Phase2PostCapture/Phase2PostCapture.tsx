@@ -13,11 +13,11 @@ import {
   Chip
 } from '@mui/material';
 import { CheckCircle, Schedule, Error as ErrorIcon, Refresh } from '@mui/icons-material';
-import { StrategyForAllResponse, StrategyForAllPhase } from '../../../types/strategyForAll';
+import { StrategyForAdsResponse, StrategyForAdsPhase } from '../../../types/strategyForAds';
 
 interface Phase2PostCaptureProps {
-  campaignResult: StrategyForAllResponse | null;
-  phase: StrategyForAllPhase;
+  campaignResult: StrategyForAdsResponse | null;
+  phase: StrategyForAdsPhase;
   onPostIdCaptured: (postId: string) => void;
   onManualInput: (postId: string) => void;
   onRetry: () => void;
