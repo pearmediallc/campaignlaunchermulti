@@ -202,7 +202,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
             </ListItemIcon>
             <ListItemText
               primary="Original Ad Set"
-              secondary={`Ad Set: ${campaignResult?.data?.adSet.name}`}
+              secondary={`Ad Set: ${campaignResult?.data?.adSet?.name || 'Unknown'}`}
             />
           </ListItem>
 
