@@ -131,7 +131,7 @@ export const useCampaignManagement = () => {
           cpc: parseFloat(cpc.toFixed(2)), // Already in dollars from Facebook API
           conversions: totalMetrics.conversions,
           roas: parseFloat(roas.toFixed(2)),
-          dailyBudget: campaign.daily_budget ? campaign.daily_budget : 0, // Already in dollars from Facebook API
+          dailyBudget: campaign.daily_budget ? campaign.daily_budget / 100 : 0, // Convert from cents to dollars
           budgetType: campaign.daily_budget ? 'daily' : 'lifetime',
           facebookCampaignId: campaign.id,
           objective: campaign.objective,

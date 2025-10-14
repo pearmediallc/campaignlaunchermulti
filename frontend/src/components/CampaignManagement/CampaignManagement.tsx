@@ -305,6 +305,13 @@ const CampaignManagement: React.FC = () => {
     return `$${numAmount.toFixed(2)}`;
   };
 
+  const formatBudget = (amount?: number | string) => {
+    if (!amount) return '$0.00';
+    const numAmount = Number(amount);
+    if (isNaN(numAmount)) return '$0.00';
+    return `$${(numAmount / 100).toFixed(2)}`; // Budgets are in cents
+  };
+
   const formatNumber = (num?: number | string) => {
     if (!num) return '0';
     const numValue = Number(num);
@@ -582,7 +589,7 @@ const CampaignManagement: React.FC = () => {
               </div>
               {campaignDetails.daily_budget && (
                 <div className="col">
-                  <strong>Daily Budget:</strong> {formatCurrency(campaignDetails.daily_budget)}
+                  <strong>Daily Budget:</strong> {formatBudget(campaignDetails.daily_budget)}
                 </div>
               )}
             </div>
@@ -624,7 +631,7 @@ const CampaignManagement: React.FC = () => {
                           </span>
                           <small className="d-block text-muted">{adset.learning_message}</small>
                         </td>
-                        <td>{formatCurrency(adset.daily_budget)}</td>
+                        <td>{formatBudget(adset.daily_budget)}</td>
                         <td>{formatNumber(adset.metrics?.impressions)}</td>
                         <td>{formatNumber(adset.metrics?.clicks)}</td>
                         <td>{formatCurrency(adset.metrics?.spend)}</td>

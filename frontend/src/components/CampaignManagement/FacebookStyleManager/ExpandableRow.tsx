@@ -68,6 +68,13 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
     return `$${numValue.toFixed(2)}`;
   };
 
+  const formatBudget = (value?: number) => {
+    if (!value) return '$0.00';
+    const numValue = Number(value);
+    if (isNaN(numValue)) return '$0.00';
+    return `$${(numValue / 100).toFixed(2)}`; // Budgets are in cents
+  };
+
   const formatNumber = (value?: number) => {
     if (!value) return '0';
     const numValue = Number(value);
@@ -110,7 +117,7 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
         );
       case 'budget':
         const budget = (item as CampaignData).daily_budget || (item as AdSetData).daily_budget;
-        return formatCurrency(budget);
+        return formatBudget(budget);
       case 'results':
         return formatNumber(metrics?.results);
       case 'reach':
@@ -197,7 +204,7 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                               />
                             </TableCell>
                             <TableCell sx={{ fontSize: '13px' }}>
-                              {formatCurrency(adset.daily_budget)}
+                              {formatBudget(adset.daily_budget)}
                             </TableCell>
                             <TableCell sx={{ fontSize: '13px' }}>
                               {formatNumber(adset.metrics?.impressions)}
