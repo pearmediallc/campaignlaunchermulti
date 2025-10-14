@@ -650,6 +650,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         budgetDistributionType: req.body.duplicationSettings?.budgetDistributionType ?? 'equal'  // Defaults to equal if not provided
       },
 
+      // Ad Variation Config (NEW for Strategy for Ads)
+      adVariationConfig: req.body.adVariationConfig ? {
+        selectedAdSetIndices: req.body.adVariationConfig.selectedAdSetIndices || [],
+        adsPerAdSet: req.body.adVariationConfig.adsPerAdSet || 3,
+        variations: req.body.adVariationConfig.variations || []
+      } : undefined,
+
       // Process control
       publishDirectly: req.body.publishDirectly !== undefined ? req.body.publishDirectly : false,
 
@@ -672,18 +679,20 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         : (req.body.adSetBudget?.lifetimeBudget || req.body.lifetimeBudget)
     };
 
-    console.log('🟢 Creating Strategy for-all campaign with data:', {
+    console.log('🟢 Creating Strategy for Ads campaign with data:', {
       campaignName: campaignData.campaignName,
       buyingType: campaignData.buyingType,
       objective: campaignData.objective,
       performanceGoal: campaignData.performanceGoal,
       publishDirectly: campaignData.publishDirectly,
       specialAdCategories: campaignData.specialAdCategories,
-      bidStrategy: campaignData.bidStrategy
+      bidStrategy: campaignData.bidStrategy,
+      hasAdVariations: !!campaignData.adVariationConfig
     });
 
     console.log('🟢 Special Ad Categories detail:', JSON.stringify(campaignData.specialAdCategories));
     console.log('🟢 Targeting detail:', JSON.stringify(campaignData.targeting));
+    console.log('🎨 Ad Variation Config:', JSON.stringify(campaignData.adVariationConfig, null, 2));
 
     // DEBUG: Check spending limits data
     console.log('🔍 DEBUG - Spending Limits Data Flow:');
@@ -709,12 +718,26 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Conversion Event:', campaignData.conversionEvent);
     console.log('  Ad Set Count:', campaignData.duplicationSettings?.adSetCount || 'Not set');
 
-    // Create the initial 1-1-1 campaign structure
+    // Create campaign with or without ad variations
     let result;
     try {
-      result = await userFacebookApi.createCampaignStructure(campaignData);
+      if (campaignData.adVariationConfig && campaignData.adVariationConfig.selectedAdSetIndices.length > 0) {
+        // Strategy for Ads: Create campaign with ad variations
+        console.log('🎨 Creating campaign WITH ad variations');
+
+        // TODO: Implement createCampaignWithAdVariations in FacebookAPI
+        // For now, create basic structure and note that variation logic needs implementation
+        result = await userFacebookApi.createCampaignStructure(campaignData);
+
+        console.warn('⚠️ Ad variation creation not yet implemented in FacebookAPI');
+        console.warn('   Campaign created without variations. Implement createCampaignWithAdVariations method.');
+      } else {
+        // Basic campaign creation (StrategyForAll compatible)
+        console.log('📝 Creating standard campaign structure');
+        result = await userFacebookApi.createCampaignStructure(campaignData);
+      }
     } catch (error) {
-      console.error('❌ Strategy for-all Campaign Creation Error:');
+      console.error('❌ Strategy for Ads Campaign Creation Error:');
       console.error('Error message:', error.message);
       console.error('Error code:', error.fbError?.code || error.status || 'Unknown');
       if (error.fbError) {

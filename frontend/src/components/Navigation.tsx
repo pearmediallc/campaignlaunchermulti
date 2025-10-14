@@ -192,6 +192,28 @@ const Navigation: React.FC = () => {
               Strategy for All
             </Button>
 
+            {/* Strategy for Ads Button */}
+            <Button
+              variant="outlined"
+              startIcon={<AutoAwesome />}
+              onClick={() => navigate('/strategy-for-ads')}
+              sx={{
+                borderColor: '#1877f2',
+                color: '#1877f2',
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '14px',
+                px: 2,
+                '&:hover': {
+                  borderColor: '#166fe5',
+                  color: '#166fe5',
+                  backgroundColor: 'rgba(24, 119, 242, 0.04)'
+                }
+              }}
+            >
+              Strategy for Ads
+            </Button>
+
             {/* Campaign Management Button */}
             <Button
               variant="outlined"

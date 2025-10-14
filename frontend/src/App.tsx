@@ -21,6 +21,7 @@ import FacebookSDKTest from './pages/FacebookSDKTest';
 import ResourcesManagement from './pages/ResourcesManagement';
 import Strategy150Container from './components/Strategy150/Strategy150Container';
 import StrategyForAllContainer from './components/StrategyForAll/StrategyForAllContainer';
+import StrategyForAdsContainer from './components/StrategyForAds/StrategyForAdsContainer';
 import CampaignManagement from './components/CampaignManagement/CampaignManagement';
 
 // Configure axios defaults for production
@@ -198,6 +199,17 @@ function App() {
                   <>
                     <Navigation />
                     <StrategyForAllContainer />
+                  </>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/strategy-for-ads"
+              element={
+                <ProtectedRoute>
+                  <>
+                    <Navigation />
+                    <StrategyForAdsContainer />
                   </>
                 </ProtectedRoute>
               }

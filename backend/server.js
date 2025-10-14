@@ -128,6 +128,9 @@ app.use('/api/campaigns/strategy-150', require('./routes/strategy150'));
 // Strategy for All routes (must be before general campaigns route)
 app.use('/api/campaigns/strategy-for-all', require('./routes/strategyForAll'));
 
+// Strategy for Ads routes (must be before general campaigns route)
+app.use('/api/campaigns/strategy-for-ads', require('./routes/strategyForAds'));
+
 // Ad duplication routes (sub-route of strategy-for-all)
 app.use('/api/campaigns/strategy-for-all/ads', require('./routes/adDuplication'));
 
