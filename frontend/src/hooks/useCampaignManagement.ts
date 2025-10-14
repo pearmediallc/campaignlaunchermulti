@@ -124,14 +124,14 @@ export const useCampaignManagement = () => {
           status: campaign.status as 'ACTIVE' | 'PAUSED',
           createdDate: new Date(campaign.created_time).toISOString().split('T')[0],
           adSetsCount: adsets.length,
-          totalSpend: totalMetrics.spend / 100, // Convert from cents
+          totalSpend: totalMetrics.spend / 100, // Convert from cents to dollars
           impressions: totalMetrics.impressions,
           clicks: totalMetrics.clicks,
           ctr: parseFloat(ctr.toFixed(2)),
-          cpc: parseFloat((cpc / 100).toFixed(2)), // Convert from cents
+          cpc: parseFloat((cpc / 100).toFixed(2)), // Convert from cents to dollars
           conversions: totalMetrics.conversions,
           roas: parseFloat(roas.toFixed(2)),
-          dailyBudget: campaign.daily_budget ? campaign.daily_budget / 100 : 0,
+          dailyBudget: campaign.daily_budget ? campaign.daily_budget / 100 : 0, // Convert from cents to dollars
           budgetType: campaign.daily_budget ? 'daily' : 'lifetime',
           facebookCampaignId: campaign.id,
           objective: campaign.objective,
