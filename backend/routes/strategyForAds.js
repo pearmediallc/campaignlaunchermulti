@@ -721,16 +721,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // Create campaign with or without ad variations
     let result;
     try {
-      if (campaignData.adVariationConfig && campaignData.adVariationConfig.selectedAdSetIndices.length > 0) {
+      if (campaignData.adVariationConfig &&
+          campaignData.adVariationConfig.selectedAdSetIndices &&
+          campaignData.adVariationConfig.selectedAdSetIndices.length > 0) {
         // Strategy for Ads: Create campaign with ad variations
         console.log('🎨 Creating campaign WITH ad variations');
-
-        // TODO: Implement createCampaignWithAdVariations in FacebookAPI
-        // For now, create basic structure and note that variation logic needs implementation
-        result = await userFacebookApi.createCampaignStructure(campaignData);
-
-        console.warn('⚠️ Ad variation creation not yet implemented in FacebookAPI');
-        console.warn('   Campaign created without variations. Implement createCampaignWithAdVariations method.');
+        result = await userFacebookApi.createCampaignWithAdVariations(campaignData);
       } else {
         // Basic campaign creation (StrategyForAll compatible)
         console.log('📝 Creating standard campaign structure');

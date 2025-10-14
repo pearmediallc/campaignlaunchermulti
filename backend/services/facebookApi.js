@@ -1347,6 +1347,167 @@ class FacebookAPI {
     }
   }
 
+  // Strategy for Ads: Create campaign with ad variations in selected ad sets
+  async createCampaignWithAdVariations(campaignData) {
+    try {
+      console.log('🎨 Starting Strategy for Ads campaign creation');
+      console.log('📊 Ad Variation Config:', {
+        selectedAdSetIndices: campaignData.adVariationConfig?.selectedAdSetIndices,
+        adsPerAdSet: campaignData.adVariationConfig?.adsPerAdSet,
+        variationCount: campaignData.adVariationConfig?.variations?.length
+      });
+
+      const isCBO = campaignData.budgetLevel === 'campaign';
+
+      // Step 1: Create Campaign
+      const campaign = await this.createCampaign({
+        name: campaignData.campaignName,
+        objective: campaignData.objective,
+        bidStrategy: campaignData.bidStrategy,
+        specialAdCategories: campaignData.specialAdCategories,
+        daily_budget: isCBO ? (campaignData.campaignBudget?.dailyBudget || campaignData.dailyBudget) : undefined,
+        lifetime_budget: isCBO ? (campaignData.campaignBudget?.lifetimeBudget || campaignData.lifetimeBudget) : undefined
+      });
+
+      console.log('✅ Campaign created:', campaign.id);
+
+      const adSetCount = campaignData.duplicationSettings?.adSetCount || 1;
+      const selectedIndices = campaignData.adVariationConfig?.selectedAdSetIndices || [];
+      const adsPerAdSet = campaignData.adVariationConfig?.adsPerAdSet || 1;
+      const variations = campaignData.adVariationConfig?.variations || [];
+
+      // Upload original media first
+      let originalMediaAssets = {};
+      if (campaignData.mediaType === 'single_image' && campaignData.imagePath) {
+        const imageHash = await this.uploadImage(campaignData.imagePath);
+        if (imageHash) originalMediaAssets.imageHash = imageHash;
+      } else if ((campaignData.mediaType === 'video' || campaignData.mediaType === 'single_video') && campaignData.videoPath) {
+        const videoId = await this.uploadVideo(campaignData.videoPath);
+        if (videoId) {
+          originalMediaAssets.videoId = videoId;
+          const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
+          if (thumbnailUrl) originalMediaAssets.videoThumbnail = thumbnailUrl;
+        }
+      }
+
+      const allAdSets = [];
+      const allAds = [];
+      let originalPostId = null;
+
+      // Step 2: Create all ad sets with their ads
+      for (let i = 0; i < adSetCount; i++) {
+        const adSetName = `${campaignData.campaignName} - Ad Set ${i + 1}`;
+
+        // Create ad set
+        const adSet = await this.createAdSet({
+          campaignName: adSetName,
+          campaignId: campaign.id,
+          budgetType: campaignData.budgetType || 'daily',
+          dailyBudget: isCBO ? undefined : campaignData.dailyBudget,
+          lifetimeBudget: isCBO ? undefined : campaignData.lifetimeBudget,
+          conversionLocation: campaignData.conversionLocation || 'website',
+          conversionEvent: campaignData.conversionEvent,
+          performanceGoal: campaignData.performanceGoal,
+          bidStrategy: campaignData.bidStrategy,
+          attributionSetting: campaignData.attributionSetting,
+          attributionWindow: campaignData.attributionWindow,
+          targeting: campaignData.targeting,
+          placements: campaignData.placements,
+          placementType: campaignData.placementType,
+          spendingLimits: campaignData.spendingLimits || campaignData.adSetBudget?.spendingLimits,
+          adSetBudget: campaignData.adSetBudget
+        });
+
+        allAdSets.push(adSet);
+
+        // Check if this ad set should have variations
+        const hasVariations = selectedIndices.includes(i);
+
+        if (hasVariations && variations.length > 0) {
+          console.log(`🎨 Creating ${adsPerAdSet} ad variations for Ad Set ${i + 1}`);
+
+          // Create multiple ads (variations)
+          for (let v = 0; v < Math.min(adsPerAdSet, variations.length); v++) {
+            const variation = variations[v];
+
+            // Handle variation-specific media
+            let variationMediaAssets = { ...originalMediaAssets };
+            if (variation.mediaFile && !variation.useOriginalMedia) {
+              if (variation.mediaFile.type?.startsWith('image/')) {
+                const imageHash = await this.uploadImage(variation.mediaFile.path);
+                if (imageHash) variationMediaAssets = { imageHash };
+              } else if (variation.mediaFile.type?.startsWith('video/')) {
+                const videoId = await this.uploadVideo(variation.mediaFile.path);
+                if (videoId) {
+                  variationMediaAssets = { videoId };
+                  const thumbnailUrl = await this.getVideoThumbnail(videoId, variation.mediaFile.path);
+                  if (thumbnailUrl) variationMediaAssets.videoThumbnail = thumbnailUrl;
+                }
+              }
+            }
+
+            const ad = await this.createAd({
+              name: `${adSetName} - Ad ${v + 1}`,
+              campaignName: adSetName,
+              adsetId: adSet.id,
+              url: variation.websiteUrl || campaignData.url,
+              primaryText: variation.primaryText || campaignData.primaryText,
+              headline: variation.headline || campaignData.headline,
+              description: variation.description || campaignData.description,
+              displayLink: variation.displayLink || campaignData.displayLink,
+              callToAction: variation.callToAction || campaignData.callToAction || 'LEARN_MORE',
+              mediaType: campaignData.mediaType || 'single_image',
+              ...variationMediaAssets
+            });
+
+            allAds.push(ad);
+          }
+        } else {
+          console.log(`📝 Creating single ad for Ad Set ${i + 1} (reusing original post ID)`);
+
+          // Create single ad
+          const ad = await this.createAd({
+            name: `${adSetName} - Ad 1`,
+            campaignName: adSetName,
+            adsetId: adSet.id,
+            url: campaignData.url,
+            primaryText: campaignData.primaryText,
+            headline: campaignData.headline,
+            description: campaignData.description,
+            displayLink: campaignData.displayLink,
+            callToAction: campaignData.callToAction || 'LEARN_MORE',
+            mediaType: campaignData.mediaType || 'single_image',
+            ...originalMediaAssets,
+            // If we have an original post ID, reuse it
+            object_story_id: originalPostId || undefined
+          });
+
+          allAds.push(ad);
+
+          // Store the first post ID for reuse
+          if (!originalPostId && ad.effective_object_story_id) {
+            originalPostId = ad.effective_object_story_id;
+            console.log('✅ Original post ID captured:', originalPostId);
+          }
+        }
+      }
+
+      console.log('✅ Strategy for Ads campaign complete:', {
+        campaign: campaign.id,
+        adSets: allAdSets.length,
+        ads: allAds.length
+      });
+
+      return {
+        campaign,
+        adSets: allAdSets,
+        ads: allAds
+      };
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
   // Strategy 150 specific methods
   async createStrategy150Campaign(campaignData) {
     console.log('\n🎯 ========== STRATEGY 1-50-1 START ==========');
