@@ -413,8 +413,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // NOTE: Don't validate selectedAdAccount/selectedPage here yet - they might come from active resource config
     // Validation will happen after checking UserResourceConfig
 
-    // Get pixel ID - either from selected pixel or fetch from ad account
-    let pixelId = facebookAuth.selectedPixel?.id;
+    // Get pixel ID - prioritize form submission, then selected pixel, then fetch from ad account
+    let pixelId = req.body.pixel || facebookAuth.selectedPixel?.id;
+    console.log('🔍 Pixel selection:', {
+      fromForm: req.body.pixel || 'Not provided',
+      fromAuth: facebookAuth.selectedPixel?.id || 'Not set',
+      usingPixel: pixelId || 'Will fetch from ad account'
+    });
 
     // Check if token exists and decrypt it
     if (!facebookAuth.accessToken) {
@@ -485,6 +490,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       selectedPageId = req.body.selectedPageId;
     }
 
+    // Override pixel with form submission if provided (user's explicit choice takes priority)
+    if (req.body.pixel) {
+      console.log('  ✅ Using pixel from form submission:', req.body.pixel);
+      selectedPixelId = req.body.pixel;
+    }
+
     // Validate that we have required resources
     if (!selectedAdAccountId) {
       return res.status(400).json({
@@ -503,7 +514,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       accessToken: decryptedToken,
       adAccountId: (selectedAdAccountId || facebookAuth.selectedAdAccount.id).replace('act_', ''),
       pageId: selectedPageId || facebookAuth.selectedPage.id,
-      pixelId: pixelId
+      pixelId: selectedPixelId  // Use selectedPixelId which includes form override
     });
 
     // Handle media files - uploadSingle uses .any() so files are in req.files array
