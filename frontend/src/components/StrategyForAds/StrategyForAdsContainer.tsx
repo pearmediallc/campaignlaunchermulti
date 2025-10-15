@@ -317,6 +317,8 @@ const StrategyForAdsContainer: React.FC = () => {
       console.log('  targeting.ageMin:', workingCampaignData.targeting?.ageMin);
       console.log('  targeting.ageMax:', workingCampaignData.targeting?.ageMax);
       console.log('  targeting.genders:', workingCampaignData.targeting?.genders);
+      console.log('\n🎯 Pixel:');
+      console.log('  pixel:', workingCampaignData.pixel || 'NOT SET');
       console.log('========================================\n');
 
       // Add budget based on type (make sure to get the actual values)
