@@ -25,7 +25,7 @@ import {
   Slider
 } from '@mui/material';
 import { Controller, useFormContext, useFieldArray } from 'react-hook-form';
-import { Settings, LocationOn, Add, Delete, Schedule, Calculate } from '@mui/icons-material';
+import { Settings, LocationOn, Add, Delete, Schedule, Calculate, Refresh } from '@mui/icons-material';
 import {
   PERFORMANCE_GOAL_OPTIONS,
   CONVERSION_EVENT_OPTIONS,
@@ -149,7 +149,7 @@ const US_STATES = [
 
 const AdSetSection: React.FC = () => {
   const { control, watch, setValue } = useFormContext<StrategyForAllFormData>();
-  const { resources, loading: loadingResources } = useFacebookResources();
+  const { resources, loading: loadingResources, refetch: refetchResources } = useFacebookResources();
   const [customAudiences, setCustomAudiences] = useState<any[]>([]);
   const [lookalikeAudiences, setLookalikeAudiences] = useState<any[]>([]);
 
@@ -236,7 +236,7 @@ const AdSetSection: React.FC = () => {
         </Box>
 
         {/* Pixel Selection */}
-        <Box sx={{ width: "100%" }}>
+        <Box sx={{ width: "100%", display: 'flex', gap: 1, alignItems: 'flex-start' }}>
           <Controller
             name="pixel"
             control={control}
@@ -273,9 +273,25 @@ const AdSetSection: React.FC = () => {
                 )}
                 {error && <FormHelperText>{error.message}</FormHelperText>}
                 {loadingPixels && <FormHelperText>Loading pixels...</FormHelperText>}
+                {resources.pixels.length === 0 && !loadingPixels && (
+                  <FormHelperText>
+                    No pixels found. Click refresh to fetch pixels from your ad account.
+                  </FormHelperText>
+                )}
               </FormControl>
             )}
           />
+          <IconButton
+            onClick={() => {
+              refetchResources();
+            }}
+            disabled={loadingPixels}
+            sx={{ mt: 1 }}
+            color="primary"
+            title="Refresh pixels from Facebook"
+          >
+            <Refresh />
+          </IconButton>
         </Box>
 
         {/* Manual Pixel Entry */}
