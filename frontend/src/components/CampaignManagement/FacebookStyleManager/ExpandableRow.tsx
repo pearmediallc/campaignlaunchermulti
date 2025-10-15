@@ -45,6 +45,7 @@ interface ExpandableRowProps {
   expandedRows?: Set<string>; // For tracking nested expansions
   loadingRows?: Set<string>; // For tracking which nested rows are loading
   onToggleRow?: (id: string) => void; // For toggling nested rows
+  onRefresh?: () => void; // Callback to refresh data after update/delete
 }
 
 /**
@@ -61,10 +62,12 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
   onToggle,
   expandedRows = new Set(),
   loadingRows = new Set(),
-  onToggleRow
+  onToggleRow,
+  onRefresh
 }) => {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const menuOpen = Boolean(anchorEl);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -76,10 +79,132 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
     setAnchorEl(null);
   };
 
-  const handleAction = (action: string) => {
+  const handleAction = async (action: string) => {
     console.log(`Action: ${action} on ${level} ${item.id}`);
-    // TODO: Implement actual actions
     handleMenuClose();
+    setActionLoading(true);
+
+    try {
+      const API_BASE = '/api/campaigns';
+      let endpoint = '';
+      let method = 'PUT';
+      let body: any = {};
+
+      switch (action) {
+        case 'edit':
+          // For edit, we'll implement inline editing or a dialog
+          // For now, just allow name editing via prompt
+          const newName = window.prompt(`Edit ${level} name:`, item.name);
+          if (!newName || newName === item.name) {
+            setActionLoading(false);
+            return;
+          }
+
+          if (level === 'campaigns') {
+            endpoint = `${API_BASE}/${item.id}/edit`;
+            body = { name: newName };
+          } else if (level === 'adsets') {
+            endpoint = `${API_BASE}/adsets/${item.id}/edit`;
+            body = { name: newName };
+          } else if (level === 'ads') {
+            endpoint = `${API_BASE}/ads/${item.id}/edit`;
+            body = { name: newName };
+          }
+          break;
+
+        case 'duplicate':
+          if (level === 'campaigns') {
+            const copyName = window.prompt('Enter name for the duplicated campaign:', `${item.name} - Copy`);
+            if (!copyName) {
+              setActionLoading(false);
+              return;
+            }
+            endpoint = `${API_BASE}/${item.id}/duplicate`;
+            method = 'POST';
+            body = { new_name: copyName, number_of_copies: 1 };
+          } else {
+            alert('Duplication is only available for campaigns at this time');
+            setActionLoading(false);
+            return;
+          }
+          break;
+
+        case 'pause':
+          if (level === 'campaigns') {
+            endpoint = `${API_BASE}/${item.id}/edit`;
+            body = { status: 'PAUSED' };
+          } else if (level === 'adsets') {
+            endpoint = `${API_BASE}/adsets/${item.id}/edit`;
+            body = { status: 'PAUSED' };
+          } else if (level === 'ads') {
+            endpoint = `${API_BASE}/ads/${item.id}/edit`;
+            body = { status: 'PAUSED' };
+          }
+          break;
+
+        case 'activate':
+          if (level === 'campaigns') {
+            endpoint = `${API_BASE}/${item.id}/edit`;
+            body = { status: 'ACTIVE' };
+          } else if (level === 'adsets') {
+            endpoint = `${API_BASE}/adsets/${item.id}/edit`;
+            body = { status: 'ACTIVE' };
+          } else if (level === 'ads') {
+            endpoint = `${API_BASE}/ads/${item.id}/edit`;
+            body = { status: 'ACTIVE' };
+          }
+          break;
+
+        case 'delete':
+          const confirmDelete = window.confirm(`Are you sure you want to delete this ${level.slice(0, -1)}? This action cannot be undone.`);
+          if (!confirmDelete) {
+            setActionLoading(false);
+            return;
+          }
+
+          if (level === 'campaigns') {
+            endpoint = `${API_BASE}/${item.id}`;
+          } else if (level === 'adsets') {
+            endpoint = `${API_BASE}/adsets/${item.id}`;
+          } else if (level === 'ads') {
+            endpoint = `${API_BASE}/ads/${item.id}`;
+          }
+          method = 'DELETE';
+          break;
+
+        default:
+          setActionLoading(false);
+          return;
+      }
+
+      // Make API call
+      const response = await fetch(endpoint, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: method !== 'DELETE' ? JSON.stringify(body) : undefined,
+        credentials: 'include'
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`✅ ${action} successful:`, result);
+        // Refresh data
+        if (onRefresh) {
+          onRefresh();
+        }
+      } else {
+        console.error(`❌ ${action} failed:`, result.message);
+        alert(`Failed to ${action}: ${result.message}`);
+      }
+    } catch (error: any) {
+      console.error(`❌ Error performing ${action}:`, error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const hasChildren =

@@ -3188,6 +3188,125 @@ class FacebookAPI {
   }
 
   /**
+   * Update Ad Set
+   */
+  async updateAdSet(adSetId, updateData) {
+    try {
+      const url = `${this.baseURL}/${adSetId}`;
+      const params = {
+        access_token: this.accessToken
+      };
+
+      // Add update parameters
+      if (updateData.name) params.name = updateData.name;
+      if (updateData.status) params.status = updateData.status;
+      if (updateData.daily_budget) params.daily_budget = updateData.daily_budget;
+      if (updateData.lifetime_budget) params.lifetime_budget = updateData.lifetime_budget;
+      if (updateData.bid_amount) params.bid_amount = updateData.bid_amount;
+
+      console.log(`📝 Updating ad set ${adSetId}:`, params);
+      const response = await axios.post(url, null, { params });
+      console.log(`✅ Ad set ${adSetId} updated successfully`);
+
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Failed to update ad set ${adSetId}:`, error.response?.data || error.message);
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Update Ad
+   */
+  async updateAd(adId, updateData) {
+    try {
+      const url = `${this.baseURL}/${adId}`;
+      const params = {
+        access_token: this.accessToken
+      };
+
+      // Add update parameters
+      if (updateData.name) params.name = updateData.name;
+      if (updateData.status) params.status = updateData.status;
+
+      console.log(`📝 Updating ad ${adId}:`, params);
+      const response = await axios.post(url, null, { params });
+      console.log(`✅ Ad ${adId} updated successfully`);
+
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Failed to update ad ${adId}:`, error.response?.data || error.message);
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete Campaign
+   */
+  async deleteCampaign(campaignId) {
+    try {
+      const url = `${this.baseURL}/${campaignId}`;
+      const params = {
+        access_token: this.accessToken,
+        status: 'DELETED'
+      };
+
+      console.log(`🗑️ Deleting campaign ${campaignId}`);
+      const response = await axios.post(url, null, { params });
+      console.log(`✅ Campaign ${campaignId} deleted successfully`);
+
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Failed to delete campaign ${campaignId}:`, error.response?.data || error.message);
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete Ad Set
+   */
+  async deleteAdSet(adSetId) {
+    try {
+      const url = `${this.baseURL}/${adSetId}`;
+      const params = {
+        access_token: this.accessToken,
+        status: 'DELETED'
+      };
+
+      console.log(`🗑️ Deleting ad set ${adSetId}`);
+      const response = await axios.post(url, null, { params });
+      console.log(`✅ Ad set ${adSetId} deleted successfully`);
+
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Failed to delete ad set ${adSetId}:`, error.response?.data || error.message);
+      this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete Ad
+   */
+  async deleteAd(adId) {
+    try {
+      const url = `${this.baseURL}/${adId}`;
+      const params = {
+        access_token: this.accessToken,
+        status: 'DELETED'
+      };
+
+      console.log(`🗑️ Deleting ad ${adId}`);
+      const response = await axios.post(url, null, { params });
+      console.log(`✅ Ad ${adId} deleted successfully`);
+
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Failed to delete ad ${adId}:`, error.response?.data || error.message);
+      this.handleError(error);
+    }
+  }
+
+  /**
    * Duplicate campaign using Strategy 1-50-1 based approach
    * This follows the EXACT same pattern as the working 1-50-1 strategy
    * to ensure consistent and reliable duplication without page_id errors

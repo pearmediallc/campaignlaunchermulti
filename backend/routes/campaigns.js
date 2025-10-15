@@ -845,4 +845,197 @@ router.post('/batch', authenticate, requireFacebookAuth, refreshFacebookToken, a
   }
 });
 
+// ============= AD SET OPERATIONS =============
+
+// Update Ad Set
+router.put('/adsets/:adSetId/edit', authenticate, requireFacebookAuth, refreshFacebookToken, async (req, res) => {
+  try {
+    const { adSetId } = req.params;
+    const { name, status, daily_budget, lifetime_budget, bid_amount } = req.body;
+    const userId = req.user.id;
+
+    const accessToken = req.facebookAuth.accessToken;
+    const facebookApi = new FacebookAPI({ accessToken });
+
+    // Prepare update data
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (status) updateData.status = status;
+    if (daily_budget) updateData.daily_budget = Math.round(daily_budget * 100);
+    if (lifetime_budget) updateData.lifetime_budget = Math.round(lifetime_budget * 100);
+    if (bid_amount) updateData.bid_amount = Math.round(bid_amount * 100);
+
+    const updatedAdSet = await facebookApi.updateAdSet(adSetId, updateData);
+
+    await AuditService.log({
+      userId,
+      action: 'adset_edit',
+      resource: 'adset',
+      resourceId: adSetId,
+      details: { adSetId, changes: updateData },
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Ad set updated successfully',
+      data: updatedAdSet
+    });
+  } catch (error) {
+    console.error('Ad set edit error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update ad set',
+      error: error.message
+    });
+  }
+});
+
+// Delete Ad Set
+router.delete('/adsets/:adSetId', authenticate, requireFacebookAuth, refreshFacebookToken, async (req, res) => {
+  try {
+    const { adSetId } = req.params;
+    const userId = req.user.id;
+
+    const accessToken = req.facebookAuth.accessToken;
+    const facebookApi = new FacebookAPI({ accessToken });
+
+    const deletedAdSet = await facebookApi.deleteAdSet(adSetId);
+
+    await AuditService.log({
+      userId,
+      action: 'adset_delete',
+      resource: 'adset',
+      resourceId: adSetId,
+      details: { adSetId },
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Ad set deleted successfully',
+      data: deletedAdSet
+    });
+  } catch (error) {
+    console.error('Ad set delete error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete ad set',
+      error: error.message
+    });
+  }
+});
+
+// ============= AD OPERATIONS =============
+
+// Update Ad
+router.put('/ads/:adId/edit', authenticate, requireFacebookAuth, refreshFacebookToken, async (req, res) => {
+  try {
+    const { adId } = req.params;
+    const { name, status } = req.body;
+    const userId = req.user.id;
+
+    const accessToken = req.facebookAuth.accessToken;
+    const facebookApi = new FacebookAPI({ accessToken });
+
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (status) updateData.status = status;
+
+    const updatedAd = await facebookApi.updateAd(adId, updateData);
+
+    await AuditService.log({
+      userId,
+      action: 'ad_edit',
+      resource: 'ad',
+      resourceId: adId,
+      details: { adId, changes: updateData },
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Ad updated successfully',
+      data: updatedAd
+    });
+  } catch (error) {
+    console.error('Ad edit error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update ad',
+      error: error.message
+    });
+  }
+});
+
+// Delete Ad
+router.delete('/ads/:adId', authenticate, requireFacebookAuth, refreshFacebookToken, async (req, res) => {
+  try {
+    const { adId } = req.params;
+    const userId = req.user.id;
+
+    const accessToken = req.facebookAuth.accessToken;
+    const facebookApi = new FacebookAPI({ accessToken });
+
+    const deletedAd = await facebookApi.deleteAd(adId);
+
+    await AuditService.log({
+      userId,
+      action: 'ad_delete',
+      resource: 'ad',
+      resourceId: adId,
+      details: { adId },
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Ad deleted successfully',
+      data: deletedAd
+    });
+  } catch (error) {
+    console.error('Ad delete error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete ad',
+      error: error.message
+    });
+  }
+});
+
+// Delete Campaign
+router.delete('/:campaignId', authenticate, requireFacebookAuth, refreshFacebookToken, async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const userId = req.user.id;
+
+    const accessToken = req.facebookAuth.accessToken;
+    const facebookApi = new FacebookAPI({ accessToken });
+
+    const deletedCampaign = await facebookApi.deleteCampaign(campaignId);
+
+    await AuditService.log({
+      userId,
+      action: 'campaign_delete',
+      resource: 'campaign',
+      resourceId: campaignId,
+      details: { campaignId },
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Campaign deleted successfully',
+      data: deletedCampaign
+    });
+  } catch (error) {
+    console.error('Campaign delete error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete campaign',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

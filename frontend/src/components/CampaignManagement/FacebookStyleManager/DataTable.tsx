@@ -182,6 +182,7 @@ const DataTable: React.FC<DataTableProps> = ({
                   expandedRows={expandedRows}
                   loadingRows={loadingRows}
                   onToggleRow={onToggleRow}
+                  onRefresh={onRefresh}
                 />
               ))
             )}
