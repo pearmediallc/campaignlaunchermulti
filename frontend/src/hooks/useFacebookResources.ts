@@ -42,10 +42,24 @@ export const useFacebookResources = () => {
     try {
       setLoading(true);
       setError('');
+
+      // Fetch main resources (ad accounts, pages)
       const response = await facebookAuthApi.getResources();
 
       if (response.success) {
-        setResources(response.data);
+        // Also fetch pixels separately (they need to be loaded from ad account)
+        try {
+          const pixelsResponse = await facebookAuthApi.getPixels(false);
+          setResources({
+            ...response.data,
+            pixels: pixelsResponse.pixels || []
+          });
+          console.log('✅ Loaded pixels:', pixelsResponse.pixels?.length || 0);
+        } catch (pixelErr) {
+          console.warn('Could not fetch pixels:', pixelErr);
+          // Still set resources even if pixels fail
+          setResources(response.data);
+        }
       } else {
         setError('Failed to fetch Facebook resources');
       }

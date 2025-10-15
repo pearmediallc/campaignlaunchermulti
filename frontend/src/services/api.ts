@@ -218,6 +218,11 @@ export const facebookAuthApi = {
   disconnect: async (): Promise<{ success: boolean; message: string }> => {
     const response = await api.post('/auth/facebook/disconnect');
     return response.data;
+  },
+
+  getPixels: async (refresh: boolean = false): Promise<{ pixels: any[] }> => {
+    const response = await api.get(`/auth/facebook/pixels?refresh=${refresh}`);
+    return response.data;
   }
 };
 
