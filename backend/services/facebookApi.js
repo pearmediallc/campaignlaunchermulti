@@ -2030,8 +2030,14 @@ class FacebookAPI {
                 if (variation.videoId || variation.videoHash) {
                   // USER UPLOADED VIDEO - use it
                   console.log(`  📹 Creating video ad variation ${v + 1} with UPLOADED video`);
+
+                  // Fetch thumbnail for the uploaded video (required by Facebook)
+                  const uploadedVideoId = variation.videoId || variation.videoHash;
+                  console.log(`  📷 Fetching thumbnail for uploaded video ${uploadedVideoId}...`);
+                  const thumbnailUrl = await this.getVideoThumbnail(uploadedVideoId);
+
                   objectStorySpec.video_data = {
-                    video_id: variation.videoId || variation.videoHash,
+                    video_id: uploadedVideoId,
                     title: variation.headline || formData.headline,
                     message: variation.primaryText || formData.primaryText,
                     link_description: variation.description || formData.description,
@@ -2040,8 +2046,10 @@ class FacebookAPI {
                       value: {
                         link: variation.websiteUrl || formData.url
                       }
-                    }
+                    },
+                    image_url: thumbnailUrl  // Add thumbnail URL (required for video ads)
                   };
+                  console.log(`  ✅ Added video thumbnail to ad variation: ${thumbnailUrl}`);
                 } else if (variation.imageHash) {
                   // USER UPLOADED IMAGE - use it
                   console.log(`  📸 Creating image ad variation ${v + 1} with UPLOADED image`);
@@ -2121,7 +2129,6 @@ class FacebookAPI {
                 console.error(`❌ Failed to create ad variation ${v + 1} for AdSet ${i + 1}:`, adError.response?.data?.error?.message || adError.message);
                 console.error('  📋 Full Facebook API error:', JSON.stringify(adError.response?.data, null, 2));
                 console.error('  📋 Variation data:', JSON.stringify(variation, null, 2));
-                console.error('  📋 object_story_spec:', JSON.stringify(objectStorySpec, null, 2));
                 results.errors.push({
                   adSetIndex: i + 1,
                   variationIndex: v + 1,
