@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import {
   TableRow,
   TableCell,
@@ -177,27 +178,26 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
           return;
       }
 
-      // Make API call
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: method !== 'DELETE' ? JSON.stringify(body) : undefined,
-        credentials: 'include'
-      });
+      // Make API call using axios (handles auth automatically)
+      let response;
 
-      const result = await response.json();
+      if (method === 'DELETE') {
+        response = await axios.delete(endpoint);
+      } else if (method === 'POST') {
+        response = await axios.post(endpoint, body);
+      } else {
+        response = await axios.put(endpoint, body);
+      }
 
-      if (result.success) {
-        console.log(`✅ ${action} successful:`, result);
+      if (response.data.success) {
+        console.log(`✅ ${action} successful:`, response.data);
         // Refresh data
         if (onRefresh) {
           onRefresh();
         }
       } else {
-        console.error(`❌ ${action} failed:`, result.message);
-        alert(`Failed to ${action}: ${result.message}`);
+        console.error(`❌ ${action} failed:`, response.data.message);
+        alert(`Failed to ${action}: ${response.data.message}`);
       }
     } catch (error: any) {
       console.error(`❌ Error performing ${action}:`, error);

@@ -107,6 +107,9 @@ const DataTable: React.FC<DataTableProps> = ({
           selectedCount={selectedItems.size}
           onClearSelection={() => onSelectAll([])}
           level={level}
+          selectedItems={selectedItems}
+          data={data}
+          onRefresh={onRefresh}
         />
       )}
 
