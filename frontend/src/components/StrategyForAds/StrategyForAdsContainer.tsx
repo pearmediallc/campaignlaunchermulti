@@ -252,6 +252,9 @@ const StrategyForAdsContainer: React.FC = () => {
         costCap: campaignData.costCap,
         minRoas: campaignData.minRoas,
 
+        // Pixel - CRITICAL: Must be passed to backend
+        pixel: campaignData.pixel,
+
         // Attribution settings - CRITICAL: Must be passed to backend
         attributionSetting: campaignData.attributionSetting,
         attributionWindow: campaignData.attributionWindow,

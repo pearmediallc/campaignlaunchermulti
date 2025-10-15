@@ -2119,6 +2119,9 @@ class FacebookAPI {
                 console.log(`✅ Created ad variation ${v + 1}/${adsPerAdSet} for AdSet ${i + 1}`);
               } catch (adError) {
                 console.error(`❌ Failed to create ad variation ${v + 1} for AdSet ${i + 1}:`, adError.response?.data?.error?.message || adError.message);
+                console.error('  📋 Full Facebook API error:', JSON.stringify(adError.response?.data, null, 2));
+                console.error('  📋 Variation data:', JSON.stringify(variation, null, 2));
+                console.error('  📋 object_story_spec:', JSON.stringify(objectStorySpec, null, 2));
                 results.errors.push({
                   adSetIndex: i + 1,
                   variationIndex: v + 1,
