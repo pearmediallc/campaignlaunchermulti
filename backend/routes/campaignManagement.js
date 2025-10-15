@@ -262,6 +262,7 @@ router.get('/all', authenticate, async (req, res) => {
       date_preset = 'last_14d',  // Default to last 14 days (Facebook doesn't have last_15d)
       limit = 50,
       after,  // Pagination cursor
+      search,  // Search query for campaign name or ID
     } = req.query;
 
     if (!userId) {
@@ -340,6 +341,16 @@ router.get('/all', authenticate, async (req, res) => {
 
     const response = await axios.get(url, { params });
     const campaignsData = response.data;
+
+    // Apply search filter if provided
+    if (search && search.trim() !== '' && campaignsData.data) {
+      const searchLower = search.toLowerCase().trim();
+      campaignsData.data = campaignsData.data.filter(campaign =>
+        campaign.name.toLowerCase().includes(searchLower) ||
+        campaign.id.includes(search.trim())
+      );
+      console.log(`🔍 Search filter applied: "${search}" - Found ${campaignsData.data.length} campaigns`);
+    }
 
     // Process campaigns to extract Results based on objective
     if (campaignsData.data) {

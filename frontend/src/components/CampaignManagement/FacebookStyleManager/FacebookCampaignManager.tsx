@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Box } from '@mui/material';
+import { Box, TextField, InputAdornment, IconButton } from '@mui/material';
+import { Search as SearchIcon, Clear as ClearIcon } from '@mui/icons-material';
 import LevelTabs from './LevelTabs';
 import DataTable from './DataTable';
 import { useFacebookData } from './hooks/useFacebookData';
@@ -13,12 +14,14 @@ const FacebookCampaignManager: React.FC = () => {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [dateRange, setDateRange] = useState('last_14d');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch data based on active level
-  const { data, loading, error, refetch } = useFacebookData({
+  const { data, loading, error, refetch, hasMore, loadMore } = useFacebookData({
     level: activeLevel,
     dateRange,
-    expandedRows
+    expandedRows,
+    searchQuery
   });
 
   const handleLevelChange = (level: 'campaigns' | 'adsets' | 'ads') => {
@@ -65,6 +68,46 @@ const FacebookCampaignManager: React.FC = () => {
         onDateRangeChange={setDateRange}
       />
 
+      {/* Search Bar */}
+      <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder={`Search ${activeLevel} by name or ID...`}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ color: '#65676b' }} />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={() => setSearchQuery('')}
+                  sx={{ padding: '4px' }}
+                >
+                  <ClearIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            )
+          }}
+          sx={{
+            bgcolor: 'white',
+            '& .MuiOutlinedInput-root': {
+              '& fieldset': {
+                borderColor: '#dddfe2'
+              },
+              '&:hover fieldset': {
+                borderColor: '#1877f2'
+              }
+            }
+          }}
+        />
+      </Box>
+
       {/* Data Table */}
       <DataTable
         level={activeLevel}
@@ -77,6 +120,9 @@ const FacebookCampaignManager: React.FC = () => {
         onSelectAll={handleSelectAll}
         onToggleRow={handleToggleRow}
         onRefresh={refetch}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
+        searchQuery={searchQuery}
       />
     </Box>
   );
