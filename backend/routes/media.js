@@ -39,16 +39,40 @@ router.post('/upload', upload.single('media'), async (req, res) => {
       });
     }
 
-    const imageHash = await facebookApi.uploadImage(req.file.path);
-    
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const isImage = req.file.mimetype.startsWith('image/');
+
+    console.log(`📤 Uploading ${isVideo ? 'video' : 'image'} for ad variation:`, req.file.originalname);
+
+    let uploadResult;
+    if (isVideo) {
+      // Upload video and get video ID
+      const videoId = await facebookApi.uploadVideo(req.file.path);
+      uploadResult = {
+        videoId: videoId,
+        type: 'video',
+        filename: req.file.filename,
+        originalName: req.file.originalname
+      };
+      console.log(`  ✅ Video uploaded successfully. Video ID: ${videoId}`);
+    } else if (isImage) {
+      // Upload image and get image hash
+      const imageHash = await facebookApi.uploadImage(req.file.path);
+      uploadResult = {
+        imageHash: imageHash,
+        type: 'image',
+        filename: req.file.filename,
+        originalName: req.file.originalname
+      };
+      console.log(`  ✅ Image uploaded successfully. Image hash: ${imageHash}`);
+    } else {
+      throw new Error('Unsupported file type');
+    }
+
     res.json({
       success: true,
       message: 'Media uploaded successfully',
-      data: {
-        hash: imageHash,
-        filename: req.file.filename,
-        originalName: req.file.originalname
-      }
+      data: uploadResult
     });
   } catch (error) {
     console.error('Media upload error:', error);

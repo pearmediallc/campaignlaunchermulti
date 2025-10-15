@@ -12,9 +12,11 @@ import {
   InputLabel,
   Paper,
   Button,
-  Checkbox
+  Checkbox,
+  CircularProgress,
+  Alert
 } from '@mui/material';
-import { CloudUpload } from '@mui/icons-material';
+import { CloudUpload, CheckCircle } from '@mui/icons-material';
 import { AdVariation, OriginalAdData } from '../../../types/adDuplication';
 
 interface VariationFormProps {
@@ -31,6 +33,9 @@ const VariationForm: React.FC<VariationFormProps> = ({
   onChange
 }) => {
   const [mediaUploadMode, setMediaUploadMode] = useState<'original' | 'new'>('original');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [uploadError, setUploadError] = useState<string>('');
 
   // Extract original values from originalAdData
   const getOriginalValue = (field: string): string => {
@@ -84,13 +89,57 @@ const VariationForm: React.FC<VariationFormProps> = ({
     });
   };
 
-  const handleMediaUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    // Placeholder for file upload logic
-    // In production, this would upload to your media endpoint
+  const handleMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      console.log('File selected:', file.name);
-      // TODO: Implement file upload and get URL/ID back
+    if (!file) return;
+
+    setUploadingMedia(true);
+    setUploadError('');
+
+    try {
+      console.log('📤 Uploading media for variation:', file.name);
+
+      const formData = new FormData();
+      formData.append('media', file);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/media/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('✅ Media uploaded successfully:', result.data);
+        setUploadedFileName(file.name);
+
+        // Update variation with uploaded media IDs
+        const updatedVariation: any = {
+          ...variation,
+          useOriginalMedia: false // Explicitly mark as NOT using original
+        };
+
+        if (result.data.type === 'video') {
+          updatedVariation.videoId = result.data.videoId;
+          console.log('  💾 Saved videoId to variation:', result.data.videoId);
+        } else if (result.data.type === 'image') {
+          updatedVariation.imageHash = result.data.imageHash;
+          console.log('  💾 Saved imageHash to variation:', result.data.imageHash);
+        }
+
+        onChange(updatedVariation);
+      } else {
+        throw new Error(result.error || 'Upload failed');
+      }
+    } catch (error: any) {
+      console.error('❌ Media upload error:', error);
+      setUploadError(error.message || 'Failed to upload media');
+    } finally {
+      setUploadingMedia(false);
     }
   };
 
@@ -148,10 +197,11 @@ const VariationForm: React.FC<VariationFormProps> = ({
                 <Button
                   variant="outlined"
                   component="label"
-                  startIcon={<CloudUpload />}
+                  startIcon={uploadingMedia ? <CircularProgress size={20} /> : uploadedFileName ? <CheckCircle color="success" /> : <CloudUpload />}
                   fullWidth
+                  disabled={uploadingMedia}
                 >
-                  Upload Image/Video
+                  {uploadingMedia ? 'Uploading...' : uploadedFileName ? `Uploaded: ${uploadedFileName}` : 'Upload Image/Video'}
                   <input
                     type="file"
                     hidden
@@ -159,6 +209,19 @@ const VariationForm: React.FC<VariationFormProps> = ({
                     onChange={handleMediaUpload}
                   />
                 </Button>
+
+                {uploadError && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    {uploadError}
+                  </Alert>
+                )}
+
+                {uploadedFileName && (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    ✅ Media uploaded successfully! This variation will use your uploaded media instead of the original.
+                  </Alert>
+                )}
+
                 <FormControlLabel
                   control={
                     <Checkbox
