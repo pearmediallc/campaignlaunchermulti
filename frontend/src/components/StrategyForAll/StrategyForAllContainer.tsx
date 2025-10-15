@@ -281,6 +281,11 @@ const StrategyForAllContainer: React.FC = () => {
         video: campaignData.video,
         images: campaignData.images,
 
+        // Facebook resources
+        facebookPage: campaignData.facebookPage,
+        instagramAccount: campaignData.instagramAccount,
+        pixel: campaignData.pixel,
+
         // Placements - Pass exactly what user selected
         placementType: campaignData.placementType || 'automatic'
       };

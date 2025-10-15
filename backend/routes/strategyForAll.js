@@ -413,8 +413,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // NOTE: Don't validate selectedAdAccount/selectedPage here yet - they might come from active resource config
     // Validation will happen after checking UserResourceConfig
 
-    // Get pixel ID - either from selected pixel or fetch from ad account
-    let pixelId = facebookAuth.selectedPixel?.id;
+    // Get pixel ID - prioritize form submission, then selected pixel, then fetch from ad account
+    let pixelId = req.body.pixel || facebookAuth.selectedPixel?.id;
+    console.log('🔍 Pixel selection:', {
+      fromForm: req.body.pixel || 'Not provided',
+      fromAuth: facebookAuth.selectedPixel?.id || 'Not set',
+      usingPixel: pixelId || 'Will fetch from ad account'
+    });
 
     // Check if token exists and decrypt it
     if (!facebookAuth.accessToken) {
@@ -477,12 +482,18 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  ✓ Source:', activeResources.source);
     console.log('  ✓ Ad Account:', activeResources.selectedAdAccount?.name || selectedAdAccountId);
     console.log('  ✓ Page:', activeResources.selectedPage?.name || selectedPageId);
-    console.log('  ✓ Pixel:', activeResources.selectedPixel?.name || selectedPixelId || 'None');
+    console.log('  ✓ Pixel (from ResourceHelper):', activeResources.selectedPixel?.name || selectedPixelId || 'None');
 
     // Override with request body if provided (for backward compatibility)
     if (req.body.selectedPageId) {
       console.log('  ⚠️ Overriding page with request body:', req.body.selectedPageId);
       selectedPageId = req.body.selectedPageId;
+    }
+
+    // Override pixel with form submission if provided (user's explicit choice takes priority)
+    if (req.body.pixel) {
+      console.log('  ✅ Using pixel from form submission:', req.body.pixel);
+      selectedPixelId = req.body.pixel;
     }
 
     // Validate that we have required resources
@@ -656,7 +667,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // System fields
       selectedPageId: selectedPageId,
       selectedAdAccountId: selectedAdAccountId,
-      selectedPixelId: selectedPixelId || req.body.pixel,
+      selectedPixelId: req.body.pixel || selectedPixelId,  // Prioritize form pixel over ResourceHelper default
 
       // Additional Meta options
       costCap: req.body.costCap,

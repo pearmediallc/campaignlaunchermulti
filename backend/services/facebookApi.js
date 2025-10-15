@@ -43,7 +43,7 @@ class FacebookAPI {
 
       // Use passed parameters instead of hardcoded values
       const params = {
-        name: `[REVIEW] ${campaignData.name}`,
+        name: `[Launcher] ${campaignData.name}`,
         objective: campaignData.objective || 'OUTCOME_LEADS',
         status: campaignData.status || 'ACTIVE',
         // Properly handle special ad categories
@@ -151,7 +151,7 @@ class FacebookAPI {
       console.log('  - Optimization Goal:', this.getOptimizationGoal ? 'Will be calculated' : 'Not set');
 
       params = {
-        name: `[REVIEW] ${adSetData.campaignName} - AdSet`,
+        name: `[Launcher] ${adSetData.campaignName} - AdSet`,
         campaign_id: adSetData.campaignId,
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
@@ -818,7 +818,7 @@ class FacebookAPI {
       }
 
       const params = {
-        name: adData.name || `[REVIEW] ${adData.campaignName} - Ad`,
+        name: adData.name || `[Launcher] ${adData.campaignName} - Ad`,
         adset_id: adData.adsetId,
         creative: JSON.stringify(creative),
         tracking_specs: JSON.stringify([{
@@ -1307,7 +1307,7 @@ class FacebookAPI {
           }
           
           const ad = await this.createAd({
-            name: `[REVIEW] ${campaignData.campaignName} - Ad V${i + 1}`,
+            name: `[Launcher] ${campaignData.campaignName} - Ad V${i + 1}`,
             campaignName: campaignData.campaignName,
             adsetId: adSet.id,
             url: variation.url || campaignData.url,
@@ -1869,7 +1869,7 @@ class FacebookAPI {
             `${this.baseURL}/${originalAdSetId}`,
             {
               params: {
-                fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,daily_min_spend_target,daily_spend_cap',
+                fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap',
                 access_token: this.accessToken
               }
             }
@@ -1902,8 +1902,14 @@ class FacebookAPI {
 
           console.log(`  🧹 Cleaned targeting object (removed deprecated fields, added targeting_automation)`);
 
-          // Create new ad set with same settings + forced 1-day attribution
-          console.log(`  ⚙️ Setting attribution to 1-day click, 1-day view for copy ${i + 1}`);
+          // Log the attribution settings we're about to copy
+          if (originalAdSet.attribution_spec) {
+            console.log(`  ✅ Copying attribution settings from original ad set for copy ${i + 1}:`, originalAdSet.attribution_spec);
+          } else {
+            console.log(`  ⚠️ No attribution_spec found on original ad set, Facebook will use account default`);
+          }
+
+          // Create new ad set with same settings including attribution
           const newAdSetData = {
             name: `${originalAdSet.name} - Copy ${i + 1}`,
             campaign_id: campaignId,
@@ -1914,14 +1920,14 @@ class FacebookAPI {
             billing_event: originalAdSet.billing_event,
             bid_strategy: originalAdSet.bid_strategy,
             promoted_object: JSON.stringify(originalAdSet.promoted_object),  // Must be stringified
-            // FORCE 1-DAY CLICK, 1-DAY VIEW ATTRIBUTION FROM THE START
-            attribution_spec: JSON.stringify([
-              { event_type: 'CLICK_THROUGH', window_days: 1 },
-              { event_type: 'VIEW_THROUGH', window_days: 1 }
-            ]),
             status: 'ACTIVE',
             access_token: this.accessToken
           };
+
+          // Copy attribution_spec from original ad set if it exists
+          if (originalAdSet.attribution_spec) {
+            newAdSetData.attribution_spec = JSON.stringify(originalAdSet.attribution_spec);
+          }
 
           // CRITICAL: Copy spending limits if they exist on original ad set
           // Only include if they were set by user (not undefined/null)
