@@ -9,14 +9,28 @@ import {
   Collapse,
   Table,
   TableBody,
-  Typography
+  Typography,
+  CircularProgress,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
 import {
   KeyboardArrowDown as ExpandMoreIcon,
   KeyboardArrowRight as ExpandLessIcon,
-  MoreVert as MoreVertIcon
+  MoreVert as MoreVertIcon,
+  Campaign as CampaignIcon,
+  Layers as AdSetIcon,
+  Article as AdIcon,
+  Edit as EditIcon,
+  ContentCopy as DuplicateIcon,
+  Delete as DeleteIcon,
+  Pause as PauseIcon,
+  PlayArrow as PlayIcon
 } from '@mui/icons-material';
 import InlineEdit from './InlineEdit';
+import EnhancedStatusChip from './EnhancedStatusChip';
 import { CampaignData, AdSetData, AdData } from './types';
 
 interface ExpandableRowProps {
@@ -25,8 +39,12 @@ interface ExpandableRowProps {
   columns: Array<{ id: string; label: string }>;
   selected: boolean;
   expanded: boolean;
+  isLoading?: boolean; // Show loading spinner when expanding
   onSelect: () => void;
   onToggle: () => void;
+  expandedRows?: Set<string>; // For tracking nested expansions
+  loadingRows?: Set<string>; // For tracking which nested rows are loading
+  onToggleRow?: (id: string) => void; // For toggling nested rows
 }
 
 /**
@@ -38,10 +56,31 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
   columns,
   selected,
   expanded,
+  isLoading = false,
   onSelect,
-  onToggle
+  onToggle,
+  expandedRows = new Set(),
+  loadingRows = new Set(),
+  onToggleRow
 }) => {
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const menuOpen = Boolean(anchorEl);
+
+  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleAction = (action: string) => {
+    console.log(`Action: ${action} on ${level} ${item.id}`);
+    // TODO: Implement actual actions
+    handleMenuClose();
+  };
 
   const hasChildren =
     (level === 'campaigns' && (item as CampaignData).adsets && (item as CampaignData).adsets!.length > 0) ||
@@ -94,27 +133,29 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
 
     switch (columnId) {
       case 'name':
+        const getIcon = () => {
+          if (level === 'campaigns') return <CampaignIcon sx={{ fontSize: 16, color: '#65676b', mr: 1 }} />;
+          if (level === 'adsets') return <AdSetIcon sx={{ fontSize: 16, color: '#65676b', mr: 1 }} />;
+          return <AdIcon sx={{ fontSize: 16, color: '#65676b', mr: 1 }} />;
+        };
+
         return (
-          <InlineEdit
-            value={item.name}
-            onSave={(newValue) => {
-              console.log('Update name:', item.id, newValue);
-              setEditingField(null);
-            }}
-            isEditing={editingField === 'name'}
-            onStartEdit={() => setEditingField('name')}
-            onCancelEdit={() => setEditingField(null)}
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {getIcon()}
+            <InlineEdit
+              value={item.name}
+              onSave={(newValue) => {
+                console.log('Update name:', item.id, newValue);
+                setEditingField(null);
+              }}
+              isEditing={editingField === 'name'}
+              onStartEdit={() => setEditingField('name')}
+              onCancelEdit={() => setEditingField(null)}
+            />
+          </Box>
         );
       case 'status':
-        return (
-          <Chip
-            label={item.status}
-            color={getStatusColor(item.status)}
-            size="small"
-            sx={{ fontSize: '12px', fontWeight: 500 }}
-          />
-        );
+        return <EnhancedStatusChip item={item} showEffectiveStatus showLearningPhase />;
       case 'budget':
         const budget = (item as CampaignData).daily_budget || (item as AdSetData).daily_budget;
         return formatBudget(budget);
@@ -156,11 +197,15 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
         {/* Expand/Collapse Icon */}
         {(level === 'campaigns' || level === 'adsets') && (
           <TableCell>
-            {hasChildren && (
-              <IconButton size="small" onClick={onToggle}>
-                {expanded ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-              </IconButton>
-            )}
+            <IconButton size="small" onClick={onToggle} disabled={isLoading}>
+              {isLoading ? (
+                <CircularProgress size={20} />
+              ) : expanded ? (
+                <ExpandMoreIcon />
+              ) : (
+                <ExpandLessIcon />
+              )}
+            </IconButton>
           </TableCell>
         )}
 
@@ -173,47 +218,153 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
 
         {/* Actions */}
         <TableCell align="right">
-          <IconButton size="small">
+          <IconButton size="small" onClick={handleMenuClick}>
             <MoreVertIcon fontSize="small" />
           </IconButton>
+          <Menu
+            anchorEl={anchorEl}
+            open={menuOpen}
+            onClose={handleMenuClose}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <MenuItem onClick={() => handleAction('edit')}>
+              <ListItemIcon>
+                <EditIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Edit</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleAction('duplicate')}>
+              <ListItemIcon>
+                <DuplicateIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Duplicate</ListItemText>
+            </MenuItem>
+            {item.status === 'ACTIVE' ? (
+              <MenuItem onClick={() => handleAction('pause')}>
+                <ListItemIcon>
+                  <PauseIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Pause</ListItemText>
+              </MenuItem>
+            ) : (
+              <MenuItem onClick={() => handleAction('activate')}>
+                <ListItemIcon>
+                  <PlayIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Activate</ListItemText>
+              </MenuItem>
+            )}
+            <MenuItem onClick={() => handleAction('delete')} sx={{ color: 'error.main' }}>
+              <ListItemIcon>
+                <DeleteIcon fontSize="small" color="error" />
+              </ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>
+          </Menu>
         </TableCell>
       </TableRow>
 
       {/* Nested Children (Ad Sets or Ads) */}
-      {hasChildren && (
+      {expanded && (
         <TableRow>
           <TableCell colSpan={columns.length + 3} sx={{ p: 0, bgcolor: '#fafafa' }}>
             <Collapse in={expanded} timeout="auto" unmountOnExit>
-              <Box sx={{ p: 2, pl: 8 }}>
-                {level === 'campaigns' && (
+              {isLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+                  <CircularProgress size={24} sx={{ mr: 2 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Loading {level === 'campaigns' ? 'ad sets' : 'ads'}...
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ p: 2, pl: 8 }}>
+                  {level === 'campaigns' && (
                   <>
                     <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
                       Ad Sets ({(item as CampaignData).adsets?.length || 0})
                     </Typography>
                     <Table size="small">
                       <TableBody>
-                        {(item as CampaignData).adsets?.map((adset) => (
-                          <TableRow key={adset.id} sx={{ '&:hover': { bgcolor: '#f0f0f0' } }}>
-                            <TableCell sx={{ fontSize: '13px' }}>{adset.name}</TableCell>
-                            <TableCell>
-                              <Chip
-                                label={adset.status}
-                                color={getStatusColor(adset.status)}
-                                size="small"
-                                sx={{ fontSize: '11px' }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ fontSize: '13px' }}>
-                              {formatBudget(adset.daily_budget)}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: '13px' }}>
-                              {formatNumber(adset.metrics?.impressions)}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: '13px' }}>
-                              {formatCurrency(adset.metrics?.spend)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {(item as CampaignData).adsets?.map((adset) => {
+                          const adsetExpanded = expandedRows.has(adset.id);
+                          const adsetHasAds = adset.ads && adset.ads.length > 0;
+
+                          return (
+                            <React.Fragment key={adset.id}>
+                              {/* Ad Set Row */}
+                              <TableRow sx={{ '&:hover': { bgcolor: '#f0f0f0' } }}>
+                                <TableCell sx={{ width: '40px' }}>
+                                  {adsetHasAds && onToggleRow && (
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => onToggleRow(adset.id)}
+                                      sx={{ ml: 1 }}
+                                    >
+                                      {adsetExpanded ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
+                                    </IconButton>
+                                  )}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: '13px' }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
+                                    <AdSetIcon sx={{ fontSize: 14, color: '#65676b', mr: 1 }} />
+                                    {adset.name}
+                                  </Box>
+                                </TableCell>
+                                <TableCell>
+                                  <EnhancedStatusChip item={adset} showEffectiveStatus showLearningPhase />
+                                </TableCell>
+                                <TableCell sx={{ fontSize: '13px' }}>
+                                  {formatBudget(adset.daily_budget)}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: '13px' }}>
+                                  {formatNumber(adset.metrics?.impressions)}
+                                </TableCell>
+                                <TableCell sx={{ fontSize: '13px' }}>
+                                  {formatCurrency(adset.metrics?.spend)}
+                                </TableCell>
+                              </TableRow>
+
+                              {/* Nested Ads for this Ad Set */}
+                              {adsetHasAds && adsetExpanded && (
+                                <TableRow>
+                                  <TableCell colSpan={6} sx={{ p: 0, bgcolor: '#f5f5f5' }}>
+                                    <Collapse in={adsetExpanded} timeout="auto" unmountOnExit>
+                                      <Box sx={{ p: 2, pl: 6 }}>
+                                        <Typography variant="caption" sx={{ mb: 1, fontWeight: 600, display: 'block' }}>
+                                          Ads ({adset.ads?.length || 0})
+                                        </Typography>
+                                        <Table size="small">
+                                          <TableBody>
+                                            {adset.ads?.map((ad) => (
+                                              <TableRow key={ad.id} sx={{ '&:hover': { bgcolor: '#e8e8e8' } }}>
+                                                <TableCell sx={{ fontSize: '12px', pl: 3 }}>
+                                                  <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
+                                                    <AdIcon sx={{ fontSize: 12, color: '#65676b', mr: 1 }} />
+                                                    {ad.name}
+                                                  </Box>
+                                                </TableCell>
+                                                <TableCell>
+                                                  <EnhancedStatusChip item={ad} showEffectiveStatus={false} showLearningPhase={false} />
+                                                </TableCell>
+                                                <TableCell sx={{ fontSize: '12px' }}>
+                                                  {formatNumber(ad.metrics?.impressions)}
+                                                </TableCell>
+                                                <TableCell sx={{ fontSize: '12px' }}>
+                                                  {formatCurrency(ad.metrics?.spend)}
+                                                </TableCell>
+                                              </TableRow>
+                                            ))}
+                                          </TableBody>
+                                        </Table>
+                                      </Box>
+                                    </Collapse>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </>
@@ -228,14 +379,14 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                       <TableBody>
                         {(item as AdSetData).ads?.map((ad) => (
                           <TableRow key={ad.id} sx={{ '&:hover': { bgcolor: '#f0f0f0' } }}>
-                            <TableCell sx={{ fontSize: '13px' }}>{ad.name}</TableCell>
+                            <TableCell sx={{ fontSize: '13px' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <AdIcon sx={{ fontSize: 14, color: '#65676b', mr: 1 }} />
+                                {ad.name}
+                              </Box>
+                            </TableCell>
                             <TableCell>
-                              <Chip
-                                label={ad.status}
-                                color={getStatusColor(ad.status)}
-                                size="small"
-                                sx={{ fontSize: '11px' }}
-                              />
+                              <EnhancedStatusChip item={ad} showEffectiveStatus showLearningPhase={false} />
                             </TableCell>
                             <TableCell sx={{ fontSize: '13px' }}>
                               {formatNumber(ad.metrics?.impressions)}
@@ -249,7 +400,8 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                     </Table>
                   </>
                 )}
-              </Box>
+                </Box>
+              )}
             </Collapse>
           </TableCell>
         </TableRow>

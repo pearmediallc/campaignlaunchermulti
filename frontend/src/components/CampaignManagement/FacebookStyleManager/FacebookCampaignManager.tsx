@@ -13,6 +13,7 @@ const FacebookCampaignManager: React.FC = () => {
   const [activeLevel, setActiveLevel] = useState<'campaigns' | 'adsets' | 'ads'>('campaigns');
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [loadingRows, setLoadingRows] = useState<Set<string>>(new Set()); // Track which rows are loading
   const [dateRange, setDateRange] = useState('last_14d');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -50,12 +51,29 @@ const FacebookCampaignManager: React.FC = () => {
 
   const handleToggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows);
+    const newLoading = new Set(loadingRows);
+
     if (newExpanded.has(id)) {
+      // Collapsing - remove from expanded
       newExpanded.delete(id);
+      newLoading.delete(id);
     } else {
+      // Expanding - add to both expanded and loading
       newExpanded.add(id);
+      newLoading.add(id);
+
+      // Remove from loading after data is fetched (simulated delay)
+      setTimeout(() => {
+        setLoadingRows(prev => {
+          const updated = new Set(prev);
+          updated.delete(id);
+          return updated;
+        });
+      }, 1500); // Will be replaced when data actually loads
     }
+
     setExpandedRows(newExpanded);
+    setLoadingRows(newLoading);
   };
 
   return (
@@ -116,6 +134,7 @@ const FacebookCampaignManager: React.FC = () => {
         error={error}
         selectedItems={selectedItems}
         expandedRows={expandedRows}
+        loadingRows={loadingRows}
         onSelectItem={handleSelectItem}
         onSelectAll={handleSelectAll}
         onToggleRow={handleToggleRow}

@@ -133,7 +133,7 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
     // Fetch campaign details with ad sets and learning info from Facebook
     const url = `https://graph.facebook.com/v19.0/${campaignId}`;
     const params = {
-      fields: 'id,name,status,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,insights.date_preset(maximum){impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}',
+      fields: 'id,name,status,effective_status,configured_status,issues_info,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,insights.date_preset(maximum){impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}',
       access_token: accessToken
     };
 
@@ -327,7 +327,7 @@ router.get('/all', authenticate, async (req, res) => {
     // Fetch all campaigns from the ad account with date filtering
     const url = `https://graph.facebook.com/v19.0/${adAccountId}/campaigns`;
     const params = {
-      fields: 'id,name,status,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,special_ad_categories,insights.date_preset(' + date_preset + '){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
+      fields: 'id,name,status,effective_status,configured_status,issues_info,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,special_ad_categories,insights.date_preset(' + date_preset + '){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
       limit: limit,
       access_token: accessToken
     };
@@ -645,6 +645,89 @@ router.delete('/track/:campaignId', authenticate, async (req, res) => {
       success: false,
       error: 'Failed to remove campaign from tracking',
       message: error.message
+    });
+  }
+});
+
+/**
+ * @route   GET /api/campaigns/manage/adset/:adsetId/ads
+ * @desc    Get all ads for a specific ad set with metrics and status
+ * @access  Private
+ */
+router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.userId;
+    const { adsetId } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    // Get user's Facebook auth
+    const facebookAuth = await FacebookAuth.findOne({
+      where: { userId: userId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    if (!facebookAuth || !facebookAuth.accessToken) {
+      return res.status(401).json({
+        error: 'Facebook authentication required',
+        requiresAuth: true
+      });
+    }
+
+    const accessToken = decryptToken(facebookAuth.accessToken);
+    if (!accessToken) {
+      return res.status(401).json({ error: 'Invalid Facebook access token' });
+    }
+
+    // Fetch ads for the ad set
+    const url = `https://graph.facebook.com/v19.0/${adsetId}/ads`;
+    const params = {
+      fields: 'id,name,status,effective_status,configured_status,issues_info,creative{id,title,body,image_url,video_id,thumbnail_url,object_story_spec},insights.date_preset(last_14d){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
+      access_token: accessToken,
+      limit: 100
+    };
+
+    console.log(`📄 Fetching ads for ad set ${adsetId}`);
+
+    const response = await axios.get(url, { params });
+    const adsData = response.data;
+
+    // Process ads to extract metrics
+    if (adsData.data) {
+      adsData.data = adsData.data.map(ad => {
+        const insights = ad.insights?.data?.[0];
+
+        return {
+          ...ad,
+          metrics: insights ? {
+            impressions: insights.impressions || 0,
+            clicks: insights.clicks || 0,
+            spend: insights.spend || 0,
+            ctr: insights.ctr || 0,
+            cpm: insights.cpm || 0,
+            reach: insights.reach || 0,
+            frequency: insights.frequency || 0,
+            results: insights.actions?.find(a => a.action_type === 'link_click')?.value || 0,
+            cost_per_result: insights.cost_per_action_type?.find(a => a.action_type === 'link_click')?.value || 0
+          } : null
+        };
+      });
+    }
+
+    res.json({
+      success: true,
+      ads: adsData.data || [],
+      count: adsData.data?.length || 0
+    });
+
+  } catch (error) {
+    console.error('Error fetching ads for ad set:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch ads',
+      message: error.response?.data?.error?.message || error.message
     });
   }
 });

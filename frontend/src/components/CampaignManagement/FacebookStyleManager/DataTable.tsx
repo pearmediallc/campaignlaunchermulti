@@ -26,6 +26,7 @@ interface DataTableProps {
   error: string | null;
   selectedItems: Set<string>;
   expandedRows: Set<string>;
+  loadingRows?: Set<string>;
   onSelectItem: (id: string) => void;
   onSelectAll: (ids: string[]) => void;
   onToggleRow: (id: string) => void;
@@ -45,6 +46,7 @@ const DataTable: React.FC<DataTableProps> = ({
   error,
   selectedItems,
   expandedRows,
+  loadingRows = new Set(),
   onSelectItem,
   onSelectAll,
   onToggleRow,
@@ -174,8 +176,12 @@ const DataTable: React.FC<DataTableProps> = ({
                   columns={columns}
                   selected={selectedItems.has(item.id)}
                   expanded={expandedRows.has(item.id)}
+                  isLoading={loadingRows.has(item.id)}
                   onSelect={() => onSelectItem(item.id)}
                   onToggle={() => onToggleRow(item.id)}
+                  expandedRows={expandedRows}
+                  loadingRows={loadingRows}
+                  onToggleRow={onToggleRow}
                 />
               ))
             )}

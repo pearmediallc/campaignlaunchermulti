@@ -70,7 +70,28 @@ export const useFacebookData = ({
                     `/api/campaigns/manage/details/${campaign.id}`,
                     { headers: { Authorization: `Bearer ${token}` } }
                   );
-                  const adsets = detailsResponse.data.campaign?.adsets?.data || [];
+                  let adsets = detailsResponse.data.campaign?.adsets?.data || [];
+
+                  // Fetch ads for expanded ad sets
+                  adsets = await Promise.all(
+                    adsets.map(async (adset: AdSetData) => {
+                      if (expandedRows.has(adset.id)) {
+                        try {
+                          const adsResponse = await axios.get(
+                            `/api/campaigns/manage/adset/${adset.id}/ads`,
+                            { headers: { Authorization: `Bearer ${token}` } }
+                          );
+                          const ads = adsResponse.data.ads || [];
+                          return { ...adset, ads };
+                        } catch (err) {
+                          console.error(`Failed to fetch ads for ad set ${adset.id}`, err);
+                          return adset;
+                        }
+                      }
+                      return adset;
+                    })
+                  );
+
                   return { ...campaign, adsets };
                 } catch (err) {
                   console.error(`Failed to fetch ad sets for campaign ${campaign.id}`, err);
