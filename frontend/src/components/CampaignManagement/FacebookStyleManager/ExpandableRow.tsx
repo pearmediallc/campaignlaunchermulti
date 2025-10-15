@@ -108,9 +108,9 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
   };
 
   const formatBudget = (value?: number) => {
-    if (!value) return '$0.00';
+    if (!value || value === 0) return 'Using campaign budget';
     const numValue = Number(value);
-    if (isNaN(numValue)) return '$0.00';
+    if (isNaN(numValue)) return 'Using campaign budget';
     return `$${(numValue / 100).toFixed(2)}`; // Budgets are in cents
   };
 
@@ -289,75 +289,94 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                         {(item as CampaignData).adsets?.map((adset) => {
                           const adsetExpanded = expandedRows.has(adset.id);
                           const adsetHasAds = adset.ads && adset.ads.length > 0;
+                          const isAdsetLoading = loadingRows.has(adset.id);
 
                           return (
                             <React.Fragment key={adset.id}>
                               {/* Ad Set Row */}
                               <TableRow sx={{ '&:hover': { bgcolor: '#f0f0f0' } }}>
-                                <TableCell sx={{ width: '40px' }}>
-                                  {adsetHasAds && onToggleRow && (
+                                <TableCell sx={{ width: '40px', pl: 1 }}>
+                                  {onToggleRow && (
                                     <IconButton
                                       size="small"
                                       onClick={() => onToggleRow(adset.id)}
-                                      sx={{ ml: 1 }}
+                                      sx={{ ml: 0.5 }}
+                                      disabled={isAdsetLoading}
                                     >
-                                      {adsetExpanded ? <ExpandMoreIcon fontSize="small" /> : <ExpandLessIcon fontSize="small" />}
+                                      {isAdsetLoading ? (
+                                        <CircularProgress size={16} />
+                                      ) : adsetExpanded ? (
+                                        <ExpandMoreIcon fontSize="small" />
+                                      ) : (
+                                        <ExpandLessIcon fontSize="small" />
+                                      )}
                                     </IconButton>
                                   )}
                                 </TableCell>
-                                <TableCell sx={{ fontSize: '13px' }}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
+                                <TableCell sx={{ fontSize: '13px', minWidth: 200 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', pl: 1 }}>
                                     <AdSetIcon sx={{ fontSize: 14, color: '#65676b', mr: 1 }} />
                                     {adset.name}
                                   </Box>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell sx={{ fontSize: '12px' }}>
                                   <EnhancedStatusChip item={adset} showEffectiveStatus showLearningPhase />
                                 </TableCell>
-                                <TableCell sx={{ fontSize: '13px' }}>
-                                  {formatBudget(adset.daily_budget)}
-                                </TableCell>
-                                <TableCell sx={{ fontSize: '13px' }}>
-                                  {formatNumber(adset.metrics?.impressions)}
-                                </TableCell>
-                                <TableCell sx={{ fontSize: '13px' }}>
-                                  {formatCurrency(adset.metrics?.spend)}
-                                </TableCell>
+                                <TableCell sx={{ fontSize: '12px' }}>{formatBudget(adset.daily_budget)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatNumber(adset.metrics?.results)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatNumber(adset.metrics?.reach)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatNumber(adset.metrics?.impressions)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatCurrency(adset.metrics?.cost_per_result)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatCurrency(adset.metrics?.spend)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatPercentage(adset.metrics?.ctr)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatCurrency(adset.metrics?.cpm)}</TableCell>
                               </TableRow>
 
                               {/* Nested Ads for this Ad Set */}
-                              {adsetHasAds && adsetExpanded && (
+                              {adsetExpanded && (
                                 <TableRow>
-                                  <TableCell colSpan={6} sx={{ p: 0, bgcolor: '#f5f5f5' }}>
+                                  <TableCell colSpan={11} sx={{ p: 0, bgcolor: '#f5f5f5', borderBottom: '1px solid #e4e6eb' }}>
                                     <Collapse in={adsetExpanded} timeout="auto" unmountOnExit>
-                                      <Box sx={{ p: 2, pl: 6 }}>
-                                        <Typography variant="caption" sx={{ mb: 1, fontWeight: 600, display: 'block' }}>
-                                          Ads ({adset.ads?.length || 0})
-                                        </Typography>
-                                        <Table size="small">
-                                          <TableBody>
-                                            {adset.ads?.map((ad) => (
-                                              <TableRow key={ad.id} sx={{ '&:hover': { bgcolor: '#e8e8e8' } }}>
-                                                <TableCell sx={{ fontSize: '12px', pl: 3 }}>
-                                                  <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
-                                                    <AdIcon sx={{ fontSize: 12, color: '#65676b', mr: 1 }} />
-                                                    {ad.name}
-                                                  </Box>
-                                                </TableCell>
-                                                <TableCell>
-                                                  <EnhancedStatusChip item={ad} showEffectiveStatus={false} showLearningPhase={false} />
-                                                </TableCell>
-                                                <TableCell sx={{ fontSize: '12px' }}>
-                                                  {formatNumber(ad.metrics?.impressions)}
-                                                </TableCell>
-                                                <TableCell sx={{ fontSize: '12px' }}>
-                                                  {formatCurrency(ad.metrics?.spend)}
-                                                </TableCell>
-                                              </TableRow>
-                                            ))}
-                                          </TableBody>
-                                        </Table>
-                                      </Box>
+                                      {isAdsetLoading ? (
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 3 }}>
+                                          <CircularProgress size={20} sx={{ mr: 2 }} />
+                                          <Typography variant="body2" color="text.secondary">
+                                            Loading ads...
+                                          </Typography>
+                                        </Box>
+                                      ) : (
+                                        <Box sx={{ p: 2, pl: 8 }}>
+                                          <Typography variant="caption" sx={{ mb: 1, fontWeight: 600, display: 'block', color: '#65676b' }}>
+                                            Ads ({adset.ads?.length || 0})
+                                          </Typography>
+                                          <Table size="small">
+                                            <TableBody>
+                                              {adset.ads?.map((ad) => (
+                                                <TableRow key={ad.id} sx={{ '&:hover': { bgcolor: '#e8e8e8' } }}>
+                                                  <TableCell sx={{ fontSize: '12px', width: '40px' }}></TableCell>
+                                                  <TableCell sx={{ fontSize: '12px', minWidth: 180 }}>
+                                                    <Box sx={{ display: 'flex', alignItems: 'center', pl: 2 }}>
+                                                      <AdIcon sx={{ fontSize: 12, color: '#65676b', mr: 1 }} />
+                                                      {ad.name}
+                                                    </Box>
+                                                  </TableCell>
+                                                  <TableCell sx={{ fontSize: '11px' }}>
+                                                    <EnhancedStatusChip item={ad} showEffectiveStatus showLearningPhase={false} />
+                                                  </TableCell>
+                                                  <TableCell sx={{ fontSize: '11px' }}>—</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatNumber(ad.metrics?.results)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatNumber(ad.metrics?.reach)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatNumber(ad.metrics?.impressions)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatCurrency(ad.metrics?.cost_per_result)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatCurrency(ad.metrics?.spend)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatPercentage(ad.metrics?.ctr)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatCurrency(ad.metrics?.cpm)}</TableCell>
+                                                </TableRow>
+                                              ))}
+                                            </TableBody>
+                                          </Table>
+                                        </Box>
+                                      )}
                                     </Collapse>
                                   </TableCell>
                                 </TableRow>
