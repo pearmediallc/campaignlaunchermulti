@@ -156,7 +156,77 @@ const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
         case 'increase_budget':
         case 'decrease_budget':
         case 'set_budget':
-          alert('Budget editing not yet implemented');
+          const budgetAction = action.replace('_budget', '');
+          let budgetValue: number | null = null;
+
+          if (budgetAction === 'set') {
+            const input = window.prompt('Enter new daily budget (in dollars):');
+            if (!input) break;
+            budgetValue = parseFloat(input);
+            if (isNaN(budgetValue) || budgetValue <= 0) {
+              alert('Please enter a valid budget amount');
+              break;
+            }
+          } else if (budgetAction === 'increase' || budgetAction === 'decrease') {
+            const input = window.prompt(
+              `Enter amount to ${budgetAction} budget by (in dollars):`
+            );
+            if (!input) break;
+            const amount = parseFloat(input);
+            if (isNaN(amount) || amount <= 0) {
+              alert('Please enter a valid amount');
+              break;
+            }
+
+            // For increase/decrease, we need to get current budgets and calculate new ones
+            for (const id of selectedIds) {
+              try {
+                const item = data.find(d => d.id === id);
+                if (!item) continue;
+
+                const currentBudget = parseFloat(String(item.daily_budget || item.budget || 0)) / 100; // Convert cents to dollars
+                const newBudget = budgetAction === 'increase'
+                  ? currentBudget + amount
+                  : Math.max(1, currentBudget - amount); // Minimum $1
+
+                let endpoint = '';
+                if (level === 'campaigns') {
+                  endpoint = `${API_BASE}/${id}/edit`;
+                } else if (level === 'adsets') {
+                  endpoint = `${API_BASE}/adsets/${id}/edit`;
+                }
+
+                await axios.put(endpoint, { daily_budget: newBudget });
+                successCount++;
+              } catch (error) {
+                errorCount++;
+              }
+            }
+
+            alert(`Bulk budget ${budgetAction}: ${successCount} succeeded, ${errorCount} failed`);
+            break;
+          }
+
+          // For 'set' budget
+          if (budgetValue !== null) {
+            for (const id of selectedIds) {
+              try {
+                let endpoint = '';
+                if (level === 'campaigns') {
+                  endpoint = `${API_BASE}/${id}/edit`;
+                } else if (level === 'adsets') {
+                  endpoint = `${API_BASE}/adsets/${id}/edit`;
+                }
+
+                await axios.put(endpoint, { daily_budget: budgetValue });
+                successCount++;
+              } catch (error) {
+                errorCount++;
+              }
+            }
+
+            alert(`Bulk set budget: ${successCount} succeeded, ${errorCount} failed`);
+          }
           break;
 
         default:
