@@ -184,7 +184,15 @@ const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
                 const item = data.find(d => d.id === id);
                 if (!item) continue;
 
-                const currentBudget = parseFloat(String(item.daily_budget || item.budget || 0)) / 100; // Convert cents to dollars
+                // Type guard: Ads don't have budgets
+                if (level === 'ads') {
+                  console.warn('Ads do not have budgets');
+                  errorCount++;
+                  continue;
+                }
+
+                // Get current budget (campaigns and ad sets have daily_budget)
+                const currentBudget = parseFloat(String((item as any).daily_budget || (item as any).budget || 0)) / 100;
                 const newBudget = budgetAction === 'increase'
                   ? currentBudget + amount
                   : Math.max(1, currentBudget - amount); // Minimum $1
