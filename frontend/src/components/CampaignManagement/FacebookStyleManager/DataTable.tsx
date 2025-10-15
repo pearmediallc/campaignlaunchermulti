@@ -11,9 +11,10 @@ import {
   Alert,
   Paper,
   Typography,
-  IconButton
+  IconButton,
+  Button
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import ExpandableRow from './ExpandableRow';
 import BulkActionsToolbar from './BulkActionsToolbar';
 import { CampaignData, AdSetData, AdData } from './types';
@@ -29,6 +30,9 @@ interface DataTableProps {
   onSelectAll: (ids: string[]) => void;
   onToggleRow: (id: string) => void;
   onRefresh: () => void;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  searchQuery?: string;
 }
 
 /**
@@ -44,7 +48,10 @@ const DataTable: React.FC<DataTableProps> = ({
   onSelectItem,
   onSelectAll,
   onToggleRow,
-  onRefresh
+  onRefresh,
+  hasMore = false,
+  onLoadMore,
+  searchQuery = ''
 }) => {
   const allIds = data.map((item) => item.id);
   const allSelected = selectedItems.size > 0 && selectedItems.size === data.length;
@@ -174,7 +181,39 @@ const DataTable: React.FC<DataTableProps> = ({
             )}
           </TableBody>
         </Table>
+
+        {/* Load More Button */}
+        {hasMore && onLoadMore && data.length > 0 && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3, borderTop: '1px solid #e4e6eb' }}>
+            <Button
+              variant="outlined"
+              onClick={onLoadMore}
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={16} /> : <ExpandMoreIcon />}
+              sx={{
+                textTransform: 'none',
+                borderColor: '#dddfe2',
+                color: '#050505',
+                '&:hover': {
+                  borderColor: '#1877f2',
+                  backgroundColor: 'rgba(24, 119, 242, 0.04)'
+                }
+              }}
+            >
+              {loading ? 'Loading...' : 'Load More Campaigns'}
+            </Button>
+          </Box>
+        )}
       </Paper>
+
+      {/* Search Results Counter */}
+      {searchQuery && (
+        <Box sx={{ px: 2, py: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Showing {data.length} results for "{searchQuery}"
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 };
