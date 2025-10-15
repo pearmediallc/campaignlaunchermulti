@@ -2084,7 +2084,6 @@ class FacebookAPI {
                     },
                     picture: originalCreativeData.link_data.picture
                   };
-                }
                 } else {
                   // Fallback to link_data if no creative data found
                   console.warn(`  ⚠️ No original creative data found, using link_data fallback`);
