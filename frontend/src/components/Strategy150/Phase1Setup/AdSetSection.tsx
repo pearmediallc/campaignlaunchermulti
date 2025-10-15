@@ -269,6 +269,8 @@ const AdSetSection: React.FC = () => {
                     placeholder="Enter your Facebook Pixel ID"
                     error={!!error}
                     disabled={loadingPixels}
+                    InputLabelProps={{ shrink: true }}
+                    helperText="Enter pixel ID as shown in Facebook Ads Manager"
                   />
                 )}
                 {error && <FormHelperText>{error.message}</FormHelperText>}

@@ -588,9 +588,33 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
       pixelId: selectedPixelId
     });
 
-    // Use smart duplication that handles both small and large campaigns
-    // Supports multiple copies as requested
-    const newCampaigns = await facebookApi.duplicateCampaign(campaignId, new_name, numberOfCopies);
+    // Use Facebook's native deep copy API for exact duplication
+    // This preserves original structure, attribution, and all settings
+    console.log(`📋 Using native Facebook deep copy for ${numberOfCopies} campaign(s)`);
+
+    const newCampaigns = [];
+    for (let i = 0; i < numberOfCopies; i++) {
+      const copyName = numberOfCopies > 1
+        ? `${new_name} - Copy ${i + 1}`
+        : new_name;
+
+      try {
+        const newCampaignId = await facebookApi.duplicateCampaignDeepCopy(campaignId, copyName);
+        newCampaigns.push({
+          id: newCampaignId,
+          name: copyName,
+          copyNumber: i + 1,
+          success: true
+        });
+      } catch (error) {
+        console.error(`Failed to create copy ${i + 1}:`, error.message);
+        newCampaigns.push({
+          success: false,
+          error: error.message,
+          copyNumber: i + 1
+        });
+      }
+    }
 
     // Handle both single and multiple campaign results
     const campaigns = Array.isArray(newCampaigns) ? newCampaigns : [newCampaigns];

@@ -17,7 +17,7 @@ router.post('/create-variation', async (req, res) => {
     for (let i = 0; i < variations.length; i++) {
       const variation = variations[i];
       const ad = await facebookApi.createAd({
-        name: `[REVIEW] ${campaignName} - Ad Variation ${i + 1}`,
+        name: `[Launcher] ${campaignName} - Ad Variation ${i + 1}`,
         campaignName: campaignName,
         adsetId: adsetId,
         url: variation.url,

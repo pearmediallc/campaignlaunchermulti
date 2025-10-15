@@ -2026,9 +2026,38 @@ class FacebookAPI {
                 };
 
                 // Check if original ad has video or image data
-                if (originalCreativeData?.video_data) {
-                  // VIDEO AD - use video_data
-                  console.log(`  📹 Creating video ad variation ${v + 1} with video_id: ${originalCreativeData.video_data.video_id}`);
+                // Check if variation has uploaded media, otherwise use original ad media
+                if (variation.videoId || variation.videoHash) {
+                  // USER UPLOADED VIDEO - use it
+                  console.log(`  📹 Creating video ad variation ${v + 1} with UPLOADED video`);
+                  objectStorySpec.video_data = {
+                    video_id: variation.videoId || variation.videoHash,
+                    title: variation.headline || formData.headline,
+                    message: variation.primaryText || formData.primaryText,
+                    link_description: variation.description || formData.description,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                      value: {
+                        link: variation.websiteUrl || formData.url
+                      }
+                    }
+                  };
+                } else if (variation.imageHash) {
+                  // USER UPLOADED IMAGE - use it
+                  console.log(`  📸 Creating image ad variation ${v + 1} with UPLOADED image`);
+                  objectStorySpec.link_data = {
+                    message: variation.primaryText || formData.primaryText,
+                    name: variation.headline || formData.headline,
+                    description: variation.description || formData.description,
+                    link: variation.websiteUrl || formData.url,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE'
+                    },
+                    image_hash: variation.imageHash
+                  };
+                } else if (originalCreativeData?.video_data) {
+                  // NO UPLOAD - use ORIGINAL video
+                  console.log(`  📹 Creating video ad variation ${v + 1} with ORIGINAL video_id: ${originalCreativeData.video_data.video_id}`);
                   objectStorySpec.video_data = {
                     video_id: originalCreativeData.video_data.video_id,
                     title: variation.headline || formData.headline,
@@ -2040,11 +2069,11 @@ class FacebookAPI {
                         link: variation.websiteUrl || formData.url
                       }
                     },
-                    image_url: originalCreativeData.video_data.image_url // Video thumbnail
+                    image_url: originalCreativeData.video_data.image_url
                   };
                 } else if (originalCreativeData?.link_data) {
-                  // IMAGE/LINK AD - use link_data
-                  console.log(`  📸 Creating image ad variation ${v + 1}`);
+                  // NO UPLOAD - use ORIGINAL image
+                  console.log(`  📸 Creating image ad variation ${v + 1} with ORIGINAL image`);
                   objectStorySpec.link_data = {
                     message: variation.primaryText || formData.primaryText,
                     name: variation.headline || formData.headline,
@@ -2053,8 +2082,9 @@ class FacebookAPI {
                     call_to_action: {
                       type: variation.callToAction || formData.callToAction || 'LEARN_MORE'
                     },
-                    picture: originalCreativeData.link_data.picture // Image hash/URL
+                    picture: originalCreativeData.link_data.picture
                   };
+                }
                 } else {
                   // Fallback to link_data if no creative data found
                   console.warn(`  ⚠️ No original creative data found, using link_data fallback`);
