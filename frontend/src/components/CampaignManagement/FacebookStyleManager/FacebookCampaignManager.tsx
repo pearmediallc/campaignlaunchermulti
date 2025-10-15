@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, TextField, InputAdornment, IconButton } from '@mui/material';
 import { Search as SearchIcon, Clear as ClearIcon } from '@mui/icons-material';
 import LevelTabs from './LevelTabs';
 import DataTable from './DataTable';
+import FilterBar, { FilterOptions } from './FilterBar';
 import { useFacebookData } from './hooks/useFacebookData';
+import { CampaignData, AdSetData, AdData } from './types';
 
 /**
  * Facebook-Style Campaign Manager
@@ -16,6 +18,11 @@ const FacebookCampaignManager: React.FC = () => {
   const [loadingRows, setLoadingRows] = useState<Set<string>>(new Set()); // Track which rows are loading
   const [dateRange, setDateRange] = useState('last_14d');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<FilterOptions>({
+    deliveryStatus: [],
+    learningStatus: [],
+    issuesStatus: []
+  });
 
   // Fetch data based on active level
   const { data, loading, error, refetch, hasMore, loadMore } = useFacebookData({
@@ -25,10 +32,54 @@ const FacebookCampaignManager: React.FC = () => {
     searchQuery
   });
 
+  // Apply filters to data
+  const filteredData = useMemo(() => {
+    let filtered = [...data];
+
+    // Delivery status filter
+    if (filters.deliveryStatus.length > 0) {
+      filtered = filtered.filter((item: CampaignData | AdSetData | AdData) => {
+        const effectiveStatus = item.effective_status || item.status;
+
+        // Check if item matches any selected delivery status
+        return filters.deliveryStatus.some(status => {
+          if (status === 'WITH_ISSUES') return item.issues_info && item.issues_info.length > 0;
+          if (status === 'IN_REVIEW') return effectiveStatus?.includes('REVIEW') || effectiveStatus === 'PENDING_REVIEW';
+          if (status === 'PENDING_REVIEW') return effectiveStatus === 'PENDING_REVIEW';
+          if (status === 'DISAPPROVED') return effectiveStatus === 'DISAPPROVED';
+          if (status === 'NOT_DELIVERING') return effectiveStatus === 'CAMPAIGN_PAUSED' || effectiveStatus === 'ADSET_PAUSED';
+          return effectiveStatus === status || item.status === status;
+        });
+      });
+    }
+
+    // Learning status filter (ad sets only)
+    if (filters.learningStatus.length > 0 && activeLevel === 'adsets') {
+      filtered = filtered.filter((item: AdSetData) => {
+        const learningStatus = item.learning_stage_info?.status;
+        return filters.learningStatus.includes(learningStatus || 'NOT_LEARNING');
+      });
+    }
+
+    // Issues filter
+    if (filters.issuesStatus.length > 0) {
+      filtered = filtered.filter((item: CampaignData | AdSetData | AdData) => {
+        const hasIssues = item.issues_info && item.issues_info.length > 0;
+
+        if (filters.issuesStatus.includes('HAS_ISSUES') && hasIssues) return true;
+        if (filters.issuesStatus.includes('NO_ISSUES') && !hasIssues) return true;
+        return false;
+      });
+    }
+
+    return filtered;
+  }, [data, filters, activeLevel]);
+
   const handleLevelChange = (level: 'campaigns' | 'adsets' | 'ads') => {
     setActiveLevel(level);
     setSelectedItems(new Set()); // Clear selection when changing levels
     setExpandedRows(new Set()); // Clear expanded rows
+    setFilters({ deliveryStatus: [], learningStatus: [], issuesStatus: [] }); // Clear filters
   };
 
   const handleSelectItem = (id: string) => {
@@ -86,6 +137,13 @@ const FacebookCampaignManager: React.FC = () => {
         onDateRangeChange={setDateRange}
       />
 
+      {/* Filter Bar */}
+      <FilterBar
+        level={activeLevel}
+        activeFilters={filters}
+        onFilterChange={setFilters}
+      />
+
       {/* Search Bar */}
       <Box sx={{ px: 3, pt: 2, pb: 1 }}>
         <TextField
@@ -129,7 +187,7 @@ const FacebookCampaignManager: React.FC = () => {
       {/* Data Table */}
       <DataTable
         level={activeLevel}
-        data={data}
+        data={filteredData}
         loading={loading}
         error={error}
         selectedItems={selectedItems}
