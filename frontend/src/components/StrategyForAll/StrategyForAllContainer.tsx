@@ -263,6 +263,9 @@ const StrategyForAllContainer: React.FC = () => {
         // Call to action
         callToAction: campaignData.callToAction || 'LEARN_MORE',
 
+        // Display Link (optional - only works for image/carousel ads)
+        displayLink: campaignData.displayLink,
+
         // Required field for CampaignFormData
         conversionLocation: campaignData.conversionLocation || 'website',
 
