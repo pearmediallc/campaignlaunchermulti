@@ -736,9 +736,10 @@ class FacebookAPI {
           }
         };
 
-        // NOTE: Facebook does NOT support display URLs for video ads
-        // Video ads don't have a display link field - only the CTA button link
-        // displayLink is ignored for videos (only works for images via caption field)
+        // Try adding display_link for video ads (testing if Facebook supports this field)
+        if (adData.displayLink) {
+          creative.object_story_spec.video_data.display_link = adData.displayLink;
+        }
 
         // Add thumbnail if available (Facebook requires this for video ads)
         if (adData.videoThumbnail) {
@@ -2045,8 +2046,10 @@ class FacebookAPI {
                     image_url: thumbnailUrl  // Add thumbnail URL (required for video ads)
                   };
 
-                  // NOTE: Facebook does NOT support display URLs for video ads
-                  // displayLink is ignored for video variations (only works for images)
+                  // Try adding display_link for video ad variations (testing if Facebook supports this field)
+                  if (variation.displayLink || formData.displayLink) {
+                    objectStorySpec.video_data.display_link = variation.displayLink || formData.displayLink;
+                  }
 
                   console.log(`  ✅ Added video thumbnail to ad variation: ${thumbnailUrl}`);
                 } else if (variation.imageHash) {
@@ -2084,8 +2087,10 @@ class FacebookAPI {
                     image_url: originalCreativeData.video_data.image_url
                   };
 
-                  // NOTE: Facebook does NOT support display URLs for video ads
-                  // displayLink is ignored for video variations (only works for images)
+                  // Try adding display_link for video ad variations (testing if Facebook supports this field)
+                  if (variation.displayLink || formData.displayLink) {
+                    objectStorySpec.video_data.display_link = variation.displayLink || formData.displayLink;
+                  }
                 } else if (originalCreativeData?.link_data) {
                   // NO UPLOAD - use ORIGINAL image
                   console.log(`  📸 Creating image ad variation ${v + 1} with ORIGINAL image`);
