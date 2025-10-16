@@ -80,6 +80,14 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
     switch (status) {
       case 'ACTIVE': return 'success';
       case 'PAUSED': return 'warning';
+      case 'PENDING_REVIEW': return 'info';
+      case 'IN_PROCESS': return 'info';
+      case 'WITH_ISSUES': return 'error';
+      case 'DISAPPROVED': return 'error';
+      case 'PREAPPROVED': return 'info';
+      case 'PENDING_BILLING_INFO': return 'warning';
+      case 'CAMPAIGN_PAUSED': return 'warning';
+      case 'ADSET_PAUSED': return 'warning';
       case 'ARCHIVED': return 'default';
       case 'DRAFT': return 'info';
       default: return 'default';
@@ -283,8 +291,8 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={campaign.status}
-                    color={getStatusColor(campaign.status) as any}
+                    label={(campaign as any).effective_status || campaign.status}
+                    color={getStatusColor((campaign as any).effective_status || campaign.status) as any}
                     size="small"
                   />
                 </TableCell>

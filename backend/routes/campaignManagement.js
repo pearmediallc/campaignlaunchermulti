@@ -383,6 +383,10 @@ router.get('/all', authenticate, async (req, res) => {
 
         return {
           ...campaign,
+          // Explicitly include status fields for frontend display
+          effective_status: campaign.effective_status,  // Real Facebook status (PENDING_REVIEW, IN_PROCESS, ACTIVE, etc.)
+          configured_status: campaign.configured_status,
+          issues_info: campaign.issues_info,  // Include issues for debugging
           metrics: insights ? {
             impressions: insights.impressions || 0,
             clicks: insights.clicks || 0,

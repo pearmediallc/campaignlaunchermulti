@@ -4,6 +4,9 @@ export interface CampaignListItem {
   id: string;
   name: string;
   status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED' | 'DRAFT';
+  effective_status?: string;  // Real Facebook status (PENDING_REVIEW, IN_PROCESS, ACTIVE, WITH_ISSUES, etc.)
+  configured_status?: string;
+  issues_info?: any;
   createdDate: string;
   adSetsCount: number;
 
