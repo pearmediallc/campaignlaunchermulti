@@ -269,6 +269,9 @@ const StrategyForAdsContainer: React.FC = () => {
         // Call to action
         callToAction: campaignData.callToAction || 'LEARN_MORE',
 
+        // Display Link (optional)
+        displayLink: campaignData.displayLink,
+
         // Required field for CampaignFormData
         conversionLocation: campaignData.conversionLocation || 'website',
 
