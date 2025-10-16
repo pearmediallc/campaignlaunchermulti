@@ -162,7 +162,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <Divider sx={{ my: 1 }} />
 
           <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-            Strategy for All Breakdown:
+            Campaign Breakdown:
           </Typography>
           {breakdownText.map((line, idx) => (
             <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>

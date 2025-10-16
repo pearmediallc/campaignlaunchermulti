@@ -1210,7 +1210,7 @@ const AdSetSection: React.FC = () => {
                 type="number"
                 label="Number of Ad Sets to Duplicate"
                 inputProps={{ min: 1, max: 49, step: 1 }}
-                helperText={error?.message || "Enter number of ad sets to create (1-49)"}
+                helperText={error?.message || "Enter number of ad sets to create"}
                 error={!!error}
                 onChange={(e) => {
                   const value = parseInt(e.target.value) || 1;

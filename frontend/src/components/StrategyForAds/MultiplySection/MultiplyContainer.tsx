@@ -139,7 +139,7 @@ const MultiplyContainer: React.FC<MultiplyContainerProps> = ({
           setMultiplicationResults({
             source: {
               campaignId: campaignId,
-              adSetCount: 50, // Strategy for All has 50 adsets
+              adSetCount: 50, // Ad set count (varies by source campaign)
               postId: postId
             },
             results: status.campaigns.map((c: any, i: number) => ({
@@ -199,7 +199,7 @@ const MultiplyContainer: React.FC<MultiplyContainerProps> = ({
               Select Campaign to Multiply
             </Typography>
             <Typography variant="body2" color="textSecondary" gutterBottom>
-              Enter the campaign ID of a Strategy for All campaign you want to multiply
+              Enter the campaign ID you want to multiply
             </Typography>
 
             {!manualInput && campaignId && (
@@ -274,7 +274,7 @@ const MultiplyContainer: React.FC<MultiplyContainerProps> = ({
                 <Alert severity="warning">
                   <Typography variant="body2">
                     This will create {multiplyCount} complete {multiplyCount === 1 ? 'copy' : 'copies'} of the campaign,
-                    each with 50 ad sets and ads. All campaigns will be created in PAUSED state for safety.
+                    with all ad sets and ads from the source campaign. All campaigns will be created in PAUSED state for safety.
                   </Typography>
                 </Alert>
               </Box>
@@ -350,7 +350,7 @@ const MultiplyContainer: React.FC<MultiplyContainerProps> = ({
                   Multiply Campaign
                 </Typography>
                 <Typography variant="body2" color="textSecondary">
-                  Clone your Strategy for All campaigns at scale
+                  Clone your campaigns at scale
                 </Typography>
               </Box>
             </Box>

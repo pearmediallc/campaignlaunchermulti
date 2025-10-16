@@ -138,7 +138,7 @@ const StrategyForAdsContainer: React.FC = () => {
       setActiveStep(1);
       setError('');
 
-      // Map StrategyForAllFormData to Strategy for All endpoint format
+      // Map form data to Strategy For Ads endpoint format
       const campaignData = {
         // Basic campaign data
         campaignName: data.campaignName,
@@ -163,7 +163,7 @@ const StrategyForAdsContainer: React.FC = () => {
         instagramAccount: data.instagramAccount,
         pixel: data.pixel,
 
-        // Strategy for All specific
+        // Strategy type (kept for backend compatibility)
         strategy: '1-50-1',
         publishDirectly: data.publishDirectly,
 
@@ -214,7 +214,7 @@ const StrategyForAdsContainer: React.FC = () => {
         placementType: data.placementType || 'automatic',
         placements: data.placements,
 
-        // Duplication settings for Strategy for All
+        // Duplication settings for ad sets
         duplicationSettings: data.duplicationSettings || {
           defaultBudgetPerAdSet: 1,
           budgetDistributionType: 'equal'
@@ -675,10 +675,10 @@ const StrategyForAdsContainer: React.FC = () => {
       <Paper elevation={2} sx={{ p: 4 }}>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" component="h1" gutterBottom align="center">
-            Strategy for All
+            Strategy For Ads
           </Typography>
           <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
-            Create and manage your campaigns with flexible ad set duplication (1-49 ad sets)
+            Create and manage campaigns with custom ad sets and ad variations (you control the quantities)
           </Typography>
 
           {/* Tab Navigation */}

@@ -82,14 +82,14 @@ const CampaignIdInput: React.FC<CampaignIdInputProps> = ({
     setValidationMessage('');
 
     try {
-      // This endpoint would verify the campaign exists and is a Strategy for All campaign
+      // Verify the campaign exists
       // Add skipDetails=true to avoid fetching all ad sets (prevents rate limit)
       const response = await api.get(`/campaigns/strategy-for-all/verify/${idToValidate}?skipDetails=true`);
 
       if (response.data.success) {
         setCampaignValid(true);
         setCampaignDetails(response.data.campaign);
-        setValidationMessage(`✓ Valid Strategy for All campaign found: ${response.data.campaign?.name || 'Campaign'}`);
+        setValidationMessage(`✓ Valid campaign found: ${response.data.campaign?.name || 'Campaign'}`);
 
         // If post ID is returned, auto-populate it
         if (response.data.postId && !postId) {
@@ -102,7 +102,7 @@ const CampaignIdInput: React.FC<CampaignIdInputProps> = ({
         }
       } else {
         setCampaignValid(false);
-        setValidationMessage(response.data.error || 'Campaign not found or not a Strategy for All campaign');
+        setValidationMessage(response.data.error || 'Campaign not found');
         if (onValidationComplete) {
           onValidationComplete(false);
         }
@@ -197,7 +197,7 @@ const CampaignIdInput: React.FC<CampaignIdInputProps> = ({
             }}
             helperText={
               validationMessage ||
-              "Enter the Campaign ID of the Strategy for All campaign you want to multiply"
+              "Enter the Campaign ID you want to multiply"
             }
           />
         </Box>

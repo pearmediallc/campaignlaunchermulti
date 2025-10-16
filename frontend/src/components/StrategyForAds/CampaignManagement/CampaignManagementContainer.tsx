@@ -113,7 +113,7 @@ const CampaignManagementContainer: React.FC = () => {
           Campaign Management
         </Typography>
         <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
-          Monitor and manage your Strategy for All campaigns
+          Monitor and manage your campaigns
         </Typography>
       </Box>
 

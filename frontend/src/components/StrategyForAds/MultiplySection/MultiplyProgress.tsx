@@ -204,7 +204,7 @@ const MultiplyProgress: React.FC<MultiplyProgressProps> = ({
       <Alert severity="info">
         <Typography variant="body2">
           This process may take several minutes depending on the number of campaigns being created.
-          Each campaign includes 50 ad sets and their corresponding ads.
+          Each campaign includes all ad sets and ads from the source campaign.
         </Typography>
       </Alert>
     </Box>

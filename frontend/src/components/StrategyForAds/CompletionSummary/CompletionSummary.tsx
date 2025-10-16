@@ -110,10 +110,10 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         <CardContent sx={{ textAlign: 'center', py: 4 }}>
           <CheckCircle sx={{ fontSize: 64, mb: 2 }} />
           <Typography variant="h4" gutterBottom>
-            🎉 Strategy for All Complete!
+            🎉 Campaign Created Successfully!
           </Typography>
           <Typography variant="h6">
-            Your campaign has been successfully created and duplicated
+            Your campaign has been successfully created with all ad sets and variations
           </Typography>
         </CardContent>
       </Card>
@@ -231,8 +231,8 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
               <CheckCircle color="success" />
             </ListItemIcon>
             <ListItemText
-              primary="Strategy for All Complete"
-              secondary="All ad sets now use the same approved creative for consistent messaging"
+              primary="Campaign Setup Complete"
+              secondary="All ad sets created with your custom ad variations"
             />
           </ListItem>
         </List>
@@ -321,7 +321,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
       {/* Tips */}
       <Paper sx={{ p: 3, mt: 4, backgroundColor: 'background.default' }}>
         <Typography variant="h6" gutterBottom>
-          💡 Pro Tips for Strategy for All
+          💡 Pro Tips for Your Campaign
         </Typography>
         <List dense>
           <ListItem>

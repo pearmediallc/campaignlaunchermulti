@@ -133,7 +133,7 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
           No campaigns found
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Create your first Strategy for All campaign to see it here.
+          Create your first campaign to see it here.
         </Typography>
       </Box>
     );
