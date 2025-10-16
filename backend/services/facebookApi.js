@@ -722,23 +722,37 @@ class FacebookAPI {
       
       // Handle different media types
       if ((adData.mediaType === 'video' || adData.mediaType === 'single_video') && adData.videoId) {
-        // Video ad
-        creative.object_story_spec.video_data = {
-          video_id: adData.videoId,
-          message: adData.primaryText,
-          title: adData.headline,
-          link_description: adData.description,
-          call_to_action: {
-            type: adData.callToAction || 'LEARN_MORE',
-            value: {
-              link: adData.url
-            }
-          }
-        };
-
-        // Try adding display_link for video ads (testing if Facebook supports this field)
+        // Video ad - Try link_data with video_id if displayLink is provided
         if (adData.displayLink) {
-          creative.object_story_spec.video_data.display_link = adData.displayLink;
+          console.log('🧪 Attempting link_data approach for video with display_link');
+          creative.object_story_spec.link_data = {
+            link: adData.url,
+            message: adData.primaryText,
+            name: adData.headline,
+            description: adData.description,
+            display_link: adData.displayLink,
+            video_id: adData.videoId,
+            call_to_action: {
+              type: adData.callToAction || 'LEARN_MORE',
+              value: {
+                link: adData.url
+              }
+            }
+          };
+        } else {
+          // No display link - use standard video_data approach
+          creative.object_story_spec.video_data = {
+            video_id: adData.videoId,
+            message: adData.primaryText,
+            title: adData.headline,
+            link_description: adData.description,
+            call_to_action: {
+              type: adData.callToAction || 'LEARN_MORE',
+              value: {
+                link: adData.url
+              }
+            }
+          };
         }
 
         // Add thumbnail if available (Facebook requires this for video ads)
@@ -746,14 +760,26 @@ class FacebookAPI {
           // Check if it's an image hash (from extracted frame) or URL
           if (adData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
             // It's an image hash from extracted frame
-            creative.object_story_spec.video_data.image_hash = adData.videoThumbnail;
+            if (creative.object_story_spec.video_data) {
+              creative.object_story_spec.video_data.image_hash = adData.videoThumbnail;
+            } else if (creative.object_story_spec.link_data) {
+              creative.object_story_spec.link_data.image_hash = adData.videoThumbnail;
+            }
           } else {
             // It's a URL from Facebook
-            creative.object_story_spec.video_data.image_url = adData.videoThumbnail;
+            if (creative.object_story_spec.video_data) {
+              creative.object_story_spec.video_data.image_url = adData.videoThumbnail;
+            } else if (creative.object_story_spec.link_data) {
+              creative.object_story_spec.link_data.image_url = adData.videoThumbnail;
+            }
           }
         } else if (adData.imageHash) {
           // Fallback to image hash if provided
-          creative.object_story_spec.video_data.image_hash = adData.imageHash;
+          if (creative.object_story_spec.video_data) {
+            creative.object_story_spec.video_data.image_hash = adData.imageHash;
+          } else if (creative.object_story_spec.link_data) {
+            creative.object_story_spec.link_data.image_hash = adData.imageHash;
+          }
         }
       } else if (adData.mediaType === 'carousel' && (adData.carouselCards || adData.carouselImages)) {
         // Carousel ad
@@ -825,8 +851,55 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      const response = await axios.post(url, null, { params });
-      return response.data;
+      try {
+        const response = await axios.post(url, null, { params });
+        return response.data;
+      } catch (error) {
+        // If link_data with video_id and display_link failed, retry with video_data (no display link)
+        if (adData.displayLink && (adData.mediaType === 'video' || adData.mediaType === 'single_video') && error.response?.data?.error) {
+          console.log('⚠️ link_data approach failed, retrying with video_data (no display link)');
+          console.log('Error was:', error.response.data.error.message);
+
+          // Rebuild creative with video_data approach (no display link)
+          creative.object_story_spec = {
+            page_id: this.pageId
+          };
+
+          creative.object_story_spec.video_data = {
+            video_id: adData.videoId,
+            message: adData.primaryText,
+            title: adData.headline,
+            link_description: adData.description,
+            call_to_action: {
+              type: adData.callToAction || 'LEARN_MORE',
+              value: {
+                link: adData.url
+              }
+            }
+          };
+
+          // Add thumbnail
+          if (adData.videoThumbnail) {
+            if (adData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
+              creative.object_story_spec.video_data.image_hash = adData.videoThumbnail;
+            } else {
+              creative.object_story_spec.video_data.image_url = adData.videoThumbnail;
+            }
+          } else if (adData.imageHash) {
+            creative.object_story_spec.video_data.image_hash = adData.imageHash;
+          }
+
+          // Retry ad creation with fallback creative
+          params.creative = JSON.stringify(creative);
+          console.log('🔄 Retrying ad creation without display_link...');
+          const retryResponse = await axios.post(url, null, { params });
+          console.log('✅ Video ad created successfully without display_link');
+          return retryResponse.data;
+        }
+
+        // If not a video display link error, throw original error
+        throw error;
+      }
     } catch (error) {
       this.handleError(error);
     }
@@ -2032,23 +2105,41 @@ class FacebookAPI {
                   console.log(`  📷 Fetching thumbnail for uploaded video ${uploadedVideoId}...`);
                   const thumbnailUrl = await this.getVideoThumbnail(uploadedVideoId);
 
-                  objectStorySpec.video_data = {
-                    video_id: uploadedVideoId,
-                    title: variation.headline || formData.headline,
-                    message: variation.primaryText || formData.primaryText,
-                    link_description: variation.description || formData.description,
-                    call_to_action: {
-                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
-                      value: {
-                        link: variation.websiteUrl || formData.url
-                      }
-                    },
-                    image_url: thumbnailUrl  // Add thumbnail URL (required for video ads)
-                  };
+                  const displayLink = variation.displayLink || formData.displayLink;
 
-                  // Try adding display_link for video ad variations (testing if Facebook supports this field)
-                  if (variation.displayLink || formData.displayLink) {
-                    objectStorySpec.video_data.display_link = variation.displayLink || formData.displayLink;
+                  if (displayLink) {
+                    // Try link_data approach with display_link
+                    console.log(`  🧪 Using link_data approach for video variation with display_link`);
+                    objectStorySpec.link_data = {
+                      link: variation.websiteUrl || formData.url,
+                      message: variation.primaryText || formData.primaryText,
+                      name: variation.headline || formData.headline,
+                      description: variation.description || formData.description,
+                      display_link: displayLink,
+                      video_id: uploadedVideoId,
+                      call_to_action: {
+                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                        value: {
+                          link: variation.websiteUrl || formData.url
+                        }
+                      },
+                      image_url: thumbnailUrl
+                    };
+                  } else {
+                    // No display link - use standard video_data
+                    objectStorySpec.video_data = {
+                      video_id: uploadedVideoId,
+                      title: variation.headline || formData.headline,
+                      message: variation.primaryText || formData.primaryText,
+                      link_description: variation.description || formData.description,
+                      call_to_action: {
+                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                        value: {
+                          link: variation.websiteUrl || formData.url
+                        }
+                      },
+                      image_url: thumbnailUrl
+                    };
                   }
 
                   console.log(`  ✅ Added video thumbnail to ad variation: ${thumbnailUrl}`);
@@ -2073,23 +2164,42 @@ class FacebookAPI {
                 } else if (originalCreativeData?.video_data) {
                   // NO UPLOAD - use ORIGINAL video
                   console.log(`  📹 Creating video ad variation ${v + 1} with ORIGINAL video_id: ${originalCreativeData.video_data.video_id}`);
-                  objectStorySpec.video_data = {
-                    video_id: originalCreativeData.video_data.video_id,
-                    title: variation.headline || formData.headline,
-                    message: variation.primaryText || formData.primaryText,
-                    link_description: variation.description || formData.description,
-                    call_to_action: {
-                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
-                      value: {
-                        link: variation.websiteUrl || formData.url
-                      }
-                    },
-                    image_url: originalCreativeData.video_data.image_url
-                  };
 
-                  // Try adding display_link for video ad variations (testing if Facebook supports this field)
-                  if (variation.displayLink || formData.displayLink) {
-                    objectStorySpec.video_data.display_link = variation.displayLink || formData.displayLink;
+                  const displayLink = variation.displayLink || formData.displayLink;
+
+                  if (displayLink) {
+                    // Try link_data approach with display_link
+                    console.log(`  🧪 Using link_data approach for video variation with display_link`);
+                    objectStorySpec.link_data = {
+                      link: variation.websiteUrl || formData.url,
+                      message: variation.primaryText || formData.primaryText,
+                      name: variation.headline || formData.headline,
+                      description: variation.description || formData.description,
+                      display_link: displayLink,
+                      video_id: originalCreativeData.video_data.video_id,
+                      call_to_action: {
+                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                        value: {
+                          link: variation.websiteUrl || formData.url
+                        }
+                      },
+                      image_url: originalCreativeData.video_data.image_url
+                    };
+                  } else {
+                    // No display link - use standard video_data
+                    objectStorySpec.video_data = {
+                      video_id: originalCreativeData.video_data.video_id,
+                      title: variation.headline || formData.headline,
+                      message: variation.primaryText || formData.primaryText,
+                      link_description: variation.description || formData.description,
+                      call_to_action: {
+                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                        value: {
+                          link: variation.websiteUrl || formData.url
+                        }
+                      },
+                      image_url: originalCreativeData.video_data.image_url
+                    };
                   }
                 } else if (originalCreativeData?.link_data) {
                   // NO UPLOAD - use ORIGINAL image
