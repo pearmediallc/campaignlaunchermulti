@@ -786,9 +786,9 @@ class FacebookAPI {
           }
         };
 
-        // Add display_link if provided
+        // Add caption (display URL for carousel ads)
         if (adData.displayLink) {
-          creative.object_story_spec.link_data.display_link = adData.displayLink;
+          creative.object_story_spec.link_data.caption = adData.displayLink;
         }
       } else {
         // Single image ad (default)
@@ -802,9 +802,9 @@ class FacebookAPI {
           }
         };
 
-        // Add display_link if provided
+        // Add caption (display URL for image ads)
         if (adData.displayLink) {
-          creative.object_story_spec.link_data.display_link = adData.displayLink;
+          creative.object_story_spec.link_data.caption = adData.displayLink;
         }
 
         // Add image hash if available
@@ -2066,9 +2066,9 @@ class FacebookAPI {
                     image_hash: variation.imageHash
                   };
 
-                  // Add display_link if provided
+                  // Add caption (display URL for image ads)
                   if (variation.displayLink || formData.displayLink) {
-                    objectStorySpec.link_data.display_link = variation.displayLink || formData.displayLink;
+                    objectStorySpec.link_data.caption = variation.displayLink || formData.displayLink;
                   }
                 } else if (originalCreativeData?.video_data) {
                   // NO UPLOAD - use ORIGINAL video
@@ -2105,9 +2105,9 @@ class FacebookAPI {
                     picture: originalCreativeData.link_data.picture
                   };
 
-                  // Add display_link if provided
+                  // Add caption (display URL for image ads)
                   if (variation.displayLink || formData.displayLink) {
-                    objectStorySpec.link_data.display_link = variation.displayLink || formData.displayLink;
+                    objectStorySpec.link_data.caption = variation.displayLink || formData.displayLink;
                   }
                 } else {
                   // Fallback to link_data if no creative data found
@@ -4007,7 +4007,7 @@ class FacebookAPI {
             newSpec.link_data.link = variation.websiteUrl;
           }
           if (variation.displayLink !== undefined) {
-            newSpec.link_data.display_link = variation.displayLink;
+            newSpec.link_data.caption = variation.displayLink;
           }
           if (variation.callToAction !== undefined) {
             newSpec.link_data.call_to_action.type = variation.callToAction;
@@ -4097,7 +4097,7 @@ class FacebookAPI {
             name: spec.link_data.name,
             message: spec.link_data.message?.substring(0, 50),
             description: spec.link_data.description,
-            display_link: spec.link_data.display_link,
+            caption: spec.link_data.caption,
             link: spec.link_data.link,
             cta_type: spec.link_data.call_to_action?.type
           });
