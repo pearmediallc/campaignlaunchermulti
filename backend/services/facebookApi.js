@@ -736,10 +736,9 @@ class FacebookAPI {
           }
         };
 
-        // Add display_url if provided (this is the "Display link" field in Ads Manager for videos)
-        if (adData.displayLink) {
-          creative.object_story_spec.video_data.display_url = adData.displayLink;
-        }
+        // NOTE: Facebook does NOT support display URLs for video ads
+        // Video ads don't have a display link field - only the CTA button link
+        // displayLink is ignored for videos (only works for images via caption field)
 
         // Add thumbnail if available (Facebook requires this for video ads)
         if (adData.videoThumbnail) {
@@ -2046,10 +2045,8 @@ class FacebookAPI {
                     image_url: thumbnailUrl  // Add thumbnail URL (required for video ads)
                   };
 
-                  // Add display_url if provided (video ads use display_url, not display_link)
-                  if (variation.displayLink || formData.displayLink) {
-                    objectStorySpec.video_data.display_url = variation.displayLink || formData.displayLink;
-                  }
+                  // NOTE: Facebook does NOT support display URLs for video ads
+                  // displayLink is ignored for video variations (only works for images)
 
                   console.log(`  ✅ Added video thumbnail to ad variation: ${thumbnailUrl}`);
                 } else if (variation.imageHash) {
@@ -2087,10 +2084,8 @@ class FacebookAPI {
                     image_url: originalCreativeData.video_data.image_url
                   };
 
-                  // Add display_url if provided (video ads use display_url, not display_link)
-                  if (variation.displayLink || formData.displayLink) {
-                    objectStorySpec.video_data.display_url = variation.displayLink || formData.displayLink;
-                  }
+                  // NOTE: Facebook does NOT support display URLs for video ads
+                  // displayLink is ignored for video variations (only works for images)
                 } else if (originalCreativeData?.link_data) {
                   // NO UPLOAD - use ORIGINAL image
                   console.log(`  📸 Creating image ad variation ${v + 1} with ORIGINAL image`);
@@ -3983,11 +3978,8 @@ class FacebookAPI {
               console.log(`      🖼️ Using new thumbnail: ${variation.imageHash}`);
               newSpec.video_data.image_hash = variation.imageHash;
             }
-            // Add display_url for video ads (not display_link)
-            if (variation.displayLink !== undefined) {
-              console.log(`      ✅ Adding display_url: ${variation.displayLink}`);
-              newSpec.video_data.display_url = variation.displayLink;
-            }
+            // NOTE: Facebook does NOT support display URLs for video ads
+            // displayLink is ignored for video duplications (only works for images)
           } else if (newSpec.link_data) {
           // Image ad variation
           if (variation.imageHash) {
