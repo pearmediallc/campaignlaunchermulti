@@ -724,13 +724,13 @@ class FacebookAPI {
       if ((adData.mediaType === 'video' || adData.mediaType === 'single_video') && adData.videoId) {
         // Video ad - Try link_data with video_id if displayLink is provided
         if (adData.displayLink) {
-          console.log('🧪 Attempting link_data approach for video with display_link');
+          console.log('🧪 Attempting link_data approach for video with caption (display link)');
           creative.object_story_spec.link_data = {
             link: adData.url,
             message: adData.primaryText,
             name: adData.headline,
             description: adData.description,
-            display_link: adData.displayLink,
+            caption: adData.displayLink,  // ← Use 'caption' field (same as images)
             video_id: adData.videoId,
             call_to_action: {
               type: adData.callToAction || 'LEARN_MORE',
@@ -2108,14 +2108,14 @@ class FacebookAPI {
                   const displayLink = variation.displayLink || formData.displayLink;
 
                   if (displayLink) {
-                    // Try link_data approach with display_link
-                    console.log(`  🧪 Using link_data approach for video variation with display_link`);
+                    // Try link_data approach with caption (display link)
+                    console.log(`  🧪 Using link_data approach for video variation with caption`);
                     objectStorySpec.link_data = {
                       link: variation.websiteUrl || formData.url,
                       message: variation.primaryText || formData.primaryText,
                       name: variation.headline || formData.headline,
                       description: variation.description || formData.description,
-                      display_link: displayLink,
+                      caption: displayLink,  // ← Use 'caption' field (same as images)
                       video_id: uploadedVideoId,
                       call_to_action: {
                         type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
@@ -2168,14 +2168,14 @@ class FacebookAPI {
                   const displayLink = variation.displayLink || formData.displayLink;
 
                   if (displayLink) {
-                    // Try link_data approach with display_link
-                    console.log(`  🧪 Using link_data approach for video variation with display_link`);
+                    // Try link_data approach with caption (display link)
+                    console.log(`  🧪 Using link_data approach for video variation with caption`);
                     objectStorySpec.link_data = {
                       link: variation.websiteUrl || formData.url,
                       message: variation.primaryText || formData.primaryText,
                       name: variation.headline || formData.headline,
                       description: variation.description || formData.description,
-                      display_link: displayLink,
+                      caption: displayLink,  // ← Use 'caption' field (same as images)
                       video_id: originalCreativeData.video_data.video_id,
                       call_to_action: {
                         type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
