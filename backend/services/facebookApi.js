@@ -713,32 +713,67 @@ class FacebookAPI {
         url: adData.url
       });
       const url = `${this.baseURL}/act_${this.adAccountId}/ads`;
-      
+
       const creative = {
         object_story_spec: {
           page_id: this.pageId
         }
       };
-      
+
       // Handle different media types
       if ((adData.mediaType === 'video' || adData.mediaType === 'single_video') && adData.videoId) {
-        // Video ad - Try link_data with video_id if displayLink is provided
+        // Video ad with display link - Create page post first, then use post ID
         if (adData.displayLink) {
-          console.log('🧪 Attempting link_data approach for video with caption (display link)');
-          creative.object_story_spec.link_data = {
-            link: adData.url,
-            message: adData.primaryText,
-            name: adData.headline,
-            description: adData.description,
-            caption: adData.displayLink,  // ← Use 'caption' field (same as images)
-            video_id: adData.videoId,
-            call_to_action: {
-              type: adData.callToAction || 'LEARN_MORE',
-              value: {
-                link: adData.url
+          try {
+            console.log('🎬 Video ad with display link - creating page post first...');
+
+            // Create page post with video and display link
+            const postId = await this.createPageVideoPost({
+              videoId: adData.videoId,
+              message: adData.primaryText,
+              title: adData.headline,
+              description: adData.description,
+              link: adData.url,
+              displayLink: adData.displayLink,
+              callToAction: adData.callToAction
+            });
+
+            console.log('✅ Page post created, using post ID for ad:', postId);
+
+            // Use the page post as creative (this inherits display link!)
+            delete creative.object_story_spec;  // Remove object_story_spec
+            creative.object_story_id = postId;  // Use existing post instead
+
+            console.log('📝 Using existing post creative with display link');
+          } catch (pagePostError) {
+            console.warn('⚠️ Page post creation failed, falling back to direct ad creation without display link');
+            console.warn('Error:', pagePostError.message);
+
+            // Fallback to standard video_data without display link
+            creative.object_story_spec.video_data = {
+              video_id: adData.videoId,
+              message: adData.primaryText,
+              title: adData.headline,
+              link_description: adData.description,
+              call_to_action: {
+                type: adData.callToAction || 'LEARN_MORE',
+                value: {
+                  link: adData.url
+                }
               }
+            };
+
+            // Add thumbnail
+            if (adData.videoThumbnail) {
+              if (adData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
+                creative.object_story_spec.video_data.image_hash = adData.videoThumbnail;
+              } else {
+                creative.object_story_spec.video_data.image_url = adData.videoThumbnail;
+              }
+            } else if (adData.imageHash) {
+              creative.object_story_spec.video_data.image_hash = adData.imageHash;
             }
-          };
+          }
         } else {
           // No display link - use standard video_data approach
           creative.object_story_spec.video_data = {
@@ -851,55 +886,8 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      try {
-        const response = await axios.post(url, null, { params });
-        return response.data;
-      } catch (error) {
-        // If link_data with video_id and display_link failed, retry with video_data (no display link)
-        if (adData.displayLink && (adData.mediaType === 'video' || adData.mediaType === 'single_video') && error.response?.data?.error) {
-          console.log('⚠️ link_data approach failed, retrying with video_data (no display link)');
-          console.log('Error was:', error.response.data.error.message);
-
-          // Rebuild creative with video_data approach (no display link)
-          creative.object_story_spec = {
-            page_id: this.pageId
-          };
-
-          creative.object_story_spec.video_data = {
-            video_id: adData.videoId,
-            message: adData.primaryText,
-            title: adData.headline,
-            link_description: adData.description,
-            call_to_action: {
-              type: adData.callToAction || 'LEARN_MORE',
-              value: {
-                link: adData.url
-              }
-            }
-          };
-
-          // Add thumbnail
-          if (adData.videoThumbnail) {
-            if (adData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
-              creative.object_story_spec.video_data.image_hash = adData.videoThumbnail;
-            } else {
-              creative.object_story_spec.video_data.image_url = adData.videoThumbnail;
-            }
-          } else if (adData.imageHash) {
-            creative.object_story_spec.video_data.image_hash = adData.imageHash;
-          }
-
-          // Retry ad creation with fallback creative
-          params.creative = JSON.stringify(creative);
-          console.log('🔄 Retrying ad creation without display_link...');
-          const retryResponse = await axios.post(url, null, { params });
-          console.log('✅ Video ad created successfully without display_link');
-          return retryResponse.data;
-        }
-
-        // If not a video display link error, throw original error
-        throw error;
-      }
+      const response = await axios.post(url, null, { params });
+      return response.data;
     } catch (error) {
       this.handleError(error);
     }
@@ -960,6 +948,70 @@ class FacebookAPI {
       }
       console.error('Video upload failed:', error.message);
       return null;
+    }
+  }
+
+  /**
+   * Create a Page Video Post with display link
+   * This creates a published post on the Page which can then be used for ads
+   * @param {Object} postData - Data for the video post
+   * @returns {Promise<string>} - Post ID (object_story_id format: pageId_postId)
+   */
+  async createPageVideoPost(postData) {
+    try {
+      console.log('📝 Creating page video post with display link...');
+
+      const {
+        videoId,
+        message,
+        title,
+        description,
+        link,
+        displayLink,
+        callToAction
+      } = postData;
+
+      // Create page post using the video
+      const url = `${this.baseURL}/${this.pageId}/feed`;
+
+      const params = {
+        access_token: this.accessToken,
+        attached_media: JSON.stringify([{
+          media_fbid: videoId
+        }]),
+        message: message || '',
+        // Add link with display URL
+        link: link,
+        // Caption shows as display link in video footer
+        caption: displayLink || new URL(link).hostname,
+        name: title,
+        description: description,
+        // Publish immediately
+        published: true
+      };
+
+      console.log('📤 Posting to page feed with params:', {
+        videoId,
+        link,
+        caption: params.caption,
+        title
+      });
+
+      const response = await axios.post(url, null, { params });
+
+      if (response.data?.id) {
+        const postId = response.data.id;
+        console.log('✅ Page post created successfully:', postId);
+
+        // Convert post ID to object_story_id format if needed
+        // Facebook returns format: pageId_postId
+        return postId;
+      }
+
+      throw new Error('No post ID returned from Facebook');
+    } catch (error) {
+      console.error('❌ Failed to create page video post:', error.response?.data || error.message);
+      throw error;
     }
   }
 
