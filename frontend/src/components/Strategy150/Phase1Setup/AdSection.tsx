@@ -699,7 +699,7 @@ const AdSection: React.FC = () => {
       {/* Library Selector Modal */}
       <LibrarySelector
         open={showLibraryModal}
-        mediaType={mediaType}
+        mediaType={mediaType || 'single_image'}
         onSelect={handleLibrarySelect}
         onClose={() => setShowLibraryModal(false)}
       />
