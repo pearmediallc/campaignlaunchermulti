@@ -111,6 +111,7 @@ export interface StrategyForAllFormData {
   image?: File;
   video?: File;
   images?: File[];
+  editorName?: string; // Name of the editor from Creative Library (for ad naming)
 
   // Media Specifications
   mediaSpecs?: {

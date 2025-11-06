@@ -874,8 +874,28 @@ class FacebookAPI {
         }
       }
 
+      // Generate ad name with date and editor name if available
+      let adName = adData.name;
+      if (!adName) {
+        // Format: [Launcher] Campaign Name - Ad MM/DD/YYYY - Editor Name
+        const now = new Date();
+        const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
+        console.log('🏷️ Generating ad name with date:', dateStr);
+
+        if (adData.editorName) {
+          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr} - ${adData.editorName}`;
+          console.log('✅ Ad name with editor:', adName);
+        } else {
+          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr}`;
+          console.log('✅ Ad name without editor (local upload):', adName);
+        }
+      } else {
+        console.log('ℹ️ Using custom ad name:', adName);
+      }
+
       const params = {
-        name: adData.name || `[Launcher] ${adData.campaignName} - Ad`,
+        name: adName,
         adset_id: adData.adsetId,
         creative: JSON.stringify(creative),
         tracking_specs: JSON.stringify([{
@@ -1433,6 +1453,8 @@ class FacebookAPI {
             if (imageHash) variationMediaAssets.imageHash = imageHash;
           }
           
+          console.log('📝 Creating ad variation with editor name:', campaignData.editorName || 'none (local upload)');
+
           const ad = await this.createAd({
             name: `[Launcher] ${campaignData.campaignName} - Ad V${i + 1}`,
             campaignName: campaignData.campaignName,
@@ -1444,11 +1466,16 @@ class FacebookAPI {
             displayLink: variation.displayLink || campaignData.displayLink,
             callToAction: variation.callToAction || campaignData.callToAction || 'LEARN_MORE',
             mediaType: variation.mediaType || campaignData.mediaType || 'single_image',
+            editorName: campaignData.editorName, // Pass editor name for ad naming
             ...variationMediaAssets
           });
+
+          console.log('✅ Ad variation creation request sent with editorName:', campaignData.editorName || 'none');
           ads.push(ad);
         }
       } else {
+        console.log('📝 Creating ad with editor name:', campaignData.editorName || 'none (local upload)');
+
         const ad = await this.createAd({
           campaignName: campaignData.campaignName,
           adsetId: adSet.id,
@@ -1459,8 +1486,11 @@ class FacebookAPI {
           displayLink: campaignData.displayLink,
           callToAction: campaignData.callToAction || 'LEARN_MORE',
           mediaType: campaignData.mediaType || 'single_image',
+          editorName: campaignData.editorName, // Pass editor name for ad naming
           ...mediaAssets
         });
+
+        console.log('✅ Ad creation request sent with editorName:', campaignData.editorName || 'none');
         ads.push(ad);
       }
 
@@ -1653,6 +1683,8 @@ class FacebookAPI {
         console.log('📷 No media provided, creating ad without media');
       }
 
+      console.log('📝 Creating ad with editor name:', campaignData.editorName || 'none (local upload)');
+
       const ad = await this.createAd({
         campaignName: campaignData.campaignName,
         adsetId: adSet.id,
@@ -1664,8 +1696,11 @@ class FacebookAPI {
         callToAction: campaignData.callToAction || 'LEARN_MORE',
         mediaType: campaignData.mediaType || 'single_image',
         publishDirectly: campaignData.publishDirectly,
+        editorName: campaignData.editorName, // Pass editor name for ad naming
         ...mediaAssets
       });
+
+      console.log('✅ Ad creation request sent with editorName:', campaignData.editorName || 'none');
 
       if (!ad || !ad.id) {
         console.warn('⚠️ Ad creation failed - continuing with campaign and adset only');

@@ -417,6 +417,14 @@ const StrategyForAdsContainer: React.FC = () => {
         });
       }
 
+      // CRITICAL: Send editor name if files were selected from Creative Library
+      if (workingCampaignData.editorName) {
+        formData.set('editorName', workingCampaignData.editorName);
+        console.log('✅ Including editor name in submission:', workingCampaignData.editorName);
+      } else {
+        console.log('ℹ️ No editor name (files uploaded locally)');
+      }
+
       // Ensure special ad categories is properly formatted
       if (workingCampaignData.specialAdCategories) {
         const categories = Array.isArray(workingCampaignData.specialAdCategories)

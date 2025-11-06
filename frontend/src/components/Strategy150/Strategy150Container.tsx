@@ -356,6 +356,14 @@ const Strategy150Container: React.FC = () => {
         formData.set('adSetBudget', JSON.stringify(adSetBudget));
       }
 
+      // CRITICAL: Send editor name if files were selected from Creative Library
+      if (workingCampaignData.editorName) {
+        formData.set('editorName', workingCampaignData.editorName);
+        console.log('✅ Including editor name in submission:', workingCampaignData.editorName);
+      } else {
+        console.log('ℹ️ No editor name (files uploaded locally)');
+      }
+
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/campaigns/strategy-150/create`, {
         method: 'POST',
         headers: {

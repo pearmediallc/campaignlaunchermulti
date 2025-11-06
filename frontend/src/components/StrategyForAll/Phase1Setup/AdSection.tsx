@@ -150,8 +150,15 @@ const AdSection: React.FC = () => {
       }
     }
 
+    console.log('📤 Regular file upload (not from library)');
+
     setMediaFiles(fileArray);
     setValue('mediaFiles', fileArray);
+
+    // Clear editor name since this is a regular upload, not from library
+    setSelectedEditorName('');
+    setValue('editorName', undefined);
+    console.log('🗑️ Cleared editor name (regular upload)');
 
     // Also set specific fields based on media type
     if (mediaType === 'single_image' && fileArray[0]) {
@@ -164,19 +171,27 @@ const AdSection: React.FC = () => {
   };
 
   const handleLibrarySelect = (files: File[], editorName: string) => {
-    // Store editor name for ad naming convention
+    console.log('📝 Library files selected with editor:', editorName);
+    console.log('📦 Number of files:', files.length);
+
     setSelectedEditorName(editorName);
 
-    // Process files same as regular upload
+    // CRITICAL: Store editor name in form data so it gets sent to backend
+    setValue('editorName', editorName);
+    console.log('✅ Editor name stored in form:', editorName);
+
     setMediaFiles(files);
     setValue('mediaFiles', files);
 
     if (mediaType === 'single_image' && files[0]) {
       setValue('image', files[0]);
+      console.log('📸 Single image set:', files[0].name);
     } else if (mediaType === 'single_video' && files[0]) {
       setValue('video', files[0]);
+      console.log('🎥 Single video set:', files[0].name);
     } else if (mediaType === 'carousel') {
       setValue('images', files);
+      console.log('🎠 Carousel images set:', files.map(f => f.name).join(', '));
     }
   };
 

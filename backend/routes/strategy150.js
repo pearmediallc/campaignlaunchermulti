@@ -228,6 +228,13 @@ const validateStrategy150 = [
   body('mediaType').optional().isIn(['single_image', 'single_video', 'carousel']),
   body('mediaSpecs').optional().isObject(),
 
+  // Creative Library integration - editor name for ad naming
+  body('editorName')
+    .optional()
+    .trim()
+    .isLength({ max: 255 })
+    .withMessage('Editor name must be 255 characters or less'),
+
   // Duplication settings for 49 ad sets
   body('duplicationSettings.defaultBudgetPerAdSet')
     .optional()
