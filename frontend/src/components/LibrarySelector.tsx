@@ -314,8 +314,14 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
         return;
       }
 
+      console.log('🚀 LIBRARY SELECTOR VERSION: 2.0 - USING PROXY DOWNLOAD');
+      console.log('📍 Creative Library URL:', CREATIVE_LIBRARY_URL);
+      console.log('🔐 Token present:', !!token);
+
       for (const file of selectedFileObjects) {
-        console.log('📥 Downloading file:', file.original_filename);
+        console.log('📥 START DOWNLOAD via proxy API:', file.original_filename);
+        console.log('🆔 File ID:', file.id);
+        console.log('📍 Endpoint:', `${CREATIVE_LIBRARY_URL}/api/media/${file.id}/download`);
 
         // Fetch through Creative Library API with auth to avoid CORS issues
         // The backend will proxy the file from S3/CloudFront with proper CORS headers
@@ -324,7 +330,7 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
           responseType: 'blob'
         });
 
-        console.log('✅ Downloaded:', file.original_filename, response.data.size, 'bytes');
+        console.log('✅ DOWNLOAD COMPLETE via proxy:', file.original_filename, response.data.size, 'bytes');
 
         const downloadedFile = new File([response.data], file.original_filename, { type: file.mime_type });
         downloadedFiles.push(downloadedFile);
