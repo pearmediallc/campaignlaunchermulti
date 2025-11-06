@@ -37,12 +37,16 @@ if (process.env.NODE_ENV === 'production') {
 // Add axios interceptor to automatically include authentication token
 axios.interceptors.request.use(
   (config) => {
-    // Get token from localStorage
-    const token = localStorage.getItem('token');
+    // IMPORTANT: Only add default token if Authorization header is not already set
+    // This allows components (like LibrarySelector) to use their own auth tokens
+    if (!config.headers.Authorization) {
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
 
-    // If token exists, add it to the Authorization header
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      // If token exists, add it to the Authorization header
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
 
     return config;
