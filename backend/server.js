@@ -32,7 +32,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://connect.facebook.net"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", "https://graph.facebook.com", "https://www.facebook.com"],
+      connectSrc: ["'self'", "https://graph.facebook.com", "https://www.facebook.com", "https://creative-library.onrender.com"],
       fontSrc: ["'self'", "data:"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
