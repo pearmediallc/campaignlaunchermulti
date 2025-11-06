@@ -115,8 +115,16 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       });
 
       if (response.data.success && response.data.data.token) {
-        // Store token
-        localStorage.setItem('creative_library_token', response.data.data.token);
+        const newToken = response.data.data.token;
+
+        console.log('🎫 Login successful, received new token:', newToken.substring(0, 50) + '...');
+
+        // IMPORTANT: Clear any old token first, then store new one
+        localStorage.removeItem('creative_library_token');
+        localStorage.setItem('creative_library_token', newToken);
+
+        console.log('💾 Token stored in localStorage');
+        console.log('🔍 Verifying stored token:', localStorage.getItem('creative_library_token')?.substring(0, 50) + '...');
 
         // Update state
         setIsAuthenticated(true);
@@ -124,8 +132,8 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
         setLoginPassword('');
         setLoginError('');
 
-        // Fetch editors
-        await fetchEditors();
+        // Fetch editors with the new token directly (don't rely on localStorage immediately)
+        await fetchEditorsWithToken(newToken);
       } else {
         setLoginError('Login failed. Please try again.');
       }
@@ -138,6 +146,32 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
     }
   };
 
+  // Fetch editors with explicit token (used right after login)
+  const fetchEditorsWithToken = async (token: string) => {
+    try {
+      console.log('📡 Fetching editors with token:', token.substring(0, 50) + '...');
+
+      const response = await axios.get(`${CREATIVE_LIBRARY_URL}/api/editors`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      console.log('✅ Editors fetched successfully:', response.data.data?.length || 0);
+      setEditors(response.data.data || []);
+    } catch (err: any) {
+      console.error('❌ Failed to fetch editors:', err);
+
+      // If token is invalid/expired, clear it and show login
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        localStorage.removeItem('creative_library_token');
+        setIsAuthenticated(false);
+        setLoginError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load editors.');
+      }
+    }
+  };
+
+  // Fetch editors using token from localStorage
   const fetchEditors = async () => {
     try {
       const token = getAuthToken();
@@ -145,6 +179,8 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
         setIsAuthenticated(false);
         return;
       }
+
+      console.log('📡 Fetching editors with localStorage token:', token.substring(0, 50) + '...');
 
       const response = await axios.get(`${CREATIVE_LIBRARY_URL}/api/editors`, {
         headers: { Authorization: `Bearer ${token}` }
