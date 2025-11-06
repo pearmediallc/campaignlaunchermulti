@@ -307,12 +307,30 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       const selectedFileObjects = files.filter(f => selectedFiles.includes(f.id));
       const downloadedFiles: File[] = [];
 
+      const token = getAuthToken();
+      if (!token) {
+        setError('Authentication required');
+        setLoading(false);
+        return;
+      }
+
       for (const file of selectedFileObjects) {
-        const response = await fetch(file.s3_url);
-        const blob = await response.blob();
-        const downloadedFile = new File([blob], file.original_filename, { type: file.mime_type });
+        console.log('📥 Downloading file:', file.original_filename);
+
+        // Fetch through Creative Library API with auth to avoid CORS issues
+        // The backend will proxy the file from S3/CloudFront with proper CORS headers
+        const response = await axios.get(`${CREATIVE_LIBRARY_URL}/api/media/${file.id}/download`, {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: 'blob'
+        });
+
+        console.log('✅ Downloaded:', file.original_filename, response.data.size, 'bytes');
+
+        const downloadedFile = new File([response.data], file.original_filename, { type: file.mime_type });
         downloadedFiles.push(downloadedFile);
       }
+
+      console.log('📦 All files downloaded:', downloadedFiles.length);
 
       // Get editor name for ad naming convention
       const editor = editors.find(e => e.id === selectedEditor);
@@ -321,9 +339,16 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       // Pass files and editor name back to parent
       onSelect(downloadedFiles, editorName);
       onClose();
-    } catch (err) {
-      console.error('Failed to download files:', err);
-      setError('Failed to download files from Creative Library');
+    } catch (err: any) {
+      console.error('❌ Failed to download files:', err);
+
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        localStorage.removeItem('creative_library_token');
+        setIsAuthenticated(false);
+        setLoginError('Session expired. Please login again.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to download files from Creative Library');
+      }
     } finally {
       setLoading(false);
     }
