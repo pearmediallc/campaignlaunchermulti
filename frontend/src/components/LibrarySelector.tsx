@@ -11,7 +11,6 @@ import {
   Select,
   MenuItem,
   TextField,
-  Grid,
   Card,
   CardMedia,
   CardContent,
@@ -248,8 +247,8 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
           )}
 
           {/* Filters */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} md={4}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 3 }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 40%' } }}>
               <FormControl fullWidth>
                 <InputLabel>Editor</InputLabel>
                 <Select
@@ -265,9 +264,9 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} md={3}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' } }}>
               <TextField
                 fullWidth
                 type="date"
@@ -276,9 +275,9 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                 onChange={(e) => setStartDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
               />
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} md={3}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' } }}>
               <TextField
                 fullWidth
                 type="date"
@@ -287,9 +286,9 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                 onChange={(e) => setEndDate(e.target.value)}
                 InputLabelProps={{ shrink: true }}
               />
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} md={2}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '0 0 auto' } }}>
               <Button
                 fullWidth
                 variant="contained"
@@ -299,8 +298,8 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
               >
                 {loading ? <CircularProgress size={24} /> : 'Search'}
               </Button>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
 
           {/* File Grid */}
           {loading ? (
@@ -315,9 +314,9 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                   : `Select 2-10 files for carousel (${selectedFiles.length} selected)`}
               </Typography>
 
-              <Grid container spacing={2}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 {files.map(file => (
-                  <Grid item xs={12} sm={6} md={4} lg={3} key={file.id}>
+                  <Box key={file.id} sx={{ flex: { xs: '1 1 100%', sm: '0 0 calc(50% - 8px)', md: '0 0 calc(33.333% - 11px)', lg: '0 0 calc(25% - 12px)' } }}>
                     <Card
                       sx={{
                         cursor: 'pointer',
@@ -373,9 +372,9 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                         )}
                       </CardContent>
                     </Card>
-                  </Grid>
+                  </Box>
                 ))}
-              </Grid>
+              </Box>
             </>
           ) : null}
         </Box>
