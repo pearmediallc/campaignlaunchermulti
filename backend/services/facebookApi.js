@@ -974,8 +974,14 @@ class FacebookAPI {
       // Create page post using the video
       const url = `${this.baseURL}/${this.pageId}/feed`;
 
+      // Use Page Access Token if available (for pages_manage_posts permission)
+      // Falls back to user access token if Page Access Token not set
+      const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN || this.accessToken;
+
+      console.log('🔑 Using access token for page post:', pageAccessToken ? 'Page Access Token (FB_PAGE_ACCESS_TOKEN)' : 'User Access Token');
+
       const params = {
-        access_token: this.accessToken,
+        access_token: pageAccessToken,
         attached_media: JSON.stringify([{
           media_fbid: videoId
         }]),

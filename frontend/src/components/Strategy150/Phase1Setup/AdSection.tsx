@@ -33,6 +33,7 @@ import {
 } from '../../../types/strategy150';
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
 import axios from 'axios';
+import LibrarySelector from '../../LibrarySelector';
 
 // Call-to-Action options
 const CALL_TO_ACTION_OPTIONS = [
@@ -83,6 +84,8 @@ const AdSection: React.FC = () => {
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [carouselCards, setCarouselCards] = useState<any[]>([]);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [selectedEditorName, setSelectedEditorName] = useState<string>('');
 
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
@@ -160,6 +163,23 @@ const AdSection: React.FC = () => {
     }
   };
 
+  const handleLibrarySelect = (files: File[], editorName: string) => {
+    // Store editor name for ad naming convention
+    setSelectedEditorName(editorName);
+
+    // Process files same as regular upload
+    setMediaFiles(files);
+    setValue('mediaFiles', files);
+
+    if (mediaType === 'single_image' && files[0]) {
+      setValue('image', files[0]);
+    } else if (mediaType === 'single_video' && files[0]) {
+      setValue('video', files[0]);
+    } else if (mediaType === 'carousel') {
+      setValue('images', files);
+    }
+  };
+
   const removeMediaFile = (index: number) => {
     const newFiles = mediaFiles.filter((_, i) => i !== index);
     setMediaFiles(newFiles);
@@ -170,6 +190,7 @@ const AdSection: React.FC = () => {
       setValue('image', undefined);
       setValue('video', undefined);
       setValue('images', []);
+      setSelectedEditorName(''); // Clear editor name when all files removed
     } else {
       // Update specific fields based on media type
       if (mediaType === 'single_image' && newFiles[0]) {
@@ -448,31 +469,49 @@ const AdSection: React.FC = () => {
 
         {/* File Upload */}
         <Box sx={{ width: "100%" }}>
-          <Box>
-            <input
-              accept={
-                mediaType === 'single_image' ? 'image/*' :
-                mediaType === 'single_video' ? 'video/*' :
-                'image/*,video/*'
-              }
-              style={{ display: 'none' }}
-              id="media-file-upload"
-              type="file"
-              multiple={mediaType === 'carousel'}
-              onChange={handleFileUpload}
-            />
-            <label htmlFor="media-file-upload">
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ flex: 1 }}>
+              <input
+                accept={
+                  mediaType === 'single_image' ? 'image/*' :
+                  mediaType === 'single_video' ? 'video/*' :
+                  'image/*,video/*'
+                }
+                style={{ display: 'none' }}
+                id="media-file-upload"
+                type="file"
+                multiple={mediaType === 'carousel'}
+                onChange={handleFileUpload}
+              />
+              <label htmlFor="media-file-upload">
+                <Button
+                  variant="outlined"
+                  component="span"
+                  startIcon={<CloudUpload />}
+                  fullWidth
+                  sx={{ py: 2 }}
+                >
+                  Upload from Computer
+                </Button>
+              </label>
+            </Box>
+            <Box sx={{ flex: 1 }}>
               <Button
                 variant="outlined"
-                component="span"
-                startIcon={<CloudUpload />}
+                startIcon={<Image />}
                 fullWidth
                 sx={{ py: 2 }}
+                onClick={() => setShowLibraryModal(true)}
               >
-                Upload {mediaType === 'single_image' ? 'Image' : mediaType === 'single_video' ? 'Video' : 'Media Files'}
+                Select from Library
               </Button>
-            </label>
+            </Box>
           </Box>
+          {selectedEditorName && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              Selected from library: {selectedEditorName} (will be added to ad name)
+            </Alert>
+          )}
         </Box>
 
         {/* Media Preview */}
@@ -656,6 +695,14 @@ const AdSection: React.FC = () => {
           </Alert>
         </Box>
       </Box>
+
+      {/* Library Selector Modal */}
+      <LibrarySelector
+        open={showLibraryModal}
+        mediaType={mediaType}
+        onSelect={handleLibrarySelect}
+        onClose={() => setShowLibraryModal(false)}
+      />
     </Paper>
   );
 };
