@@ -57,6 +57,14 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
   onClose,
   open
 }) => {
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+
+  // File selection state
   const [editors, setEditors] = useState<Editor[]>([]);
   const [selectedEditor, setSelectedEditor] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -73,18 +81,68 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
     return localStorage.getItem('creative_library_token');
   };
 
-  // Fetch editors on mount
+  // Check authentication status and fetch editors on mount
   useEffect(() => {
     if (open) {
-      fetchEditors();
+      const token = getAuthToken();
+      if (token) {
+        setIsAuthenticated(true);
+        fetchEditors();
+      } else {
+        setIsAuthenticated(false);
+        setEditors([]);
+        setFiles([]);
+        setSelectedFiles([]);
+        setError('');
+      }
     }
   }, [open]);
+
+  // Handle login
+  const handleLogin = async () => {
+    if (!loginEmail || !loginPassword) {
+      setLoginError('Please enter both email and password');
+      return;
+    }
+
+    setLoggingIn(true);
+    setLoginError('');
+
+    try {
+      const response = await axios.post(`${CREATIVE_LIBRARY_URL}/api/auth/login`, {
+        email: loginEmail,
+        password: loginPassword
+      });
+
+      if (response.data.success && response.data.data.token) {
+        // Store token
+        localStorage.setItem('creative_library_token', response.data.data.token);
+
+        // Update state
+        setIsAuthenticated(true);
+        setLoginEmail('');
+        setLoginPassword('');
+        setLoginError('');
+
+        // Fetch editors
+        await fetchEditors();
+      } else {
+        setLoginError('Login failed. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Login failed:', err);
+      const errorMessage = err.response?.data?.error || 'Login failed. Please check your credentials.';
+      setLoginError(errorMessage);
+    } finally {
+      setLoggingIn(false);
+    }
+  };
 
   const fetchEditors = async () => {
     try {
       const token = getAuthToken();
       if (!token) {
-        setError('Please login to Creative Library first');
+        setIsAuthenticated(false);
         return;
       }
 
@@ -95,7 +153,15 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       setEditors(response.data.data || []);
     } catch (err: any) {
       console.error('Failed to fetch editors:', err);
-      setError('Failed to load editors. Make sure you are logged in to Creative Library.');
+
+      // If token is invalid/expired, clear it and show login
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        localStorage.removeItem('creative_library_token');
+        setIsAuthenticated(false);
+        setLoginError('Session expired. Please login again.');
+      } else {
+        setError('Failed to load editors.');
+      }
     }
   };
 
@@ -148,7 +214,15 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to fetch files:', err);
-      setError(err.response?.data?.error || 'Failed to load files from Creative Library');
+
+      // If token is invalid/expired, clear it and show login
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        localStorage.removeItem('creative_library_token');
+        setIsAuthenticated(false);
+        setLoginError('Session expired. Please login again.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to load files from Creative Library');
+      }
     } finally {
       setLoading(false);
     }
@@ -223,31 +297,107 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
     return new Date(dateString).toLocaleDateString();
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('creative_library_token');
+    setIsAuthenticated(false);
+    setEditors([]);
+    setFiles([]);
+    setSelectedFiles([]);
+    setSelectedEditor('');
+    setLoginEmail('');
+    setLoginPassword('');
+    setLoginError('');
+    setError('');
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6">Select from Creative Library</Typography>
-          <IconButton onClick={onClose}>
-            <Close />
-          </IconButton>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {isAuthenticated && (
+              <Button variant="outlined" size="small" onClick={handleLogout}>
+                Logout
+              </Button>
+            )}
+            <IconButton onClick={onClose}>
+              <Close />
+            </IconButton>
+          </Box>
         </Box>
       </DialogTitle>
 
       <DialogContent>
         <Box sx={{ mb: 3 }}>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Select creatives from your Creative Library. The selected editor's name will be added to your ad name for tracking.
-          </Alert>
+          {!isAuthenticated ? (
+            // Login Form
+            <>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Please login to your Creative Library account to select creatives.
+              </Alert>
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
+              {loginError && (
+                <Alert severity="error" sx={{ mb: 3 }}>
+                  {loginError}
+                </Alert>
+              )}
 
-          {/* Filters */}
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 400, mx: 'auto' }}>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  disabled={loggingIn}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleLogin();
+                    }
+                  }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Password"
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  disabled={loggingIn}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleLogin();
+                    }
+                  }}
+                />
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleLogin}
+                  disabled={loggingIn || !loginEmail || !loginPassword}
+                  sx={{ mt: 1 }}
+                >
+                  {loggingIn ? <CircularProgress size={24} /> : 'Login to Creative Library'}
+                </Button>
+              </Box>
+            </>
+          ) : (
+            // File Selection Interface
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Select creatives from your Creative Library. The selected editor's name will be added to your ad name for tracking.
+              </Alert>
+
+              {error && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {error}
+                </Alert>
+              )}
+
+              {/* Filters */}
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, mb: 3 }}>
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 40%' } }}>
               <FormControl fullWidth>
                 <InputLabel>Editor</InputLabel>
@@ -377,20 +527,24 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
               </Box>
             </>
           ) : null}
+              </>
+            )}
         </Box>
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
+        <Button onClick={onClose} disabled={loading || loggingIn}>
           Cancel
         </Button>
-        <Button
-          onClick={handleConfirm}
-          variant="contained"
-          disabled={loading || selectedFiles.length === 0}
-        >
-          Use Selected ({selectedFiles.length})
-        </Button>
+        {isAuthenticated && (
+          <Button
+            onClick={handleConfirm}
+            variant="contained"
+            disabled={loading || selectedFiles.length === 0}
+          >
+            Use Selected ({selectedFiles.length})
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
