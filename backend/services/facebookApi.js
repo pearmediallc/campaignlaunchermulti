@@ -877,6 +877,7 @@ class FacebookAPI {
       // Generate ad name with date and editor name if available
       let adName = adData.name;
       if (!adName) {
+        // No custom name - auto-generate
         // Format: [Launcher] Campaign Name - Ad MM/DD/YYYY - Editor Name
         const now = new Date();
         const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
@@ -884,14 +885,24 @@ class FacebookAPI {
         console.log('🏷️ Generating ad name with date:', dateStr);
 
         if (adData.editorName) {
-          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr} - ${adData.editorName}`;
+          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr} - ${adData.editorName.toUpperCase()}`;
           console.log('✅ Ad name with editor:', adName);
         } else {
           adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr}`;
           console.log('✅ Ad name without editor (local upload):', adName);
         }
       } else {
-        console.log('ℹ️ Using custom ad name:', adName);
+        // Custom name provided
+        // Check if this came from library with editor selected
+        if (adData.fromLibrary && adData.editorName) {
+          // Append editor name to library file name
+          adName = `${adData.name} - ${adData.editorName.toUpperCase()}`;
+          console.log('✅ Library file ad name with editor:', adName);
+        } else {
+          // Use custom name as-is (local upload or no editor)
+          adName = adData.name;
+          console.log('ℹ️ Using custom ad name as-is:', adName);
+        }
       }
 
       const params = {

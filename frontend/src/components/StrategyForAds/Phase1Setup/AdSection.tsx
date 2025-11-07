@@ -176,9 +176,11 @@ const AdSection: React.FC = () => {
 
     setSelectedEditorName(editorName);
 
-    // CRITICAL: Store editor name in form data so it gets sent to backend
+    // CRITICAL: Store editor name AND library flag in form data so it gets sent to backend
     setValue('editorName', editorName);
+    setValue('fromLibrary', true); // Flag to indicate files are from library
     console.log('✅ Editor name stored in form:', editorName);
+    console.log('✅ FromLibrary flag set: true');
 
     setMediaFiles(files);
     setValue('mediaFiles', files);

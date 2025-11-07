@@ -417,12 +417,18 @@ const StrategyForAdsContainer: React.FC = () => {
         });
       }
 
-      // CRITICAL: Send editor name if files were selected from Creative Library
+      // CRITICAL: Send editor name and library flag if files were selected from Creative Library
       if (workingCampaignData.editorName) {
         formData.set('editorName', workingCampaignData.editorName);
         console.log('✅ Including editor name in submission:', workingCampaignData.editorName);
       } else {
         console.log('ℹ️ No editor name (files uploaded locally)');
+      }
+
+      // Send fromLibrary flag to indicate files came from library
+      if (workingCampaignData.fromLibrary) {
+        formData.set('fromLibrary', 'true');
+        console.log('✅ FromLibrary flag set: true');
       }
 
       // Ensure special ad categories is properly formatted
