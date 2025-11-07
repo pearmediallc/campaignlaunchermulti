@@ -27,10 +27,8 @@ import {
 } from '@mui/material';
 import { Controller, useFormContext } from 'react-hook-form';
 import { AdsClick, CloudUpload, Delete, Image, VideoLibrary, ViewCarousel } from '@mui/icons-material';
-import {
-  URL_TYPE_OPTIONS,
-  StrategyForAllFormData
-} from '../../../types/strategyForAll';
+import { URL_TYPE_OPTIONS } from '../../../types/strategyForAll';
+import { StrategyForAdsFormData } from '../../../types/strategyForAds';
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
 import axios from 'axios';
 import LibrarySelector from '../../LibrarySelector';
@@ -79,7 +77,7 @@ const MEDIA_SPECS = {
 };
 
 const AdSection: React.FC = () => {
-  const { control, watch, setValue } = useFormContext<StrategyForAllFormData>();
+  const { control, watch, setValue } = useFormContext<StrategyForAdsFormData>();
   const { resources, loading: loadingResources } = useFacebookResources();
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
