@@ -112,6 +112,10 @@ export interface StrategyForAdsFormData {
   video?: File;
   images?: File[];
 
+  // Creative Library integration
+  editorName?: string; // Editor name when files selected from Creative Library
+  fromLibrary?: boolean; // Flag to indicate files came from Creative Library
+
   // Media Specifications
   mediaSpecs?: {
     imageSpecs?: {
