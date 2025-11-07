@@ -388,6 +388,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  lifetimeBudget:', req.body.lifetimeBudget, typeof req.body.lifetimeBudget);
     console.log('  buyingType:', req.body.buyingType, typeof req.body.buyingType);
     console.log('  mediaType:', req.body.mediaType, typeof req.body.mediaType);
+    console.log('  📝 editorName:', req.body.editorName, typeof req.body.editorName, req.body.editorName ? '✅ PRESENT' : '❌ MISSING');
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -657,6 +658,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       imagePath: req.body.mediaType === 'single_image' ? mediaPath : null,
       videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') ? mediaPath : null,
       imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
+      editorName: req.body.editorName,  // Editor name from Creative Library for ad naming
 
       // Duplication settings - user must provide count and budget
       duplicationSettings: {

@@ -657,6 +657,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       imagePath: req.body.mediaType === 'single_image' ? mediaPath : null,
       videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') ? mediaPath : null,
       imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
+      editorName: req.body.editorName,  // Editor name from Creative Library for ad naming
 
       // Duplication settings - user must provide count and budget
       duplicationSettings: {
