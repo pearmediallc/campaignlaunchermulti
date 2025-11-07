@@ -290,6 +290,10 @@ const StrategyForAdsContainer: React.FC = () => {
         video: campaignData.video,
         images: campaignData.images,
 
+        // Creative Library integration - CRITICAL for editor name in ad names
+        editorName: campaignData.editorName,
+        fromLibrary: campaignData.fromLibrary,
+
         // Placements - Pass exactly what user selected
         placementType: campaignData.placementType || 'automatic'
       };
