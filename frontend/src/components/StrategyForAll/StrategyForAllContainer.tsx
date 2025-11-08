@@ -284,6 +284,10 @@ const StrategyForAllContainer: React.FC = () => {
         video: campaignData.video,
         images: campaignData.images,
 
+        // Creative Library integration - CRITICAL for editor name in ad names
+        editorName: campaignData.editorName,
+        fromLibrary: campaignData.fromLibrary,
+
         // Facebook resources
         facebookPage: campaignData.facebookPage,
         instagramAccount: campaignData.instagramAccount,
@@ -415,6 +419,12 @@ const StrategyForAllContainer: React.FC = () => {
         console.log('✅ Including editor name in submission:', workingCampaignData.editorName);
       } else {
         console.log('ℹ️ No editor name (files uploaded locally)');
+      }
+
+      // Send fromLibrary flag to indicate files came from library
+      if (workingCampaignData.fromLibrary) {
+        formData.set('fromLibrary', 'true');
+        console.log('✅ FromLibrary flag set: true');
       }
 
       // Ensure special ad categories is properly formatted

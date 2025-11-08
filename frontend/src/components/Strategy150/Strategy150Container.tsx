@@ -248,6 +248,10 @@ const Strategy150Container: React.FC = () => {
         video: campaignData.video,
         images: campaignData.images,
 
+        // Creative Library integration - CRITICAL for editor name in ad names
+        editorName: campaignData.editorName,
+        fromLibrary: campaignData.fromLibrary,
+
         // Placements (preserve all user selections including devices)
         placements: {
           facebook: campaignData.placements?.facebook || ['feed'],
@@ -362,6 +366,12 @@ const Strategy150Container: React.FC = () => {
         console.log('✅ Including editor name in submission:', workingCampaignData.editorName);
       } else {
         console.log('ℹ️ No editor name (files uploaded locally)');
+      }
+
+      // Send fromLibrary flag to indicate files came from library
+      if (workingCampaignData.fromLibrary) {
+        formData.set('fromLibrary', 'true');
+        console.log('✅ FromLibrary flag set: true');
       }
 
       const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/campaigns/strategy-150/create`, {
