@@ -298,12 +298,21 @@ class FacebookAPI {
 
       // Apply ad set spending limits if enabled
       // Check BOTH locations: adSetData.spendingLimits (Strategy150) and adSetData.adSetBudget.spendingLimits (StrategyForAll)
+      // CRITICAL FIX: Spending limits ONLY work with CBO, not ABO
       const spendingLimits = adSetData.adSetBudget?.spendingLimits || adSetData.spendingLimits;
-      if (spendingLimits && spendingLimits.enabled) {
+      const budgetLevel = adSetData.budgetLevel;
+
+      if (budgetLevel === 'adset' && spendingLimits && spendingLimits.enabled) {
+        console.log('⚠️ WARNING: Spending limits are not compatible with ABO (Ad Set Budget)');
+        console.log('   Spending limits will be SKIPPED');
+        console.log('   Reason: Facebook does not allow min/max spend caps with ad set level budgets');
+        console.log('   Error from Facebook: "You can not have both maximum spend cap/ min spend target and a budget at the same time"');
+        // Don't apply spending limits - skip to the next section
+      } else if (spendingLimits && spendingLimits.enabled) {
         const limits = spendingLimits;
         const budgetAmount = adSetData.dailyBudget || adSetData.lifetimeBudget || 50;
 
-        console.log('  📊 Applying Spending Limits...');
+        console.log('  📊 Applying Spending Limits (CBO only)...');
         console.log('    - Value Type:', limits.valueType || 'percentage');
         console.log('    - Base Budget:', `$${budgetAmount}`);
 

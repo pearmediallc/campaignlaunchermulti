@@ -161,6 +161,17 @@ const AdSetSection: React.FC = () => {
   const placementType = watch('placementType') || 'automatic';
   const scheduleType = watch('adSetBudget.scheduleType') || 'run_continuously';
 
+  // Auto-clear spending limits when switching to ABO (spending limits incompatible with ABO)
+  useEffect(() => {
+    if (budgetLevel === 'adset' && watch('adSetBudget.spendingLimits.enabled')) {
+      setValue('adSetBudget.spendingLimits.enabled', false);
+      setValue('adSetBudget.spendingLimits.dailyMin', undefined);
+      setValue('adSetBudget.spendingLimits.dailyMax', undefined);
+      setValue('adSetBudget.spendingLimits.lifetimeMin', undefined);
+      setValue('adSetBudget.spendingLimits.lifetimeMax', undefined);
+    }
+  }, [budgetLevel, setValue, watch]);
+
   // Auto-select saved pixel or first available pixel
   useEffect(() => {
     if (resources.pixels.length > 0 && !watch('pixel')) {
@@ -395,99 +406,115 @@ const AdSetSection: React.FC = () => {
           </>
         )}
 
-        {/* Ad Set Spending Limits - Always Visible */}
-        <Box sx={{ width: "100%" }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Ad Set Spending Limits (Optional)
-          </Typography>
-        </Box>
-
-        {/* Enable/Disable Toggle */}
-        <Box sx={{ width: "100%" }}>
-          <Controller
-            name="adSetBudget.spendingLimits.enabled"
-            control={control}
-            defaultValue={false}
-            render={({ field }) => (
-              <FormControlLabel
-                control={<Checkbox {...field} checked={field.value || false} />}
-                label="Set a minimum or maximum spend limit for this ad set"
-              />
-            )}
-          />
-        </Box>
-
-        {watch('adSetBudget.spendingLimits.enabled') && (
+        {/* Ad Set Spending Limits - Only for CBO */}
+        {budgetLevel === 'campaign' ? (
           <>
-            {/* Value Type Toggle (% or $) */}
-            <Box sx={{ width: "100%", display: "flex", justifyContent: "flex-end" }}>
-              <Controller
-                name="adSetBudget.spendingLimits.valueType"
-                control={control}
-                defaultValue="percentage"
-                render={({ field }) => (
-                  <FormControl size="small">
-                    <Select
-                      {...field}
-                      displayEmpty
-                      sx={{ minWidth: 150 }}
-                    >
-                      <MenuItem value="percentage">Use % value</MenuItem>
-                      <MenuItem value="dollar">Use $ value</MenuItem>
-                    </Select>
-                  </FormControl>
-                )}
-              />
+            <Box sx={{ width: "100%" }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Ad Set Spending Limits (Optional)
+              </Typography>
             </Box>
 
-            {/* Daily Minimum */}
+            {/* Enable/Disable Toggle */}
             <Box sx={{ width: "100%" }}>
               <Controller
-                name="adSetBudget.spendingLimits.dailyMin"
+                name="adSetBudget.spendingLimits.enabled"
                 control={control}
+                defaultValue={false}
                 render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Daily minimum"
-                    type="number"
-                    InputProps={{
-                      startAdornment: watch('adSetBudget.spendingLimits.valueType') === 'dollar' ? (
-                        <InputAdornment position="start">$</InputAdornment>
-                      ) : null,
-                      endAdornment: watch('adSetBudget.spendingLimits.valueType') === 'percentage' ? (
-                        <InputAdornment position="end">%</InputAdornment>
-                      ) : null
-                    }}
+                  <FormControlLabel
+                    control={<Checkbox {...field} checked={field.value || false} />}
+                    label="Set a minimum or maximum spend limit for this ad set"
                   />
                 )}
               />
             </Box>
 
-            {/* Daily Maximum */}
-            <Box sx={{ width: "100%" }}>
-              <Controller
-                name="adSetBudget.spendingLimits.dailyMax"
-                control={control}
-                render={({ field }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    label="Daily maximum"
-                    type="number"
-                    InputProps={{
-                      startAdornment: watch('adSetBudget.spendingLimits.valueType') === 'dollar' ? (
-                        <InputAdornment position="start">$</InputAdornment>
-                      ) : null,
-                      endAdornment: watch('adSetBudget.spendingLimits.valueType') === 'percentage' ? (
-                        <InputAdornment position="end">%</InputAdornment>
-                      ) : null
-                    }}
+            {watch('adSetBudget.spendingLimits.enabled') && (
+              <>
+                {/* Value Type Toggle (% or $) */}
+                <Box sx={{ width: "100%", display: "flex", justifyContent: "flex-end" }}>
+                  <Controller
+                    name="adSetBudget.spendingLimits.valueType"
+                    control={control}
+                    defaultValue="percentage"
+                    render={({ field }) => (
+                      <FormControl size="small">
+                        <Select
+                          {...field}
+                          displayEmpty
+                          sx={{ minWidth: 150 }}
+                        >
+                          <MenuItem value="percentage">Use % value</MenuItem>
+                          <MenuItem value="dollar">Use $ value</MenuItem>
+                        </Select>
+                      </FormControl>
+                    )}
                   />
-                )}
-              />
-            </Box>
+                </Box>
+
+                {/* Daily Minimum */}
+                <Box sx={{ width: "100%" }}>
+                  <Controller
+                    name="adSetBudget.spendingLimits.dailyMin"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Daily minimum"
+                        type="number"
+                        InputProps={{
+                          startAdornment: watch('adSetBudget.spendingLimits.valueType') === 'dollar' ? (
+                            <InputAdornment position="start">$</InputAdornment>
+                          ) : null,
+                          endAdornment: watch('adSetBudget.spendingLimits.valueType') === 'percentage' ? (
+                            <InputAdornment position="end">%</InputAdornment>
+                          ) : null
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
+
+                {/* Daily Maximum */}
+                <Box sx={{ width: "100%" }}>
+                  <Controller
+                    name="adSetBudget.spendingLimits.dailyMax"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        fullWidth
+                        label="Daily maximum"
+                        type="number"
+                        InputProps={{
+                          startAdornment: watch('adSetBudget.spendingLimits.valueType') === 'dollar' ? (
+                            <InputAdornment position="start">$</InputAdornment>
+                          ) : null,
+                          endAdornment: watch('adSetBudget.spendingLimits.valueType') === 'percentage' ? (
+                            <InputAdornment position="end">%</InputAdornment>
+                          ) : null
+                        }}
+                      />
+                    )}
+                  />
+                </Box>
+              </>
+            )}
           </>
+        ) : (
+          /* ABO Warning - Spending Limits Not Compatible */
+          <Box sx={{ width: "100%" }}>
+            <Alert severity="warning">
+              <Typography variant="body2">
+                <strong>Spending limits are not available with Ad Set Budget (ABO).</strong>
+                <br />
+                Spending limits can only be used with Campaign Budget Optimization (CBO).
+                Facebook does not allow min/max spend caps when budgets are set at the ad set level.
+              </Typography>
+            </Alert>
+          </Box>
         )}
 
         {/* Schedule Type */}
@@ -1200,7 +1227,7 @@ const AdSetSection: React.FC = () => {
             defaultValue={49}
             rules={{
               required: 'Number of ad sets is required',
-              min: { value: 1, message: 'Minimum 1 ad set' },
+              min: { value: 0, message: 'Minimum 0 ad sets' },
               max: { value: 49, message: 'Maximum 49 ad sets' }
             }}
             render={({ field, fieldState: { error } }) => (
@@ -1209,18 +1236,12 @@ const AdSetSection: React.FC = () => {
                 fullWidth
                 type="number"
                 label="Number of Ad Sets to Duplicate"
-                inputProps={{ min: 1, max: 49, step: 1 }}
-                helperText={error?.message || "Enter number of ad sets to create"}
+                inputProps={{ min: 0, max: 49, step: 1 }}
+                helperText={
+                  error?.message ||
+                  "Enter 0 to create only 1-1-1 structure (1 campaign, 1 ad set, 1 ad). Enter 1-49 to duplicate ad sets."
+                }
                 error={!!error}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value) || 1;
-                  field.onChange(value);
-                  // Recalculate budgetPerAdSet when count changes
-                  const totalBudget = watch('duplicationSettings.totalBudget');
-                  if (totalBudget && value) {
-                    setValue('duplicationSettings.budgetPerAdSet', totalBudget / value);
-                  }
-                }}
               />
             )}
           />
@@ -1242,15 +1263,23 @@ const AdSetSection: React.FC = () => {
                   : (watch('adSetBudget.lifetimeBudget') || 0)
                 } per ad set
                 <br />
-                • <strong>Total ad sets:</strong> {((watch('duplicationSettings.adSetCount') || 49) + 1)}
-                (1 initial + {watch('duplicationSettings.adSetCount') || 49} duplicates)
+                • <strong>Total ad sets:</strong> {watch('duplicationSettings.adSetCount') === 0
+                  ? 1
+                  : ((watch('duplicationSettings.adSetCount') || 49) + 1)
+                }
+                {watch('duplicationSettings.adSetCount') === 0
+                  ? ' (1-1-1 structure only)'
+                  : ` (1 initial + ${watch('duplicationSettings.adSetCount') || 49} duplicates)`
+                }
                 <br />
                 • <strong>Total {watch('budgetType') === 'daily' ? 'daily' : 'lifetime'} spend:</strong> $
                 {(() => {
                   const budget = watch('budgetType') === 'daily'
                     ? (watch('adSetBudget.dailyBudget') || 0)
                     : (watch('adSetBudget.lifetimeBudget') || 0);
-                  const totalAdSets = (watch('duplicationSettings.adSetCount') || 49) + 1;
+                  const totalAdSets = watch('duplicationSettings.adSetCount') === 0
+                    ? 1
+                    : ((watch('duplicationSettings.adSetCount') || 49) + 1);
                   return (budget * totalAdSets).toFixed(2);
                 })()}
               </Typography>
