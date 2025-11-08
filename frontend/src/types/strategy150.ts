@@ -111,7 +111,10 @@ export interface Strategy150FormData {
   image?: File;
   video?: File;
   images?: File[];
+
+  // Creative Library integration
   editorName?: string; // Name of the editor from Creative Library (for ad naming)
+  fromLibrary?: boolean; // Flag to indicate files came from Creative Library
 
   // Media Specifications
   mediaSpecs?: {
