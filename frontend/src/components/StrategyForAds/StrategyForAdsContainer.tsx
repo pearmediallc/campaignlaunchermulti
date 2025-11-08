@@ -291,8 +291,8 @@ const StrategyForAdsContainer: React.FC = () => {
         images: campaignData.images,
 
         // Creative Library integration - CRITICAL for editor name in ad names
-        editorName: campaignData.editorName,
-        fromLibrary: campaignData.fromLibrary,
+        editorName: data.editorName,
+        fromLibrary: data.fromLibrary,
 
         // Placements - Pass exactly what user selected
         placementType: campaignData.placementType || 'automatic'
