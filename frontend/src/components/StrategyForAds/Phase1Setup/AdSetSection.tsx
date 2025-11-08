@@ -1226,107 +1226,36 @@ const AdSetSection: React.FC = () => {
           />
         </Box>
 
-        {/* Conditional Budget Input - Only show for Ad Set Budget level */}
+        {/* Budget Information - Different for ABO vs CBO */}
         {budgetLevel === 'adset' ? (
-          <>
-            {/* Total Budget for Duplicated Ad Sets */}
-            <Box sx={{ width: "100%" }}>
-              <Controller
-                name="duplicationSettings.totalBudget"
-                control={control}
-                rules={{
-                  required: 'Total budget is required for Ad Set Budget level',
-                  min: { value: 1, message: 'Total budget must be at least $1' },
-                  validate: {
-                    minPerAdSet: (value) => {
-                      const adSetCount = watch('duplicationSettings.adSetCount') || 49;
-                      if (!value) return true;
-                      const budgetPerAdSet = value / adSetCount;
-                      return budgetPerAdSet >= 1 || `Budget per ad set must be at least $1 (currently $${budgetPerAdSet.toFixed(2)})`;
-                    },
-                    matchesBudgetSchedule: (value) => {
-                      const dailyBudget = watch('adSetBudget.dailyBudget');
-                      const adSetCount = watch('duplicationSettings.adSetCount') || 49;
-
-                      if (!dailyBudget || !value) return true;
-
-                      const budgetPerAdSet = value / adSetCount;
-                      const diff = Math.abs(dailyBudget - budgetPerAdSet);
-                      const tolerance = Math.max(0.01, budgetPerAdSet * 0.01);
-
-                      return diff <= tolerance ||
-                        `Budget mismatch! Budget & Schedule: $${dailyBudget}, Duplication: $${budgetPerAdSet.toFixed(2)} per ad set`;
-                    }
-                  }
-                }}
-                render={({ field, fieldState: { error } }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    type="number"
-                    label="Total Budget for Duplicated Ad Sets"
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">$</InputAdornment>
-                    }}
-                    inputProps={{ min: 1, step: 0.01 }}
-                    helperText={error?.message || "Total budget to distribute across all ad sets"}
-                    error={!!error}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      field.onChange(value);
-                      // Recalculate budgetPerAdSet when total budget changes
-                      const adSetCount = watch('duplicationSettings.adSetCount') || 49;
-                      if (value && adSetCount) {
-                        setValue('duplicationSettings.budgetPerAdSet', value / adSetCount);
-                      }
-                    }}
-                  />
-                )}
-              />
-            </Box>
-
-            {/* Calculated Budget Per Ad Set - Read-only display */}
-            <Box sx={{ width: "100%" }}>
-              <Alert severity="info" icon={<Calculate />}>
-                <Typography variant="body2">
-                  <strong>Budget per ad set:</strong> $
-                  {(() => {
-                    const totalBudget = watch('duplicationSettings.totalBudget');
-                    const adSetCount = watch('duplicationSettings.adSetCount') || 49;
-                    return totalBudget ? (totalBudget / adSetCount).toFixed(2) : '0.00';
-                  })()}
-                  {' '}
-                  ({watch('duplicationSettings.adSetCount') || 49} ad sets × $
-                  {(() => {
-                    const totalBudget = watch('duplicationSettings.totalBudget');
-                    const adSetCount = watch('duplicationSettings.adSetCount') || 49;
-                    return totalBudget ? (totalBudget / adSetCount).toFixed(2) : '0.00';
-                  })()}
-                  {' '}= $
-                  {watch('duplicationSettings.totalBudget') || 0})
-                </Typography>
-              </Alert>
-            </Box>
-
-            {/* High Spend Warning */}
-            {(() => {
-              const totalBudget = watch('duplicationSettings.totalBudget');
-              const budgetType = watch('budgetType');
-              if (totalBudget && budgetType === 'daily' && totalBudget > 500) {
-                return (
-                  <Box sx={{ width: "100%" }}>
-                    <Alert severity="warning">
-                      <Typography variant="body2">
-                        <strong>High spending alert:</strong> Daily budget of ${totalBudget}
-                        {' '}will result in ${(totalBudget * 30).toFixed(2)} over 30 days.
-                      </Typography>
-                    </Alert>
-                  </Box>
-                );
-              }
-              return null;
-            })()}
-          </>
+          <Box sx={{ width: "100%" }}>
+            <Alert severity="info">
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                <strong>Budget per ad set:</strong> Each duplicated ad set will use the same budget
+                as specified in "Budget & Schedule" above.
+              </Typography>
+              <Typography variant="body2" component="div">
+                • <strong>Budget type:</strong> {watch('budgetType') === 'daily' ? 'Daily Budget' : 'Lifetime Budget'}
+                <br />
+                • <strong>Budget amount:</strong> ${watch('budgetType') === 'daily'
+                  ? (watch('adSetBudget.dailyBudget') || 0)
+                  : (watch('adSetBudget.lifetimeBudget') || 0)
+                } per ad set
+                <br />
+                • <strong>Total ad sets:</strong> {((watch('duplicationSettings.adSetCount') || 49) + 1)}
+                (1 initial + {watch('duplicationSettings.adSetCount') || 49} duplicates)
+                <br />
+                • <strong>Total {watch('budgetType') === 'daily' ? 'daily' : 'lifetime'} spend:</strong> $
+                {(() => {
+                  const budget = watch('budgetType') === 'daily'
+                    ? (watch('adSetBudget.dailyBudget') || 0)
+                    : (watch('adSetBudget.lifetimeBudget') || 0);
+                  const totalAdSets = (watch('duplicationSettings.adSetCount') || 49) + 1;
+                  return (budget * totalAdSets).toFixed(2);
+                })()}
+              </Typography>
+            </Alert>
+          </Box>
         ) : (
           /* CBO Info Message */
           <Box sx={{ width: "100%" }}>
@@ -1340,29 +1269,6 @@ const AdSetSection: React.FC = () => {
             </Alert>
           </Box>
         )}
-
-        {/* Overall Info */}
-        <Box sx={{ width: "100%" }}>
-          <Alert severity="info">
-            {budgetLevel === 'adset' ? (
-              <Typography variant="body2">
-                The initial ad set will use the budget specified in "Budget & Schedule".
-                The {(watch('duplicationSettings.adSetCount') || 49) - 1} duplicated ad sets will each receive
-                {' '}$
-                {(() => {
-                  const totalBudget = watch('duplicationSettings.totalBudget');
-                  const adSetCount = watch('duplicationSettings.adSetCount') || 49;
-                  return totalBudget ? (totalBudget / adSetCount).toFixed(2) : '0.00';
-                })()} budget.
-              </Typography>
-            ) : (
-              <Typography variant="body2">
-                Campaign Budget Optimization will manage budget distribution automatically.
-                You'll create {watch('duplicationSettings.adSetCount') || 49} ad sets total.
-              </Typography>
-            )}
-          </Alert>
-        </Box>
       </Box>
     </Paper>
   );

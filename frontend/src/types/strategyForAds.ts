@@ -139,8 +139,8 @@ export interface StrategyForAdsFormData {
   // Duplication Settings for 1-49 Ad Sets
   duplicationSettings?: {
     adSetCount?: number;        // Number of ad sets to duplicate (1-49)
-    totalBudget?: number;       // Total budget to distribute across ad sets (required for Ad Set Budget level)
-    budgetPerAdSet?: number;    // Calculated: totalBudget / adSetCount (read-only, computed)
+    totalBudget?: number;       // Optional - for backward compatibility only (not used in ABO)
+    budgetPerAdSet?: number;    // Calculated: totalBudget / adSetCount (legacy field)
     // Legacy fields (backward compatibility)
     defaultBudgetPerAdSet?: number;
     customBudgets?: Array<{
