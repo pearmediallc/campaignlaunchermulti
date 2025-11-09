@@ -211,10 +211,8 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
     } catch (err: any) {
       console.error('Failed to fetch files:', err);
 
-      // If token is invalid/expired, clear it and show login
+      // If token is invalid/expired, show error
       if (err.response?.status === 401 || err.response?.status === 403) {
-        localStorage.removeItem('creative_library_token');
-        setIsAuthenticated(false);
         setLoginError('Session expired. Please login again.');
       } else {
         setError(err.response?.data?.error || 'Failed to load files from Creative Library');
