@@ -307,8 +307,6 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       console.error('❌ Failed to download files:', err);
 
       if (err.response?.status === 401 || err.response?.status === 403) {
-        localStorage.removeItem('creative_library_token');
-        setIsAuthenticated(false);
         setLoginError('Session expired. Please login again.');
       } else {
         setError(err.response?.data?.error || 'Failed to download files from Creative Library');
@@ -320,19 +318,6 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('creative_library_token');
-    setIsAuthenticated(false);
-    setEditors([]);
-    setFiles([]);
-    setSelectedFiles([]);
-    setSelectedEditor('');
-    setLoginEmail('');
-    setLoginPassword('');
-    setLoginError('');
-    setError('');
   };
 
   return (
