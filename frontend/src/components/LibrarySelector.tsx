@@ -507,7 +507,36 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                           alt={file.original_filename}
                           sx={{ objectFit: 'cover' }}
                         />
+                      ) : file.thumbnail_url ? (
+                        // Video with thumbnail - show thumbnail image with play icon overlay
+                        <Box sx={{ position: 'relative', height: 200 }}>
+                          <CardMedia
+                            component="img"
+                            height="200"
+                            image={file.thumbnail_url}
+                            alt={file.original_filename}
+                            sx={{ objectFit: 'cover' }}
+                          />
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              bgcolor: 'rgba(0, 0, 0, 0.6)',
+                              borderRadius: '50%',
+                              width: 60,
+                              height: 60,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            <VideoLibrary sx={{ fontSize: 40, color: '#fff' }} />
+                          </Box>
+                        </Box>
                       ) : (
+                        // Video without thumbnail - show placeholder
                         <Box
                           sx={{
                             height: 200,

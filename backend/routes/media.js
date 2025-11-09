@@ -17,17 +17,32 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB for videos
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|mp4|mov/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    
-    if (mimetype && extname) {
+    console.log('📋 File upload validation:');
+    console.log('  └─ Filename:', file.originalname);
+    console.log('  └─ MIME type:', file.mimetype);
+    console.log('  └─ Extension:', path.extname(file.originalname).toLowerCase());
+
+    // Check file extension
+    const allowedExtensions = /\.(jpeg|jpg|png|gif|webp|mp4|mov|avi|webm)$/i;
+    const hasValidExtension = allowedExtensions.test(file.originalname);
+
+    // Check MIME type - be permissive for videos from Creative Library
+    const isImage = file.mimetype.startsWith('image/');
+    const isVideo = file.mimetype.startsWith('video/') || file.mimetype === 'application/octet-stream';
+
+    console.log('  └─ Valid extension:', hasValidExtension);
+    console.log('  └─ Is image:', isImage);
+    console.log('  └─ Is video:', isVideo);
+
+    if (hasValidExtension && (isImage || isVideo)) {
+      console.log('  ✅ File validation passed');
       return cb(null, true);
     } else {
+      console.log('  ❌ File validation failed');
       cb(new Error('Only images and videos are allowed'));
     }
   }

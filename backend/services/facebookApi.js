@@ -1473,7 +1473,10 @@ class FacebookAPI {
             if (imageHash) variationMediaAssets.imageHash = imageHash;
           }
           
-          console.log('📝 Creating ad variation with editor name:', campaignData.editorName || 'none (local upload)');
+          console.log('\n🎯 ========== AD VARIATION CREATION DEBUG ==========');
+          console.log('📝 Variation data:', JSON.stringify(variation, null, 2));
+          console.log('📝 Campaign editorName:', campaignData.editorName || 'none (local upload)');
+          console.log('📝 Variation editorName:', variation.editorName || 'none');
 
           // Generate ad name with date and editor name
           const now = new Date();
@@ -1481,15 +1484,17 @@ class FacebookAPI {
 
           // Check if variation has its own editor name (from Creative Library), otherwise use campaign editor name
           const variationEditorName = variation.editorName || campaignData.editorName;
+          console.log('📝 Final variationEditorName (after fallback):', variationEditorName || 'NONE');
 
           let adName;
           if (variationEditorName) {
             adName = `[Launcher] ${campaignData.campaignName} - Ad V${i + 1} - ${dateStr} - ${variationEditorName.toUpperCase()}`;
-            console.log(`📝 Variation ${i + 1} with editor name: ${variationEditorName.toUpperCase()}`);
+            console.log(`✅ Variation ${i + 1} AD NAME WITH EDITOR: "${adName}"`);
           } else {
             adName = `[Launcher] ${campaignData.campaignName} - Ad V${i + 1} - ${dateStr}`;
-            console.log(`📝 Variation ${i + 1} without editor name (local upload)`);
+            console.log(`⚠️  Variation ${i + 1} AD NAME WITHOUT EDITOR: "${adName}"`);
           }
+          console.log('================================================\n');
 
           const ad = await this.createAd({
             name: adName,
@@ -4298,19 +4303,26 @@ class FacebookAPI {
         const now = new Date();
         const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
 
+        console.log('\n🎯 ========== AD DUPLICATION VARIATION DEBUG ==========');
+        console.log('📝 Variation object:', JSON.stringify(variation, null, 2));
+        console.log('📝 Copy number:', copyNumber);
+
         if (variation?.variationNumber) {
           // Custom variation with editor name if available
+          console.log('📝 Variation.editorName:', variation.editorName || 'NONE');
+
           if (variation.editorName) {
             adName = `${originalAdData.name} - Variation ${variation.variationNumber} - ${dateStr} - ${variation.editorName.toUpperCase()}`;
-            console.log(`    📝 Variation ${variation.variationNumber} with editor: ${variation.editorName.toUpperCase()}`);
+            console.log(`✅ Variation ${variation.variationNumber} AD NAME WITH EDITOR: "${adName}"`);
           } else {
             adName = `${originalAdData.name} - Variation ${variation.variationNumber} - ${dateStr}`;
-            console.log(`    📝 Variation ${variation.variationNumber} without editor`);
+            console.log(`⚠️  Variation ${variation.variationNumber} AD NAME WITHOUT EDITOR: "${adName}"`);
           }
         } else {
           adName = `${originalAdData.name} - Copy ${copyNumber} - ${dateStr}`;
-          console.log(`    📝 Copy ${copyNumber} with date`);
+          console.log(`📝 Copy ${copyNumber} AD NAME: "${adName}"`);
         }
+        console.log('================================================\n');
       }
 
       // Create ad params
