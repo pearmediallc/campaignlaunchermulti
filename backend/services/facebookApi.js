@@ -2239,42 +2239,27 @@ class FacebookAPI {
                   console.log(`  📷 Fetching thumbnail for uploaded video ${uploadedVideoId}...`);
                   const thumbnailUrl = await this.getVideoThumbnail(uploadedVideoId);
 
+                  // Note: Facebook doesn't support displayLink (caption) for videos in link_data
+                  // Always use video_data for videos, ignoring displayLink field
                   const displayLink = variation.displayLink || formData.displayLink;
-
                   if (displayLink) {
-                    // Try link_data approach with caption (display link)
-                    console.log(`  🧪 Using link_data approach for video variation with caption`);
-                    objectStorySpec.link_data = {
-                      link: variation.websiteUrl || formData.url,
-                      message: variation.primaryText || formData.primaryText,
-                      name: variation.headline || formData.headline,
-                      description: variation.description || formData.description,
-                      caption: displayLink,  // ← Use 'caption' field (same as images)
-                      video_id: uploadedVideoId,
-                      call_to_action: {
-                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
-                        value: {
-                          link: variation.websiteUrl || formData.url
-                        }
-                      },
-                      image_url: thumbnailUrl
-                    };
-                  } else {
-                    // No display link - use standard video_data
-                    objectStorySpec.video_data = {
-                      video_id: uploadedVideoId,
-                      title: variation.headline || formData.headline,
-                      message: variation.primaryText || formData.primaryText,
-                      link_description: variation.description || formData.description,
-                      call_to_action: {
-                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
-                        value: {
-                          link: variation.websiteUrl || formData.url
-                        }
-                      },
-                      image_url: thumbnailUrl
-                    };
+                    console.log(`  ℹ️  DisplayLink ignored for video (Facebook limitation): "${displayLink}"`);
                   }
+
+                  // Use standard video_data (displayLink not supported for videos)
+                  objectStorySpec.video_data = {
+                    video_id: uploadedVideoId,
+                    title: variation.headline || formData.headline,
+                    message: variation.primaryText || formData.primaryText,
+                    link_description: variation.description || formData.description,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                      value: {
+                        link: variation.websiteUrl || formData.url
+                      }
+                    },
+                    image_url: thumbnailUrl
+                  };
 
                   console.log(`  ✅ Added video thumbnail to ad variation: ${thumbnailUrl}`);
                 } else if (variation.imageHash) {
@@ -2299,42 +2284,27 @@ class FacebookAPI {
                   // NO UPLOAD - use ORIGINAL video
                   console.log(`  📹 Creating video ad variation ${v + 1} with ORIGINAL video_id: ${originalCreativeData.video_data.video_id}`);
 
+                  // Note: Facebook doesn't support displayLink (caption) for videos in link_data
+                  // Always use video_data for videos, ignoring displayLink field
                   const displayLink = variation.displayLink || formData.displayLink;
-
                   if (displayLink) {
-                    // Try link_data approach with caption (display link)
-                    console.log(`  🧪 Using link_data approach for video variation with caption`);
-                    objectStorySpec.link_data = {
-                      link: variation.websiteUrl || formData.url,
-                      message: variation.primaryText || formData.primaryText,
-                      name: variation.headline || formData.headline,
-                      description: variation.description || formData.description,
-                      caption: displayLink,  // ← Use 'caption' field (same as images)
-                      video_id: originalCreativeData.video_data.video_id,
-                      call_to_action: {
-                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
-                        value: {
-                          link: variation.websiteUrl || formData.url
-                        }
-                      },
-                      image_url: originalCreativeData.video_data.image_url
-                    };
-                  } else {
-                    // No display link - use standard video_data
-                    objectStorySpec.video_data = {
-                      video_id: originalCreativeData.video_data.video_id,
-                      title: variation.headline || formData.headline,
-                      message: variation.primaryText || formData.primaryText,
-                      link_description: variation.description || formData.description,
-                      call_to_action: {
-                        type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
-                        value: {
-                          link: variation.websiteUrl || formData.url
-                        }
-                      },
-                      image_url: originalCreativeData.video_data.image_url
-                    };
+                    console.log(`  ℹ️  DisplayLink ignored for video (Facebook limitation): "${displayLink}"`);
                   }
+
+                  // Use standard video_data (displayLink not supported for videos)
+                  objectStorySpec.video_data = {
+                    video_id: originalCreativeData.video_data.video_id,
+                    title: variation.headline || formData.headline,
+                    message: variation.primaryText || formData.primaryText,
+                    link_description: variation.description || formData.description,
+                    call_to_action: {
+                      type: variation.callToAction || formData.callToAction || 'LEARN_MORE',
+                      value: {
+                        link: variation.websiteUrl || formData.url
+                      }
+                    },
+                    image_url: originalCreativeData.video_data.image_url
+                  };
                 } else if (originalCreativeData?.link_data) {
                   // NO UPLOAD - use ORIGINAL image
                   console.log(`  📸 Creating image ad variation ${v + 1} with ORIGINAL image`);
