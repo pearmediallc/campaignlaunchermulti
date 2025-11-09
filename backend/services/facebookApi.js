@@ -1475,8 +1475,24 @@ class FacebookAPI {
           
           console.log('📝 Creating ad variation with editor name:', campaignData.editorName || 'none (local upload)');
 
+          // Generate ad name with date and editor name
+          const now = new Date();
+          const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
+          // Check if variation has its own editor name (from Creative Library), otherwise use campaign editor name
+          const variationEditorName = variation.editorName || campaignData.editorName;
+
+          let adName;
+          if (variationEditorName) {
+            adName = `[Launcher] ${campaignData.campaignName} - Ad V${i + 1} - ${dateStr} - ${variationEditorName.toUpperCase()}`;
+            console.log(`📝 Variation ${i + 1} with editor name: ${variationEditorName.toUpperCase()}`);
+          } else {
+            adName = `[Launcher] ${campaignData.campaignName} - Ad V${i + 1} - ${dateStr}`;
+            console.log(`📝 Variation ${i + 1} without editor name (local upload)`);
+          }
+
           const ad = await this.createAd({
-            name: `[Launcher] ${campaignData.campaignName} - Ad V${i + 1}`,
+            name: adName,
             campaignName: campaignData.campaignName,
             adsetId: adSet.id,
             url: variation.url || campaignData.url,
@@ -1486,7 +1502,7 @@ class FacebookAPI {
             displayLink: variation.displayLink || campaignData.displayLink,
             callToAction: variation.callToAction || campaignData.callToAction || 'LEARN_MORE',
             mediaType: variation.mediaType || campaignData.mediaType || 'single_image',
-            editorName: campaignData.editorName, // Pass editor name for ad naming
+            editorName: variationEditorName, // Pass editor name for ad naming
             ...variationMediaAssets
           });
 
@@ -4172,7 +4188,12 @@ class FacebookAPI {
         creative = {
           object_story_id: originalAdData.creative.object_story_id
         };
-        adName = `${originalAdData.name} - Copy ${copyNumber}`;
+
+        // Generate ad name with date
+        const now = new Date();
+        const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+        adName = `${originalAdData.name} - Copy ${copyNumber} - ${dateStr}`;
+        console.log(`    📝 Quick duplicate copy ${copyNumber} with date`);
 
       } else {
         // CUSTOM VARIATION or FALLBACK: Clone and modify object_story_spec
@@ -4273,9 +4294,23 @@ class FacebookAPI {
           object_story_spec: newSpec
         };
 
-        adName = variation?.variationNumber
-          ? `${originalAdData.name} - Variation ${variation.variationNumber}`
-          : `${originalAdData.name} - Copy ${copyNumber}`;
+        // Generate ad name with date and editor name
+        const now = new Date();
+        const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
+        if (variation?.variationNumber) {
+          // Custom variation with editor name if available
+          if (variation.editorName) {
+            adName = `${originalAdData.name} - Variation ${variation.variationNumber} - ${dateStr} - ${variation.editorName.toUpperCase()}`;
+            console.log(`    📝 Variation ${variation.variationNumber} with editor: ${variation.editorName.toUpperCase()}`);
+          } else {
+            adName = `${originalAdData.name} - Variation ${variation.variationNumber} - ${dateStr}`;
+            console.log(`    📝 Variation ${variation.variationNumber} without editor`);
+          }
+        } else {
+          adName = `${originalAdData.name} - Copy ${copyNumber} - ${dateStr}`;
+          console.log(`    📝 Copy ${copyNumber} with date`);
+        }
       }
 
       // Create ad params

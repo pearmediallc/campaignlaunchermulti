@@ -43,7 +43,10 @@ export const CreativeLibraryProvider: React.FC<CreativeLibraryProviderProps> = (
     setLoading(true);
 
     try {
-      const baseURL = process.env.REACT_APP_CREATIVE_LIBRARY_API_URL || 'https://creative-library-backend.onrender.com/api';
+      // Use the same URL as LibrarySelector for consistency (CSP allows creative-library.onrender.com)
+      const baseURL = process.env.REACT_APP_CREATIVE_LIBRARY_URL
+        ? `${process.env.REACT_APP_CREATIVE_LIBRARY_URL}/api`
+        : 'https://creative-library.onrender.com/api';
 
       console.log(`🌐 Authenticating with: ${baseURL}/auth/login`);
 
