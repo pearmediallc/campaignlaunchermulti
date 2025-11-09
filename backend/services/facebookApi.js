@@ -2367,17 +2367,43 @@ class FacebookAPI {
                   };
                 }
 
+                // Generate ad variation name with date and editor name
+                console.log('\n🎯 ========== AD VARIATION NAMING DEBUG ==========');
+                console.log('📝 Variation object:', JSON.stringify(variation, null, 2));
+                console.log('📝 formData.editorName:', formData.editorName || 'NONE');
+                console.log('📝 variation.editorName:', variation?.editorName || 'NONE');
+                console.log('📝 formData.fromLibrary:', formData.fromLibrary);
+
+                const now = new Date();
+                const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
+                // Use variation's editor name if available (from Creative Library), otherwise use formData editor name
+                const variationEditorName = variation?.editorName || formData.editorName;
+                console.log('📝 Final variationEditorName (after fallback):', variationEditorName || 'NONE');
+
+                let variationAdName;
+                if (variationEditorName) {
+                  variationAdName = `${formData.campaignName} - Ad Set ${i + 1} - Variation ${v + 1} - ${dateStr} - ${variationEditorName.toUpperCase()}`;
+                  console.log(`✅ Variation ${v + 1} AD NAME WITH EDITOR: "${variationAdName}"`);
+                } else {
+                  variationAdName = `${formData.campaignName} - Ad Set ${i + 1} - Variation ${v + 1} - ${dateStr}`;
+                  console.log(`⚠️  Variation ${v + 1} AD NAME WITHOUT EDITOR: "${variationAdName}"`);
+                }
+                console.log('================================================\n');
+
                 // Create ad with variation content
                 const variationAdData = {
-                  name: `${formData.campaignName} - Ad Set ${i + 1} - Ad ${v + 1}`,
+                  name: variationAdName,
                   adset_id: newAdSetId,
                   creative: JSON.stringify({
-                    name: `Ad Variation ${v + 1}`,
+                    name: `Ad Variation ${v + 1} - ${dateStr}${variationEditorName ? ' - ' + variationEditorName.toUpperCase() : ''}`,
                     object_story_spec: objectStorySpec
                   }),
                   status: 'ACTIVE',
                   access_token: this.accessToken
                 };
+
+                console.log(`📤 Creating ad variation with name: "${variationAdName}"`);
 
                 await axios.post(
                   `${this.baseURL}/act_${campaignAccountId}/ads`,
@@ -2385,7 +2411,7 @@ class FacebookAPI {
                   { params: variationAdData }
                 );
 
-                console.log(`✅ Created ad variation ${v + 1}/${adsPerAdSet} for AdSet ${i + 1}`);
+                console.log(`✅ Created ad variation ${v + 1}/${adsPerAdSet} for AdSet ${i + 1} - "${variationAdName}"`);
               } catch (adError) {
                 console.error(`❌ Failed to create ad variation ${v + 1} for AdSet ${i + 1}:`, adError.response?.data?.error?.message || adError.message);
                 console.error('  📋 Full Facebook API error:', JSON.stringify(adError.response?.data, null, 2));
