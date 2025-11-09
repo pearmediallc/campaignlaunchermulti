@@ -2391,14 +2391,17 @@ class FacebookAPI {
             let adCreated = false;
             let lastError = null;
 
-            // Generate ad name with editor name if from Creative Library
+            // Generate ad name with date and editor name if from Creative Library
+            const now = new Date();
+            const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
             let adName;
             if (formData.fromLibrary && formData.editorName) {
-              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${formData.editorName.toUpperCase()}`;
-              console.log(`✅ Ad Copy ${i + 1} - Adding editor name from library: ${formData.editorName.toUpperCase()}`);
+              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr} - ${formData.editorName.toUpperCase()}`;
+              console.log(`✅ Ad Copy ${i + 1} - Adding date (${dateStr}) and editor name: ${formData.editorName.toUpperCase()}`);
             } else {
-              adName = `${formData.campaignName} - Ad Copy ${i + 1}`;
-              console.log(`ℹ️  Ad Copy ${i + 1} - No editor name (local upload or not from library)`);
+              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr}`;
+              console.log(`ℹ️  Ad Copy ${i + 1} - Adding date (${dateStr}) - No editor name (local upload or not from library)`);
             }
 
             const adData = {
