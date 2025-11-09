@@ -13,6 +13,7 @@ export interface AdVariation {
   mediaType?: 'image' | 'video' | 'carousel';
   imageUrl?: string;
   videoId?: string;
+  imageHash?: string;
   carouselCards?: any[];
 
   // Text fields (7 customizable fields)
@@ -23,8 +24,12 @@ export interface AdVariation {
   websiteUrl?: string;
   callToAction?: string;
 
+  // Creative Library integration
+  editorName?: string; // Editor name from Creative Library (for ad naming)
+
   // Special flags
   useOriginal?: boolean; // If true, use original ad's value for this variation
+  useOriginalMedia?: boolean; // If true, use original ad's media
   applyToRemaining?: boolean; // If true, apply this media to all remaining variations
 }
 

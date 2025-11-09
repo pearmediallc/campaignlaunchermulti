@@ -16,8 +16,9 @@ import {
   CircularProgress,
   Alert
 } from '@mui/material';
-import { CloudUpload, CheckCircle } from '@mui/icons-material';
+import { CloudUpload, CheckCircle, PhotoLibrary } from '@mui/icons-material';
 import { AdVariation, OriginalAdData } from '../../../types/adDuplication';
+import LibrarySelector from '../../LibrarySelector';
 
 interface VariationFormProps {
   variationNumber: number;
@@ -32,10 +33,12 @@ const VariationForm: React.FC<VariationFormProps> = ({
   originalAdData,
   onChange
 }) => {
-  const [mediaUploadMode, setMediaUploadMode] = useState<'original' | 'new'>('original');
+  const [mediaUploadMode, setMediaUploadMode] = useState<'original' | 'new' | 'library'>('original');
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [uploadError, setUploadError] = useState<string>('');
+  const [showLibrarySelector, setShowLibrarySelector] = useState(false);
+  const [selectedEditorName, setSelectedEditorName] = useState<string>('');
 
   // Extract original values from originalAdData
   const getOriginalValue = (field: string): string => {
@@ -143,6 +146,66 @@ const VariationForm: React.FC<VariationFormProps> = ({
     }
   };
 
+  const handleLibrarySelect = async (files: File[], editorName: string) => {
+    console.log('📚 Files selected from Creative Library:', files.length);
+    console.log('👤 Editor:', editorName);
+
+    if (files.length === 0) return;
+
+    setUploadingMedia(true);
+    setUploadError('');
+    setSelectedEditorName(editorName);
+
+    try {
+      const file = files[0]; // For variations, we only use single files
+      console.log('📤 Uploading Creative Library file for variation:', file.name);
+
+      const formData = new FormData();
+      formData.append('media', file);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/media/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('✅ Creative Library media uploaded successfully:', result.data);
+        setUploadedFileName(`${file.name} (${editorName})`);
+
+        // Update variation with uploaded media IDs and editor name
+        const updatedVariation: any = {
+          ...variation,
+          useOriginalMedia: false,
+          editorName: editorName // Store editor name for ad naming
+        };
+
+        if (result.data.type === 'video') {
+          updatedVariation.videoId = result.data.videoId;
+          console.log('  💾 Saved videoId to variation:', result.data.videoId);
+        } else if (result.data.type === 'image') {
+          updatedVariation.imageHash = result.data.imageHash;
+          console.log('  💾 Saved imageHash to variation:', result.data.imageHash);
+        }
+
+        onChange(updatedVariation);
+        setShowLibrarySelector(false);
+      } else {
+        throw new Error(result.error || 'Upload failed');
+      }
+    } catch (error: any) {
+      console.error('❌ Creative Library media upload error:', error);
+      setUploadError(error.message || 'Failed to upload Creative Library media');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
   return (
     <Box>
       {/* Use Original Toggle */}
@@ -177,7 +240,7 @@ const VariationForm: React.FC<VariationFormProps> = ({
             </Typography>
             <RadioGroup
               value={mediaUploadMode}
-              onChange={(e) => setMediaUploadMode(e.target.value as 'original' | 'new')}
+              onChange={(e) => setMediaUploadMode(e.target.value as 'original' | 'new' | 'library')}
               sx={{ mb: 2 }}
             >
               <FormControlLabel
@@ -188,7 +251,12 @@ const VariationForm: React.FC<VariationFormProps> = ({
               <FormControlLabel
                 value="new"
                 control={<Radio />}
-                label="Upload New Media"
+                label="Upload from Computer"
+              />
+              <FormControlLabel
+                value="library"
+                control={<Radio />}
+                label="Select from Creative Library"
               />
             </RadioGroup>
 
@@ -219,6 +287,43 @@ const VariationForm: React.FC<VariationFormProps> = ({
                 {uploadedFileName && (
                   <Alert severity="success" sx={{ mt: 1 }}>
                     ✅ Media uploaded successfully! This variation will use your uploaded media instead of the original.
+                  </Alert>
+                )}
+
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={variation.applyToRemaining || false}
+                      onChange={(e) => handleFieldChange('applyToRemaining', e.target.checked)}
+                    />
+                  }
+                  label="Apply this media to all remaining variations"
+                  sx={{ mt: 1 }}
+                />
+              </Box>
+            )}
+
+            {mediaUploadMode === 'library' && (
+              <Box>
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowLibrarySelector(true)}
+                  startIcon={uploadingMedia ? <CircularProgress size={20} /> : uploadedFileName ? <CheckCircle color="success" /> : <PhotoLibrary />}
+                  fullWidth
+                  disabled={uploadingMedia}
+                >
+                  {uploadingMedia ? 'Processing...' : uploadedFileName ? `Selected: ${uploadedFileName}` : 'Browse Creative Library'}
+                </Button>
+
+                {uploadError && (
+                  <Alert severity="error" sx={{ mt: 1 }}>
+                    {uploadError}
+                  </Alert>
+                )}
+
+                {uploadedFileName && (
+                  <Alert severity="success" sx={{ mt: 1 }}>
+                    ✅ Media selected from Creative Library! This variation will use media from {selectedEditorName}.
                   </Alert>
                 )}
 
@@ -333,6 +438,14 @@ const VariationForm: React.FC<VariationFormProps> = ({
           </Box>
         </Paper>
       )}
+
+      {/* Library Selector Modal */}
+      <LibrarySelector
+        open={showLibrarySelector}
+        mediaType="single_image" // Variations use single images/videos
+        onSelect={handleLibrarySelect}
+        onClose={() => setShowLibrarySelector(false)}
+      />
     </Box>
   );
 };
