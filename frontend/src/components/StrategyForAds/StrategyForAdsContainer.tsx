@@ -18,6 +18,7 @@ import Phase3Duplication from './Phase3Duplication/Phase3Duplication';
 import CompletionSummary from './CompletionSummary/CompletionSummary';
 import CampaignManagementContainer from './CampaignManagement/CampaignManagementContainer';
 import MultiplyContainer from './MultiplySection/MultiplyContainer';
+import { CreativeLibraryProvider } from '../../contexts/CreativeLibraryContext';
 
 const StrategyForAdsContainer: React.FC = () => {
   // Tab management
@@ -787,4 +788,13 @@ const StrategyForAdsContainer: React.FC = () => {
   );
 };
 
-export default StrategyForAdsContainer;
+// Wrap component with CreativeLibraryProvider for authentication persistence
+const StrategyForAdsContainerWithProvider: React.FC = () => {
+  return (
+    <CreativeLibraryProvider>
+      <StrategyForAdsContainer />
+    </CreativeLibraryProvider>
+  );
+};
+
+export default StrategyForAdsContainerWithProvider;

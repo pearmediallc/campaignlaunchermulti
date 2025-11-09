@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import { Close, Image as ImageIcon, VideoLibrary } from '@mui/icons-material';
 import axios from 'axios';
+import { useCreativeLibrary } from '../contexts/CreativeLibraryContext';
 
 interface LibrarySelectorProps {
   mediaType: 'single_image' | 'single_video' | 'carousel';
@@ -57,12 +58,13 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
   onClose,
   open
 }) => {
-  // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Use Creative Library context for authentication
+  const { isAuthenticated, token, authenticate, loading: authLoading, user } = useCreativeLibrary();
+
+  // Local authentication state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [loggingIn, setLoggingIn] = useState(false);
 
   // File selection state
   const [editors, setEditors] = useState<Editor[]>([]);
@@ -76,80 +78,64 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
 
   const CREATIVE_LIBRARY_URL = process.env.REACT_APP_CREATIVE_LIBRARY_URL || 'http://localhost:3001';
 
-  // Get auth token from localStorage
-  const getAuthToken = () => {
-    return localStorage.getItem('creative_library_token');
-  };
-
-  // Check authentication status and fetch editors on mount
+  // Check authentication status and fetch editors when modal opens
   useEffect(() => {
-    if (open) {
-      const token = getAuthToken();
-      if (token) {
-        setIsAuthenticated(true);
-        fetchEditors();
-      } else {
-        setIsAuthenticated(false);
-        setEditors([]);
-        setFiles([]);
-        setSelectedFiles([]);
-        setError('');
-      }
-    }
-  }, [open]);
+    console.log('📋 LibrarySelector opened');
+    console.log(`   isAuthenticated: ${isAuthenticated}`);
+    console.log(`   token: ${token ? token.substring(0, 20) + '...' : 'null'}`);
 
-  // Handle login
+    if (open && isAuthenticated && token) {
+      console.log('✅ Already authenticated, fetching editors...');
+      fetchEditors();
+    } else if (open && !isAuthenticated) {
+      console.log('ℹ️  Not authenticated, showing login form');
+      setEditors([]);
+      setFiles([]);
+      setSelectedFiles([]);
+      setError('');
+    }
+  }, [open, isAuthenticated, token]);
+
+  // Handle login using context
   const handleLogin = async () => {
     if (!loginEmail || !loginPassword) {
       setLoginError('Please enter both email and password');
       return;
     }
 
-    setLoggingIn(true);
     setLoginError('');
 
-    try {
-      const response = await axios.post(`${CREATIVE_LIBRARY_URL}/api/auth/login`, {
-        email: loginEmail,
-        password: loginPassword
-      });
+    console.log('🔐 Attempting login via CreativeLibraryContext...');
 
-      if (response.data.success && response.data.data.token) {
-        const newToken = response.data.data.token;
+    const result = await authenticate(loginEmail, loginPassword);
 
-        console.log('🎫 Login successful, received new token:', newToken.substring(0, 50) + '...');
+    if (result.success) {
+      console.log('✅ Login successful via context');
 
-        // IMPORTANT: Clear any old token first, then store new one
-        localStorage.removeItem('creative_library_token');
-        localStorage.setItem('creative_library_token', newToken);
+      // Clear login form
+      setLoginEmail('');
+      setLoginPassword('');
+      setLoginError('');
 
-        console.log('💾 Token stored in localStorage');
-        console.log('🔍 Verifying stored token:', localStorage.getItem('creative_library_token')?.substring(0, 50) + '...');
-
-        // Update state
-        setIsAuthenticated(true);
-        setLoginEmail('');
-        setLoginPassword('');
-        setLoginError('');
-
-        // Fetch editors with the new token directly (don't rely on localStorage immediately)
-        await fetchEditorsWithToken(newToken);
-      } else {
-        setLoginError('Login failed. Please try again.');
-      }
-    } catch (err: any) {
-      console.error('Login failed:', err);
-      const errorMessage = err.response?.data?.error || 'Login failed. Please check your credentials.';
-      setLoginError(errorMessage);
-    } finally {
-      setLoggingIn(false);
+      // Fetch editors - token is now available in context
+      await fetchEditors();
+    } else {
+      console.log('❌ Login failed:', result.error);
+      setLoginError(result.error || 'Login failed. Please check your credentials.');
     }
   };
 
-  // Fetch editors with explicit token (used right after login)
-  const fetchEditorsWithToken = async (token: string) => {
+  // Fetch editors using token from context
+  const fetchEditors = async () => {
     try {
-      console.log('📡 Fetching editors with token:', token.substring(0, 50) + '...');
+      console.log('📡 Fetching editors from Creative Library...');
+      console.log(`   Token: ${token ? token.substring(0, 20) + '...' : 'null'}`);
+
+      if (!token) {
+        console.log('❌ No token available');
+        setError('Not authenticated. Please login.');
+        return;
+      }
 
       const response = await axios.get(`${CREATIVE_LIBRARY_URL}/api/editors`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -157,43 +143,12 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
 
       console.log('✅ Editors fetched successfully:', response.data.data?.length || 0);
       setEditors(response.data.data || []);
+      setError('');
     } catch (err: any) {
       console.error('❌ Failed to fetch editors:', err);
 
-      // If token is invalid/expired, clear it and show login
+      // If token is invalid/expired, show error
       if (err.response?.status === 401 || err.response?.status === 403) {
-        localStorage.removeItem('creative_library_token');
-        setIsAuthenticated(false);
-        setLoginError('Session expired. Please login again.');
-      } else {
-        setError('Failed to load editors.');
-      }
-    }
-  };
-
-  // Fetch editors using token from localStorage
-  const fetchEditors = async () => {
-    try {
-      const token = getAuthToken();
-      if (!token) {
-        setIsAuthenticated(false);
-        return;
-      }
-
-      console.log('📡 Fetching editors with localStorage token:', token.substring(0, 50) + '...');
-
-      const response = await axios.get(`${CREATIVE_LIBRARY_URL}/api/editors`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      setEditors(response.data.data || []);
-    } catch (err: any) {
-      console.error('Failed to fetch editors:', err);
-
-      // If token is invalid/expired, clear it and show login
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        localStorage.removeItem('creative_library_token');
-        setIsAuthenticated(false);
         setLoginError('Session expired. Please login again.');
       } else {
         setError('Failed to load editors.');
@@ -213,7 +168,8 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
     setSelectedFiles([]);
 
     try {
-      const token = getAuthToken();
+      console.log('🔍 Searching files with token from context...');
+
       if (!token) {
         setError('Please login to Creative Library first');
         setLoading(false);
@@ -227,6 +183,10 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       } else if (mediaType === 'single_video') {
         fileTypeParam = 'video';
       }
+
+      console.log(`   Editor: ${selectedEditor}`);
+      console.log(`   File Type: ${fileTypeParam}`);
+      console.log(`   Date Range: ${startDate || 'any'} to ${endDate || 'any'}`);
 
       // Build query params
       const params = new URLSearchParams({
@@ -307,16 +267,16 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       const selectedFileObjects = files.filter(f => selectedFiles.includes(f.id));
       const downloadedFiles: File[] = [];
 
-      const token = getAuthToken();
       if (!token) {
         setError('Authentication required');
         setLoading(false);
         return;
       }
 
-      console.log('🚀 LIBRARY SELECTOR VERSION: 2.0 - USING PROXY DOWNLOAD');
+      console.log('🚀 LIBRARY SELECTOR - DOWNLOADING FILES VIA PROXY');
       console.log('📍 Creative Library URL:', CREATIVE_LIBRARY_URL);
-      console.log('🔐 Token present:', !!token);
+      console.log('🔐 Token from context:', token.substring(0, 20) + '...');
+      console.log(`📦 Downloading ${selectedFileObjects.length} file(s)...`);
 
       for (const file of selectedFileObjects) {
         console.log('📥 START DOWNLOAD via proxy API:', file.original_filename);
@@ -417,7 +377,7 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                   type="email"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  disabled={loggingIn}
+                  disabled={authLoading}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       handleLogin();
@@ -431,7 +391,7 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                   type="password"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
-                  disabled={loggingIn}
+                  disabled={authLoading}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
                       handleLogin();
@@ -443,10 +403,10 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
                   fullWidth
                   variant="contained"
                   onClick={handleLogin}
-                  disabled={loggingIn || !loginEmail || !loginPassword}
+                  disabled={authLoading || !loginEmail || !loginPassword}
                   sx={{ mt: 1 }}
                 >
-                  {loggingIn ? <CircularProgress size={24} /> : 'Login to Creative Library'}
+                  {authLoading ? <CircularProgress size={24} /> : 'Login to Creative Library'}
                 </Button>
               </Box>
             </>
@@ -600,7 +560,7 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} disabled={loading || loggingIn}>
+        <Button onClick={onClose} disabled={loading || authLoading}>
           Cancel
         </Button>
         {isAuthenticated && (
