@@ -59,7 +59,7 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
   open
 }) => {
   // Use Creative Library context for authentication
-  const { isAuthenticated, token, authenticate, loading: authLoading, user } = useCreativeLibrary();
+  const { isAuthenticated, token, authenticate, logout, loading: authLoading, user } = useCreativeLibrary();
 
   // Local authentication state
   const [loginEmail, setLoginEmail] = useState('');
@@ -318,6 +318,20 @@ const LibrarySelector: React.FC<LibrarySelectorProps> = ({
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
+  };
+
+  const handleLogout = () => {
+    console.log('🚪 Logging out from Creative Library...');
+    logout(); // Use context logout
+    // Clear local state
+    setEditors([]);
+    setFiles([]);
+    setSelectedFiles([]);
+    setSelectedEditor('');
+    setLoginEmail('');
+    setLoginPassword('');
+    setLoginError('');
+    setError('');
   };
 
   return (
