@@ -2391,8 +2391,18 @@ class FacebookAPI {
             let adCreated = false;
             let lastError = null;
 
+            // Generate ad name with editor name if from Creative Library
+            let adName;
+            if (formData.fromLibrary && formData.editorName) {
+              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${formData.editorName.toUpperCase()}`;
+              console.log(`✅ Ad Copy ${i + 1} - Adding editor name from library: ${formData.editorName.toUpperCase()}`);
+            } else {
+              adName = `${formData.campaignName} - Ad Copy ${i + 1}`;
+              console.log(`ℹ️  Ad Copy ${i + 1} - No editor name (local upload or not from library)`);
+            }
+
             const adData = {
-              name: `${formData.campaignName} - Ad Copy ${i + 1}`,
+              name: adName,
               adset_id: newAdSetId,
               creative: JSON.stringify({
                 object_story_id: actualPostId,
@@ -2402,7 +2412,7 @@ class FacebookAPI {
               access_token: this.accessToken
             };
 
-            console.log(`🔄 Creating Ad for AdSet ${newAdSetId} (Copy ${i + 1}) using original post ID...`);
+            console.log(`🔄 Creating Ad for AdSet ${newAdSetId} (Copy ${i + 1}) with name: "${adName}"`);
 
           // Retry up to 3 times with exponential backoff
           for (let attempt = 1; attempt <= 3; attempt++) {
