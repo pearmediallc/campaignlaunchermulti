@@ -193,43 +193,45 @@ const AdSetSection: React.FC = () => {
 
   // Auto-map conversion event based on objective selection
   useEffect(() => {
-    const objective = watch('objective');
-    if (!objective) return;
+    const subscription = watch((value, { name }) => {
+      if (name === 'objective' && value.objective) {
+        const objectiveToConversionMap: Record<string, string> = {
+          'OUTCOME_LEADS': 'Lead',
+          'OUTCOME_SALES': 'Purchase',
+          'PHONE_CALL': 'Contact'
+        };
 
-    const objectiveToConversionMap: Record<string, string> = {
-      'OUTCOME_LEADS': 'Lead',
-      'OUTCOME_SALES': 'Purchase',
-      'PHONE_CALL': 'Contact'
-    };
-
-    const suggestedConversionEvent = objectiveToConversionMap[objective];
-    if (suggestedConversionEvent) {
-      const currentConversionEvent = watch('conversionEvent');
-      // Only auto-set if not already set by user or if it's the first time
-      if (!currentConversionEvent) {
-        setValue('conversionEvent', suggestedConversionEvent as 'Lead' | 'Contact' | 'Purchase');
+        const suggestedConversionEvent = objectiveToConversionMap[value.objective];
+        if (suggestedConversionEvent) {
+          const currentConversionEvent = value.conversionEvent;
+          // Only auto-set if not already set by user
+          if (!currentConversionEvent) {
+            setValue('conversionEvent', suggestedConversionEvent as 'Lead' | 'Contact' | 'Purchase');
+          }
+        }
       }
-    }
-  }, [watch('objective')]);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, setValue]);
 
   // Apply Facebook's default manual placements when switching to manual
   useEffect(() => {
-    const currentPlacementType = watch('placementType');
+    const subscription = watch((value, { name }) => {
+      if (name === 'placementType' && value.placementType === 'manual') {
+        const currentFacebookPlacements = value.placements?.facebook || [];
+        const currentInstagramPlacements = value.placements?.instagram || [];
 
-    // Only apply defaults when first switching to manual (not on subsequent changes)
-    if (currentPlacementType === 'manual') {
-      const currentFacebookPlacements = watch('placements.facebook') || [];
-      const currentInstagramPlacements = watch('placements.instagram') || [];
-
-      // Only set defaults if placements are empty (first time switching to manual)
-      if (currentFacebookPlacements.length === 0 && currentInstagramPlacements.length === 0) {
-        setValue('placements.facebook', DEFAULT_MANUAL_PLACEMENTS.facebook);
-        setValue('placements.instagram', DEFAULT_MANUAL_PLACEMENTS.instagram);
-        setValue('placements.messenger', DEFAULT_MANUAL_PLACEMENTS.messenger);
-        setValue('placements.audienceNetwork' as any, DEFAULT_MANUAL_PLACEMENTS.audience_network);
+        // Only set defaults if placements are empty (first time switching to manual)
+        if (currentFacebookPlacements.length === 0 && currentInstagramPlacements.length === 0) {
+          setValue('placements.facebook', DEFAULT_MANUAL_PLACEMENTS.facebook);
+          setValue('placements.instagram', DEFAULT_MANUAL_PLACEMENTS.instagram);
+          setValue('placements.messenger', DEFAULT_MANUAL_PLACEMENTS.messenger);
+          setValue('placements.audienceNetwork' as any, DEFAULT_MANUAL_PLACEMENTS.audience_network);
+        }
       }
-    }
-  }, [watch('placementType')]);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, setValue]);
 
   const fetchAudiences = async () => {
     try {

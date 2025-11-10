@@ -23,7 +23,10 @@ import {
   LinearProgress,
   Chip,
   Autocomplete,
-  Avatar
+  Avatar,
+  Checkbox,
+  Collapse,
+  Stack
 } from '@mui/material';
 import { Controller, useFormContext } from 'react-hook-form';
 import { AdsClick, CloudUpload, Delete, Image, VideoLibrary, ViewCarousel } from '@mui/icons-material';
@@ -84,6 +87,9 @@ const AdSection: React.FC = () => {
   const [carouselCards, setCarouselCards] = useState<any[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
+  const [enableDynamicVariations, setEnableDynamicVariations] = useState(false);
+  const [primaryTextVariations, setPrimaryTextVariations] = useState<string[]>(['']);
+  const [headlineVariations, setHeadlineVariations] = useState<string[]>(['']);
 
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
@@ -659,6 +665,132 @@ const AdSection: React.FC = () => {
               />
             )}
           />
+        </Box>
+
+        {/* Dynamic Text Variations */}
+        <Box sx={{ width: "100%", mt: 2 }}>
+          <Paper sx={{ p: 2, bgcolor: 'info.lighter', border: '1px solid', borderColor: 'info.main' }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={enableDynamicVariations}
+                  onChange={(e) => setEnableDynamicVariations(e.target.checked)}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    Enable Dynamic Text Variations (Optional)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Create up to 5 variations for Primary Text and Headlines. Facebook will test combinations to find the best performers.
+                  </Typography>
+                </Box>
+              }
+            />
+
+            <Collapse in={enableDynamicVariations}>
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  💡 Facebook's Dynamic Creative will automatically test different combinations of your text variations to optimize performance.
+                </Alert>
+
+                {/* Primary Text Variations */}
+                <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
+                  Primary Text Variations (up to 5)
+                </Typography>
+                <Stack spacing={1.5}>
+                  {primaryTextVariations.map((text, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        multiline
+                        rows={2}
+                        label={`Variation ${index + 1}`}
+                        placeholder="Enter alternative primary text..."
+                        value={text}
+                        onChange={(e) => {
+                          const newVariations = [...primaryTextVariations];
+                          newVariations[index] = e.target.value;
+                          setPrimaryTextVariations(newVariations);
+                        }}
+                        helperText={`${text.length}/2200 characters`}
+                      />
+                      {index > 0 && (
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => {
+                            const newVariations = primaryTextVariations.filter((_, i) => i !== index);
+                            setPrimaryTextVariations(newVariations);
+                          }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      )}
+                    </Box>
+                  ))}
+                  {primaryTextVariations.length < 5 && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AdsClick />}
+                      onClick={() => setPrimaryTextVariations([...primaryTextVariations, ''])}
+                    >
+                      Add Primary Text Variation
+                    </Button>
+                  )}
+                </Stack>
+
+                {/* Headline Variations */}
+                <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ mt: 3 }}>
+                  Headline Variations (up to 5)
+                </Typography>
+                <Stack spacing={1.5}>
+                  {headlineVariations.map((headline, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label={`Variation ${index + 1}`}
+                        placeholder="Enter alternative headline..."
+                        value={headline}
+                        onChange={(e) => {
+                          const newVariations = [...headlineVariations];
+                          newVariations[index] = e.target.value;
+                          setHeadlineVariations(newVariations);
+                        }}
+                        helperText={`${headline.length}/255 characters`}
+                      />
+                      {index > 0 && (
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => {
+                            const newVariations = headlineVariations.filter((_, i) => i !== index);
+                            setHeadlineVariations(newVariations);
+                          }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      )}
+                    </Box>
+                  ))}
+                  {headlineVariations.length < 5 && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AdsClick />}
+                      onClick={() => setHeadlineVariations([...headlineVariations, ''])}
+                    >
+                      Add Headline Variation
+                    </Button>
+                  )}
+                </Stack>
+              </Box>
+            </Collapse>
+          </Paper>
         </Box>
 
         {/* Call to Action */}
