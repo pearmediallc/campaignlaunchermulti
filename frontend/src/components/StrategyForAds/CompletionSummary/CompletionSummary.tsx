@@ -15,7 +15,15 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Table,
+  TableBody,
+  TableRow,
+  TableCell,
+  Alert
 } from '@mui/material';
 import {
   CheckCircle,
@@ -25,7 +33,9 @@ import {
   Add,
   OpenInNew,
   ContentCopy as CopyIcon,
-  Psychology as VariationIcon
+  Psychology as VariationIcon,
+  ExpandMore,
+  Visibility
 } from '@mui/icons-material';
 import { StrategyForAdsResponse } from '../../../types/strategyForAds';
 import MultiplyContainer from '../MultiplySection/MultiplyContainer';
@@ -272,6 +282,233 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
           </ListItem>
         </List>
       </Paper>
+
+      {/* Facebook Payload Verification */}
+      {campaignResult?.data?.facebookPayload && (
+        <Paper sx={{ p: 3, mb: 4 }}>
+          <Accordion>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Visibility color="primary" />
+                <Typography variant="h6">
+                  View Data Sent to Facebook
+                </Typography>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                This shows exactly what was submitted to Facebook's API. Verify your campaign settings below.
+              </Alert>
+
+              {/* Campaign Settings */}
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
+                📢 Campaign Settings
+              </Typography>
+              <Table size="small" sx={{ mb: 3 }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell width="30%"><strong>Campaign Name</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.campaign.name}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Objective</strong></TableCell>
+                    <TableCell>
+                      <Chip label={campaignResult.data.facebookPayload.campaign.objective} size="small" color="primary" />
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Buying Type</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.campaign.buyingType}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Special Ad Categories</strong></TableCell>
+                    <TableCell>
+                      {campaignResult.data.facebookPayload.campaign.specialAdCategories?.length > 0
+                        ? campaignResult.data.facebookPayload.campaign.specialAdCategories.join(', ')
+                        : 'None'}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Status</strong></TableCell>
+                    <TableCell>
+                      <Chip label={campaignResult.data.facebookPayload.campaign.status} size="small" color="success" />
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Budget Level</strong></TableCell>
+                    <TableCell>
+                      <Chip
+                        label={campaignResult.data.facebookPayload.campaign.budgetLevel === 'campaign' ? 'CBO (Campaign)' : 'ABO (Ad Set)'}
+                        size="small"
+                        color={campaignResult.data.facebookPayload.campaign.budgetLevel === 'campaign' ? 'secondary' : 'default'}
+                      />
+                    </TableCell>
+                  </TableRow>
+                  {campaignResult.data.facebookPayload.campaign.dailyBudget && (
+                    <TableRow>
+                      <TableCell><strong>Campaign Daily Budget</strong></TableCell>
+                      <TableCell><strong>${campaignResult.data.facebookPayload.campaign.dailyBudget}</strong></TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+
+              {/* Ad Set Settings */}
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 3 }}>
+                🎯 Ad Set Settings
+              </Typography>
+              <Table size="small" sx={{ mb: 3 }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell width="30%"><strong>Ad Set Name</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.adSet.name}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Optimization Goal</strong></TableCell>
+                    <TableCell>
+                      <Chip label={campaignResult.data.facebookPayload.adSet.optimizationGoal} size="small" color="primary" />
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Bid Strategy</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.adSet.bidStrategy}</TableCell>
+                  </TableRow>
+                  {campaignResult.data.facebookPayload.adSet.conversionEvent && (
+                    <TableRow>
+                      <TableCell><strong>Conversion Event</strong></TableCell>
+                      <TableCell>
+                        <Chip label={campaignResult.data.facebookPayload.adSet.conversionEvent} size="small" color="secondary" />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  <TableRow>
+                    <TableCell><strong>Attribution Setting</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.adSet.attributionSetting}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Placement Type</strong></TableCell>
+                    <TableCell>
+                      <Chip
+                        label={campaignResult.data.facebookPayload.adSet.placementType === 'automatic' ? 'Automatic' : 'Manual'}
+                        size="small"
+                        color={campaignResult.data.facebookPayload.adSet.placementType === 'automatic' ? 'success' : 'info'}
+                      />
+                    </TableCell>
+                  </TableRow>
+                  {campaignResult.data.facebookPayload.adSet.placements && (
+                    <TableRow>
+                      <TableCell><strong>Manual Placements</strong></TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {campaignResult.data.facebookPayload.adSet.placements.map((placement: string) => (
+                            <Chip key={placement} label={placement} size="small" variant="outlined" />
+                          ))}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+
+              {/* Targeting */}
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 3 }}>
+                👥 Targeting
+              </Typography>
+              <Table size="small" sx={{ mb: 3 }}>
+                <TableBody>
+                  <TableRow>
+                    <TableCell width="30%"><strong>Locations</strong></TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {campaignResult.data.facebookPayload.adSet.targeting?.geoLocations?.countries?.map((country: string) => (
+                          <Chip key={country} label={`Country: ${country}`} size="small" color="primary" variant="outlined" />
+                        ))}
+                        {campaignResult.data.facebookPayload.adSet.targeting?.geoLocations?.regions?.map((region: any) => (
+                          <Chip key={region.key} label={`Region: ${region.name || region.key}`} size="small" color="secondary" variant="outlined" />
+                        ))}
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Age Range</strong></TableCell>
+                    <TableCell>
+                      {campaignResult.data.facebookPayload.adSet.targeting?.ageMin} - {campaignResult.data.facebookPayload.adSet.targeting?.ageMax} years
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Gender</strong></TableCell>
+                    <TableCell>
+                      <Chip
+                        label={
+                          campaignResult.data.facebookPayload.adSet.targeting?.genders?.[0] === 1
+                            ? 'Male'
+                            : campaignResult.data.facebookPayload.adSet.targeting?.genders?.[0] === 2
+                            ? 'Female'
+                            : 'All Genders'
+                        }
+                        size="small"
+                      />
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+
+              {/* Ad Creative */}
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 3 }}>
+                🎨 Ad Creative
+              </Typography>
+              <Table size="small">
+                <TableBody>
+                  <TableRow>
+                    <TableCell width="30%"><strong>Ad Name</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.ad.name}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Ad Format</strong></TableCell>
+                    <TableCell>
+                      <Chip label={campaignResult.data.facebookPayload.ad.format} size="small" color="info" />
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Primary Text</strong></TableCell>
+                    <TableCell>{campaignResult.data.facebookPayload.ad.primaryText}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Headline</strong></TableCell>
+                    <TableCell><strong>{campaignResult.data.facebookPayload.ad.headline}</strong></TableCell>
+                  </TableRow>
+                  {campaignResult.data.facebookPayload.ad.description && (
+                    <TableRow>
+                      <TableCell><strong>Description</strong></TableCell>
+                      <TableCell>{campaignResult.data.facebookPayload.ad.description}</TableCell>
+                    </TableRow>
+                  )}
+                  <TableRow>
+                    <TableCell><strong>Call to Action</strong></TableCell>
+                    <TableCell>
+                      <Chip label={campaignResult.data.facebookPayload.ad.callToAction} size="small" color="success" />
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>Website URL</strong></TableCell>
+                    <TableCell>
+                      <a href={campaignResult.data.facebookPayload.ad.websiteUrl} target="_blank" rel="noopener noreferrer">
+                        {campaignResult.data.facebookPayload.ad.websiteUrl}
+                      </a>
+                    </TableCell>
+                  </TableRow>
+                  {campaignResult.data.facebookPayload.ad.displayLink && (
+                    <TableRow>
+                      <TableCell><strong>Display Link</strong></TableCell>
+                      <TableCell>{campaignResult.data.facebookPayload.ad.displayLink}</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </AccordionDetails>
+          </Accordion>
+        </Paper>
+      )}
 
       {/* Action Buttons */}
       <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>

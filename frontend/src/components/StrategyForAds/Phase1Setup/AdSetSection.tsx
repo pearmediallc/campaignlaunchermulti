@@ -31,6 +31,7 @@ import {
   CONVERSION_EVENT_OPTIONS,
   ATTRIBUTION_SETTING_OPTIONS,
   PLACEMENT_OPTIONS,
+  DEFAULT_MANUAL_PLACEMENTS,
   DEVICE_OPTIONS,
   PLATFORM_OPTIONS,
   StrategyForAllFormData
@@ -190,6 +191,46 @@ const AdSetSection: React.FC = () => {
     fetchAudiences();
   }, []);
 
+  // Auto-map conversion event based on objective selection
+  useEffect(() => {
+    const objective = watch('objective');
+    if (!objective) return;
+
+    const objectiveToConversionMap: Record<string, string> = {
+      'OUTCOME_LEADS': 'Lead',
+      'OUTCOME_SALES': 'Purchase',
+      'PHONE_CALL': 'Contact'
+    };
+
+    const suggestedConversionEvent = objectiveToConversionMap[objective];
+    if (suggestedConversionEvent) {
+      const currentConversionEvent = watch('conversionEvent');
+      // Only auto-set if not already set by user or if it's the first time
+      if (!currentConversionEvent || currentConversionEvent === '') {
+        setValue('conversionEvent', suggestedConversionEvent);
+      }
+    }
+  }, [watch('objective')]);
+
+  // Apply Facebook's default manual placements when switching to manual
+  useEffect(() => {
+    const currentPlacementType = watch('placementType');
+
+    // Only apply defaults when first switching to manual (not on subsequent changes)
+    if (currentPlacementType === 'manual') {
+      const currentFacebookPlacements = watch('placements.facebook') || [];
+      const currentInstagramPlacements = watch('placements.instagram') || [];
+
+      // Only set defaults if placements are empty (first time switching to manual)
+      if (currentFacebookPlacements.length === 0 && currentInstagramPlacements.length === 0) {
+        setValue('placements.facebook', DEFAULT_MANUAL_PLACEMENTS.facebook);
+        setValue('placements.instagram', DEFAULT_MANUAL_PLACEMENTS.instagram);
+        setValue('placements.messenger', DEFAULT_MANUAL_PLACEMENTS.messenger);
+        setValue('placements.audience_network', DEFAULT_MANUAL_PLACEMENTS.audience_network);
+      }
+    }
+  }, [watch('placementType')]);
+
   const fetchAudiences = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -325,6 +366,9 @@ const AdSetSection: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                <FormHelperText>
+                  Auto-selected based on objective (Leads→Lead, Sales→Purchase, Calls→Contact). You can change if needed.
+                </FormHelperText>
               </FormControl>
             )}
           />
@@ -1258,29 +1302,34 @@ const AdSetSection: React.FC = () => {
               <Typography variant="body2" component="div">
                 • <strong>Budget type:</strong> {watch('budgetType') === 'daily' ? 'Daily Budget' : 'Lifetime Budget'}
                 <br />
-                • <strong>Budget amount:</strong> ${watch('budgetType') === 'daily'
-                  ? (watch('adSetBudget.dailyBudget') || 0)
-                  : (watch('adSetBudget.lifetimeBudget') || 0)
-                } per ad set
+                • <strong>Budget amount:</strong> ${(() => {
+                  const budget = watch('budgetType') === 'daily'
+                    ? (watch('adSetBudget.dailyBudget') || 0)
+                    : (watch('adSetBudget.lifetimeBudget') || 0);
+                  return Number(budget).toFixed(2);
+                })()} per ad set
                 <br />
                 • <strong>Total ad sets:</strong> {watch('duplicationSettings.adSetCount') === 0
                   ? 1
-                  : ((watch('duplicationSettings.adSetCount') || 49) + 1)
+                  : ((Number(watch('duplicationSettings.adSetCount')) || 49) + 1)
                 }
                 {watch('duplicationSettings.adSetCount') === 0
                   ? ' (1-1-1 structure only)'
-                  : ` (1 initial + ${watch('duplicationSettings.adSetCount') || 49} duplicates)`
+                  : ` (1 initial + ${Number(watch('duplicationSettings.adSetCount')) || 49} duplicates)`
                 }
                 <br />
                 • <strong>Total {watch('budgetType') === 'daily' ? 'daily' : 'lifetime'} spend:</strong> $
                 {(() => {
-                  const budget = watch('budgetType') === 'daily'
+                  const budgetValue = watch('budgetType') === 'daily'
                     ? (watch('adSetBudget.dailyBudget') || 0)
                     : (watch('adSetBudget.lifetimeBudget') || 0);
-                  const totalAdSets = watch('duplicationSettings.adSetCount') === 0
-                    ? 1
-                    : ((watch('duplicationSettings.adSetCount') || 49) + 1);
-                  return (budget * totalAdSets).toFixed(2);
+                  // Ensure budget is treated as a number (in dollars)
+                  const budget = Number(budgetValue);
+                  const adSetCount = Number(watch('duplicationSettings.adSetCount')) || 49;
+                  const totalAdSets = watch('duplicationSettings.adSetCount') === 0 ? 1 : (adSetCount + 1);
+                  const totalSpend = budget * totalAdSets;
+                  // Format with thousands separator
+                  return totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 })()}
               </Typography>
             </Alert>

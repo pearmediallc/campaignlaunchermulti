@@ -296,6 +296,15 @@ export const PLACEMENT_OPTIONS = {
   ]
 };
 
+// Facebook's default manual placement selections (2025)
+// Based on Facebook Ads Manager UI behavior
+export const DEFAULT_MANUAL_PLACEMENTS = {
+  facebook: ['feed', 'marketplace', 'video_feeds', 'story', 'facebook_reels'],
+  instagram: ['stream', 'story', 'reels', 'explore'],
+  messenger: [] as string[], // Not pre-selected by default
+  audience_network: [] as string[] // Not pre-selected by default
+};
+
 export const DEVICE_OPTIONS = [
   { value: 'mobile', label: 'Mobile' },
   { value: 'desktop', label: 'Desktop' },

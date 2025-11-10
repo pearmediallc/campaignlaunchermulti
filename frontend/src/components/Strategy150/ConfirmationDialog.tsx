@@ -38,9 +38,11 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   if (!formData) return null;
 
   // Calculate budget details
-  const initialBudget = formData.budgetLevel === 'campaign'
-    ? (formData.campaignBudget?.dailyBudget || 0)
-    : (formData.adSetBudget?.dailyBudget || 0);
+  const initialBudget = Number(
+    formData.budgetLevel === 'campaign'
+      ? (formData.campaignBudget?.dailyBudget || 0)
+      : (formData.adSetBudget?.dailyBudget || 0)
+  );
 
   const duplicationBudget = 49 * 1; // 49 ad sets @ $1 each
   const totalDailySpend = initialBudget + duplicationBudget;
@@ -150,10 +152,10 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
           <Box sx={{ p: 2, bgcolor: 'error.main', color: 'white', borderRadius: 1 }}>
             <Typography variant="h6" fontWeight={700}>
-              TOTAL DAILY SPEND: ${totalDailySpend}/day
+              TOTAL DAILY SPEND: ${totalDailySpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day
             </Typography>
             <Typography variant="caption">
-              Estimated Monthly: ${totalDailySpend * 30}/month
+              Estimated Monthly: ${(totalDailySpend * 30).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/month
             </Typography>
           </Box>
         </Paper>

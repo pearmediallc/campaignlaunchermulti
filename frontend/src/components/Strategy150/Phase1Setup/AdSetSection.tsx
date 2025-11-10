@@ -31,6 +31,7 @@ import {
   CONVERSION_EVENT_OPTIONS,
   ATTRIBUTION_SETTING_OPTIONS,
   PLACEMENT_OPTIONS,
+  DEFAULT_MANUAL_PLACEMENTS,
   DEVICE_OPTIONS,
   PLATFORM_OPTIONS,
   Strategy150FormData
@@ -178,6 +179,46 @@ const AdSetSection: React.FC = () => {
   useEffect(() => {
     fetchAudiences();
   }, []);
+
+  // Auto-map conversion event based on objective selection
+  useEffect(() => {
+    const objective = watch('objective');
+    if (!objective) return;
+
+    const objectiveToConversionMap: Record<string, string> = {
+      'OUTCOME_LEADS': 'Lead',
+      'OUTCOME_SALES': 'Purchase',
+      'PHONE_CALL': 'Contact'
+    };
+
+    const suggestedConversionEvent = objectiveToConversionMap[objective];
+    if (suggestedConversionEvent) {
+      const currentConversionEvent = watch('conversionEvent');
+      // Only auto-set if not already set by user or if it's the first time
+      if (!currentConversionEvent || currentConversionEvent === '') {
+        setValue('conversionEvent', suggestedConversionEvent);
+      }
+    }
+  }, [watch('objective')]);
+
+  // Apply Facebook's default manual placements when switching to manual
+  useEffect(() => {
+    const currentPlacementType = watch('placementType');
+
+    // Only apply defaults when first switching to manual (not on subsequent changes)
+    if (currentPlacementType === 'manual') {
+      const currentFacebookPlacements = watch('placements.facebook') || [];
+      const currentInstagramPlacements = watch('placements.instagram') || [];
+
+      // Only set defaults if placements are empty (first time switching to manual)
+      if (currentFacebookPlacements.length === 0 && currentInstagramPlacements.length === 0) {
+        setValue('placements.facebook', DEFAULT_MANUAL_PLACEMENTS.facebook);
+        setValue('placements.instagram', DEFAULT_MANUAL_PLACEMENTS.instagram);
+        setValue('placements.messenger', DEFAULT_MANUAL_PLACEMENTS.messenger);
+        setValue('placements.audience_network', DEFAULT_MANUAL_PLACEMENTS.audience_network);
+      }
+    }
+  }, [watch('placementType')]);
 
   const fetchAudiences = async () => {
     try {
@@ -332,6 +373,9 @@ const AdSetSection: React.FC = () => {
                     </MenuItem>
                   ))}
                 </Select>
+                <FormHelperText>
+                  Auto-selected based on objective (Leads→Lead, Sales→Purchase, Calls→Contact). You can change if needed.
+                </FormHelperText>
               </FormControl>
             )}
           />

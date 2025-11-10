@@ -39,30 +39,30 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
   // Calculate budget details based on budget level
   const isCBO = formData.budgetLevel === 'campaign';
-  const adSetCount = formData.duplicationSettings?.adSetCount || 49; // Read from form data, fallback to 49
+  const adSetCount = Number(formData.duplicationSettings?.adSetCount) || 49; // Read from form data, fallback to 49
 
   let totalDailySpend: number;
   let breakdownText: string[];
 
   if (isCBO) {
     // CBO: Campaign budget is THE total, distributed automatically by Facebook
-    const campaignBudget = formData.campaignBudget?.dailyBudget || 0;
+    const campaignBudget = Number(formData.campaignBudget?.dailyBudget) || 0;
     totalDailySpend = campaignBudget; // CBO uses campaign budget only, NOT per-ad-set budgets
     breakdownText = [
       `• Phase 1 (Initial): 1 Ad Set (CBO manages budget)`,
       `• Phase 2 (After Post ID): ${adSetCount - 1} Ad Sets (CBO manages budget)`,
-      `• Total: ${adSetCount} ad sets sharing $${campaignBudget}/day`
+      `• Total: ${adSetCount} ad sets sharing $${campaignBudget.toFixed(2)}/day`
     ];
   } else {
     // Ad Set Budget: Each ad set has individual budget
-    const initialAdSetBudget = formData.adSetBudget?.dailyBudget || 0;
-    const duplicationTotalBudget = formData.duplicationSettings?.totalBudget || ((adSetCount - 1) * 1); // Use totalBudget or fallback
+    const initialAdSetBudget = Number(formData.adSetBudget?.dailyBudget) || 0;
+    const duplicationTotalBudget = Number(formData.duplicationSettings?.totalBudget) || ((adSetCount - 1) * 1); // Use totalBudget or fallback
 
     totalDailySpend = initialAdSetBudget + duplicationTotalBudget;
     const budgetPerDuplicatedAdSet = duplicationTotalBudget / (adSetCount - 1);
 
     breakdownText = [
-      `• Phase 1 (Initial): 1 Ad Set @ $${initialAdSetBudget}/day`,
+      `• Phase 1 (Initial): 1 Ad Set @ $${initialAdSetBudget.toFixed(2)}/day`,
       `• Phase 2 (After Post ID): ${adSetCount - 1} Ad Sets @ $${budgetPerDuplicatedAdSet.toFixed(2)}/day each`,
       `• Total: ${adSetCount} ad sets`
     ];
@@ -173,10 +173,10 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
 
           <Box sx={{ p: 2, bgcolor: 'error.main', color: 'white', borderRadius: 1 }}>
             <Typography variant="h6" fontWeight={700}>
-              TOTAL DAILY SPEND: ${totalDailySpend}/day
+              TOTAL DAILY SPEND: ${totalDailySpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day
             </Typography>
             <Typography variant="caption">
-              Estimated Monthly: ${totalDailySpend * 30}/month
+              Estimated Monthly: ${(totalDailySpend * 30).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/month
             </Typography>
           </Box>
         </Paper>

@@ -712,6 +712,48 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // Don't fail the request if tracking fails
     }
 
+    // Build Facebook payload summary for user verification
+    const facebookPayload = {
+      campaign: {
+        name: campaignData.campaignName,
+        objective: campaignData.objective,
+        buyingType: campaignData.buyingType || 'AUCTION',
+        specialAdCategories: campaignData.specialAdCategories || [],
+        status: 'ACTIVE',
+        budgetLevel: campaignData.budgetLevel,
+        ...(campaignData.budgetLevel === 'campaign' && campaignData.campaignBudget?.dailyBudget && {
+          dailyBudget: `$${Number(campaignData.campaignBudget.dailyBudget).toFixed(2)}`
+        })
+      },
+      adSet: {
+        name: `${campaignData.campaignName} - AdSet`,
+        targeting: {
+          locations: campaignData.targeting?.locations || {},
+          ageMin: campaignData.targeting?.ageMin || 18,
+          ageMax: campaignData.targeting?.ageMax || 65,
+          genders: campaignData.targeting?.genders || ['all']
+        },
+        ...(campaignData.budgetLevel === 'adset' && {
+          dailyBudget: `$${Number(campaignData.dailyBudget || campaignData.adSetBudget?.dailyBudget || 0).toFixed(2)}`
+        }),
+        optimizationGoal: campaignData.performanceGoal || 'OFFSITE_CONVERSIONS',
+        bidStrategy: campaignData.bidStrategy || 'LOWEST_COST_WITHOUT_CAP',
+        conversionEvent: campaignData.conversionEvent,
+        attributionSetting: campaignData.attributionSetting || '7_day_click_1_day_view',
+        placementType: campaignData.placementType || 'automatic'
+      },
+      ad: {
+        name: `${campaignData.campaignName} - Ad`,
+        format: campaignData.mediaType,
+        primaryText: campaignData.primaryText,
+        headline: campaignData.headline,
+        description: campaignData.description || '',
+        callToAction: campaignData.callToAction || 'LEARN_MORE',
+        websiteUrl: campaignData.url,
+        displayLink: campaignData.displayLink || ''
+      }
+    };
+
     res.json({
       success: true,
       message: 'Strategy for-all initial campaign created successfully',
@@ -724,7 +766,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
         pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
         postId: result.postId, // Include postId from result
-        duplicationSettings: campaignData.duplicationSettings // Include duplication settings for frontend
+        duplicationSettings: campaignData.duplicationSettings, // Include duplication settings for frontend
+        facebookPayload // NEW: Include what was sent to Facebook for verification
       }
     });
   } catch (error) {
