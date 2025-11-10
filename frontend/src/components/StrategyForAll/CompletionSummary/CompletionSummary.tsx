@@ -391,7 +391,14 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
                   <TableRow>
                     <TableCell width="30%"><strong>Locations</strong></TableCell>
                     <TableCell>
-                      {JSON.stringify(campaignResult.data.facebookPayload.adSet.targeting.locations)}
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {campaignResult.data.facebookPayload.adSet.targeting?.geoLocations?.countries?.map((country: string) => (
+                          <Chip key={country} label={`Country: ${country}`} size="small" color="primary" variant="outlined" />
+                        ))}
+                        {campaignResult.data.facebookPayload.adSet.targeting?.geoLocations?.regions?.map((region: any) => (
+                          <Chip key={region.key} label={`Region: ${region.name || region.key}`} size="small" color="secondary" variant="outlined" />
+                        ))}
+                      </Box>
                     </TableCell>
                   </TableRow>
                   <TableRow>
@@ -402,7 +409,18 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
                   </TableRow>
                   <TableRow>
                     <TableCell><strong>Gender</strong></TableCell>
-                    <TableCell>{campaignResult.data.facebookPayload.adSet.targeting.genders.join(', ')}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={
+                          campaignResult.data.facebookPayload.adSet.targeting?.genders?.[0] === 1
+                            ? 'Male'
+                            : campaignResult.data.facebookPayload.adSet.targeting?.genders?.[0] === 2
+                            ? 'Female'
+                            : 'All Genders'
+                        }
+                        size="small"
+                      />
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

@@ -206,8 +206,8 @@ const AdSetSection: React.FC = () => {
     if (suggestedConversionEvent) {
       const currentConversionEvent = watch('conversionEvent');
       // Only auto-set if not already set by user or if it's the first time
-      if (!currentConversionEvent || currentConversionEvent === '') {
-        setValue('conversionEvent', suggestedConversionEvent);
+      if (!currentConversionEvent) {
+        setValue('conversionEvent', suggestedConversionEvent as 'Lead' | 'Contact' | 'Purchase');
       }
     }
   }, [watch('objective')]);
@@ -226,7 +226,7 @@ const AdSetSection: React.FC = () => {
         setValue('placements.facebook', DEFAULT_MANUAL_PLACEMENTS.facebook);
         setValue('placements.instagram', DEFAULT_MANUAL_PLACEMENTS.instagram);
         setValue('placements.messenger', DEFAULT_MANUAL_PLACEMENTS.messenger);
-        setValue('placements.audience_network', DEFAULT_MANUAL_PLACEMENTS.audience_network);
+        setValue('placements.audienceNetwork' as any, DEFAULT_MANUAL_PLACEMENTS.audience_network);
       }
     }
   }, [watch('placementType')]);

@@ -203,6 +203,46 @@ export interface StrategyForAdsResponse {
     postId?: string;
     duplicatedAdSets?: Array<{ id: string; name: string }>;
     progress?: number;
+    facebookPayload?: {
+      campaign: {
+        name: string;
+        objective: string;
+        buyingType: string;
+        specialAdCategories: string[];
+        status: string;
+        budgetLevel: string;
+        dailyBudget?: string;
+      };
+      adSet: {
+        name: string;
+        targeting: {
+          geoLocations?: {
+            countries?: string[];
+            regions?: Array<{ key: string; name?: string }>;
+          };
+          ageMin: number;
+          ageMax: number;
+          genders: (string | number)[];
+        };
+        dailyBudget?: string;
+        optimizationGoal: string;
+        bidStrategy: string;
+        conversionEvent?: string;
+        attributionSetting: string;
+        placementType: string;
+        placements?: string[];
+      };
+      ad: {
+        name: string;
+        format: string;
+        primaryText: string;
+        headline: string;
+        description: string;
+        callToAction: string;
+        websiteUrl: string;
+        displayLink: string;
+      };
+    };
   };
   error?: string;
 }
