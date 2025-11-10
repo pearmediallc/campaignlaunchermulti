@@ -203,11 +203,8 @@ const AdSetSection: React.FC = () => {
 
         const suggestedConversionEvent = objectiveToConversionMap[value.objective];
         if (suggestedConversionEvent) {
-          const currentConversionEvent = value.conversionEvent;
-          // Only auto-set if not already set by user
-          if (!currentConversionEvent) {
-            setValue('conversionEvent', suggestedConversionEvent as 'Lead' | 'Contact' | 'Purchase');
-          }
+          // Always update to match the objective
+          setValue('conversionEvent', suggestedConversionEvent as 'Lead' | 'Contact' | 'Purchase');
         }
       }
     });
