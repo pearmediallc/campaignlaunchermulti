@@ -720,20 +720,21 @@ const AdSection: React.FC = () => {
 
             <Collapse in={enableDynamicVariations}>
               <Box sx={{ mt: 2 }}>
-                <Alert severity="warning" sx={{ mb: 2 }}>
+                <Alert severity="info" sx={{ mb: 2 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                    ⚠️ Important: Dynamic Text Variations Limitation
+                    💡 How Dynamic Text Variations Work
                   </Typography>
-                  <Typography variant="body2">
-                    When you enable Dynamic Text Variations, Facebook creates a <strong>Dynamic Creative Ad Set</strong> which only allows <strong>ONE ad per ad set</strong>. This means:
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Facebook will automatically test different combinations of your text variations to find the best performers.
                   </Typography>
                   <Box component="ul" sx={{ mt: 1, mb: 1, pl: 3 }}>
-                    <li><Typography variant="body2">✅ Facebook will automatically test all combinations (up to 25 variants)</Typography></li>
-                    <li><Typography variant="body2">❌ You CANNOT use the "Ad Variation Configuration" feature below</Typography></li>
-                    <li><Typography variant="body2">❌ Each ad set will have only 1 ad (with multiple text variations)</Typography></li>
+                    <li><Typography variant="body2">✅ Create up to 5 primary text variations</Typography></li>
+                    <li><Typography variant="body2">✅ Create up to 5 headline variations</Typography></li>
+                    <li><Typography variant="body2">✅ Facebook tests all combinations (up to 25 variants per ad)</Typography></li>
+                    <li><Typography variant="body2">✅ Compatible with Ad Variation Configuration - create multiple ads each with different dynamic variations!</Typography></li>
                   </Box>
                   <Typography variant="body2" sx={{ mt: 1 }}>
-                    💡 If you want to test multiple ads per ad set manually, disable this feature and use the "Ad Variation Configuration" section instead.
+                    <strong>Example:</strong> Create 3 ads in one ad set, each with 5×5 variations = 75 total combinations being tested!
                   </Typography>
                 </Alert>
 
