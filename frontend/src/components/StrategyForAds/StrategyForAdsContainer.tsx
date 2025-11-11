@@ -389,6 +389,10 @@ const StrategyForAdsContainer: React.FC = () => {
       console.log('  - attributionWindow:', workingCampaignData.attributionWindow);
       console.log('🎨 Ad Variation Config:');
       console.log('  - adVariationConfig:', workingCampaignData.adVariationConfig);
+      console.log('🎨 Dynamic Text in workingCampaignData:');
+      console.log('  - dynamicTextEnabled:', workingCampaignData.dynamicTextEnabled);
+      console.log('  - primaryTextVariations:', workingCampaignData.primaryTextVariations);
+      console.log('  - headlineVariations:', workingCampaignData.headlineVariations);
 
       // Create FormData to handle file uploads properly
       const formData = new FormData();
