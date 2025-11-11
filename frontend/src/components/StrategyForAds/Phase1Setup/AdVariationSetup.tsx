@@ -27,6 +27,9 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
   const [selectedAdSetIndices, setSelectedAdSetIndices] = useState<number[]>([]);
   const [adsPerAdSet, setAdsPerAdSet] = useState<number>(3);
 
+  // Check if dynamic text variations are enabled at the top level
+  const dynamicTextEnabled = watch('dynamicTextEnabled');
+
   // Generate ad set options (1 to adSetCount)
   const adSetOptions = Array.from({ length: adSetCount }, (_, i) => ({
     value: i,
@@ -67,13 +70,27 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
         </Typography>
       </Box>
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Configure which ad sets should have multiple ad variations for A/B testing.
-        Ad sets without variations will use the original ad post ID (preserving social proof).
-      </Alert>
+      {dynamicTextEnabled ? (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+            🚫 Ad Variation Configuration is DISABLED
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            You have enabled <strong>Dynamic Text Variations</strong> in the Ad section above. Facebook's Dynamic Creative Ad Sets only allow <strong>ONE ad per ad set</strong>.
+          </Typography>
+          <Typography variant="body2">
+            To use this Ad Variation Configuration feature, please disable Dynamic Text Variations in the Ad section.
+          </Typography>
+        </Alert>
+      ) : (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Configure which ad sets should have multiple ad variations for A/B testing.
+          Ad sets without variations will use the original ad post ID (preserving social proof).
+        </Alert>
+      )}
 
       {/* Ad Set Selection */}
-      <FormControl fullWidth sx={{ mb: 3 }}>
+      <FormControl fullWidth sx={{ mb: 3 }} disabled={dynamicTextEnabled}>
         <InputLabel id="ad-set-selection-label">
           Which ad sets should have ad variations?
         </InputLabel>
@@ -83,6 +100,7 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
           value={selectedAdSetIndices}
           onChange={handleAdSetSelectionChange}
           input={<OutlinedInput label="Which ad sets should have ad variations?" />}
+          disabled={dynamicTextEnabled}
           renderValue={(selected) => (
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
               {(selected as number[]).map((index) => (
@@ -98,12 +116,15 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
           ))}
         </Select>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-          Select specific ad sets that will have multiple ad variations. Leave empty to use original ad for all ad sets.
+          {dynamicTextEnabled
+            ? '⚠️ Disabled because Dynamic Text Variations are enabled'
+            : 'Select specific ad sets that will have multiple ad variations. Leave empty to use original ad for all ad sets.'
+          }
         </Typography>
       </FormControl>
 
       {/* Ads Per Ad Set */}
-      {selectedAdSetIndices.length > 0 && (
+      {selectedAdSetIndices.length > 0 && !dynamicTextEnabled && (
         <>
           <TextField
             fullWidth

@@ -720,8 +720,21 @@ const AdSection: React.FC = () => {
 
             <Collapse in={enableDynamicVariations}>
               <Box sx={{ mt: 2 }}>
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  💡 Facebook's Dynamic Creative will automatically test different combinations of your text variations to optimize performance.
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                    ⚠️ Important: Dynamic Text Variations Limitation
+                  </Typography>
+                  <Typography variant="body2">
+                    When you enable Dynamic Text Variations, Facebook creates a <strong>Dynamic Creative Ad Set</strong> which only allows <strong>ONE ad per ad set</strong>. This means:
+                  </Typography>
+                  <Box component="ul" sx={{ mt: 1, mb: 1, pl: 3 }}>
+                    <li><Typography variant="body2">✅ Facebook will automatically test all combinations (up to 25 variants)</Typography></li>
+                    <li><Typography variant="body2">❌ You CANNOT use the "Ad Variation Configuration" feature below</Typography></li>
+                    <li><Typography variant="body2">❌ Each ad set will have only 1 ad (with multiple text variations)</Typography></li>
+                  </Box>
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    💡 If you want to test multiple ads per ad set manually, disable this feature and use the "Ad Variation Configuration" section instead.
+                  </Typography>
                 </Alert>
 
                 {/* Primary Text Variations */}
