@@ -998,7 +998,22 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      const response = await axios.post(url, null, { params });
+      console.log('📤 Posting ad to Facebook API...');
+      console.log('  Ad Set ID:', adData.adsetId);
+      console.log('  Ad Name:', adName);
+      console.log('  Using Dynamic Creative:', !!adData.dynamicTextEnabled);
+      console.log('📦 Creative JSON preview:', JSON.stringify(creative).substring(0, 500) + '...');
+
+      const response = await axios.post(url, null, {
+        params,
+        timeout: 60000, // 60 second timeout for ad creation (dynamic creative may take longer)
+        maxContentLength: 50 * 1024 * 1024, // 50MB max (dynamic creative may have larger payloads)
+        maxBodyLength: 50 * 1024 * 1024
+      });
+
+      console.log('✅ Ad created successfully!');
+      console.log('  Ad ID:', response.data.id);
+
       return response.data;
     } catch (error) {
       this.handleError(error);
@@ -2933,9 +2948,19 @@ class FacebookAPI {
     } else if (error.request) {
       console.error('\n🌐 NO RESPONSE FROM FACEBOOK API');
       console.error('  The request was made but no response was received');
-      console.error('  This could be a network issue or Facebook servers are down');
-      console.error('===============================================\n');
-      throw new Error('No response from Facebook API');
+
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        console.error('  ⏱️ REQUEST TIMEOUT');
+        console.error('  The request took too long and was aborted');
+        console.error('  This can happen with complex operations like dynamic creative ads');
+        console.error('  Suggestion: Wait a moment and check Facebook Ads Manager to see if the ad was created');
+        console.error('===============================================\n');
+        throw new Error('Facebook API request timeout - the ad may still have been created, please check Ads Manager');
+      } else {
+        console.error('  This could be a network issue or Facebook servers are down');
+        console.error('===============================================\n');
+        throw new Error('No response from Facebook API');
+      }
     } else {
       console.error('\n⚠️ REQUEST SETUP ERROR');
       console.error('  Error occurred while setting up the request');
