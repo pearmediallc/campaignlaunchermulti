@@ -1001,6 +1001,14 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       });
     }
 
+    // Validate count - must be at least 1
+    if (count < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Count must be at least 1. You cannot duplicate 0 ad sets.'
+      });
+    }
+
     // Use token from middleware (already validated and decrypted)
     const decryptedToken = req.facebookAuth.accessToken;
     const facebookAuth = req.facebookAuth.authRecord;
