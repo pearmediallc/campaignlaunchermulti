@@ -597,9 +597,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       displayLink: req.body.displayLink,
 
       // Dynamic Text Variations (Facebook's Multiple Text Options)
-      dynamicTextEnabled: req.body.dynamicTextEnabled || false,
-      primaryTextVariations: req.body.primaryTextVariations || [],
-      headlineVariations: req.body.headlineVariations || [],
+      dynamicTextEnabled: req.body.dynamicTextEnabled === 'true' || req.body.dynamicTextEnabled === true,
+      primaryTextVariations: typeof req.body.primaryTextVariations === 'string'
+        ? JSON.parse(req.body.primaryTextVariations)
+        : (req.body.primaryTextVariations || []),
+      headlineVariations: typeof req.body.headlineVariations === 'string'
+        ? JSON.parse(req.body.headlineVariations)
+        : (req.body.headlineVariations || []),
 
       // Media specifications
       mediaType: req.body.mediaType,  // Required - user must select
