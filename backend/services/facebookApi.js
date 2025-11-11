@@ -162,10 +162,12 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      // Enable Dynamic Creative on Ad Set if using Dynamic Text Variations (Facebook's Multiple Text Options)
+      // Note: We do NOT set is_dynamic_creative on the ad set
+      // Instead, we use asset_feed_spec on individual ads
+      // This allows multiple ads with dynamic variations in the same ad set
       if (adSetData.dynamicTextEnabled) {
-        params.is_dynamic_creative = true;
-        console.log('🎨 Dynamic Creative ENABLED on Ad Set (required for asset_feed_spec)');
+        console.log('🎨 Dynamic Text Variations enabled - will use asset_feed_spec on individual ads');
+        console.log('   ℹ️  NOT setting is_dynamic_creative on ad set to allow multiple ads');
       }
 
       // Only add promoted_object if we have valid data
@@ -2163,7 +2165,6 @@ class FacebookAPI {
       console.log(`📊 Using account ID ${campaignAccountId} for ad set creation`);
 
       const newAdSetIds = [];
-      const adSetDynamicCreativeStatus = []; // Track which ad sets have dynamic creative enabled
 
       // Update progress: Starting duplication
       updateProgress({
@@ -2185,24 +2186,18 @@ class FacebookAPI {
 
           // For AD SET copies, we don't use campaign_id or deep_copy
           // We create a new ad set with the same settings
-          // CRITICAL: Include is_dynamic_creative field to preserve dynamic creative settings
+          // Note: We do NOT copy is_dynamic_creative to allow multiple ads per ad set
           const originalAdSetResponse = await axios.get(
             `${this.baseURL}/${originalAdSetId}`,
             {
               params: {
-                fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap,is_dynamic_creative',
+                fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap',
                 access_token: this.accessToken
               }
             }
           );
 
           const originalAdSet = originalAdSetResponse.data;
-
-          // CRITICAL: Check if original ad set has dynamic creative enabled
-          const isDynamicCreative = originalAdSet.is_dynamic_creative === true || formData?.dynamicTextEnabled === true;
-          if (isDynamicCreative) {
-            console.log(`  🎨 Original ad set has DYNAMIC CREATIVE enabled - will copy this setting`);
-          }
 
           // Log if spending limits were found on original ad set
           if (originalAdSet.daily_min_spend_target || originalAdSet.daily_spend_cap) {
@@ -2251,12 +2246,9 @@ class FacebookAPI {
             access_token: this.accessToken
           };
 
-          // CRITICAL: Set is_dynamic_creative if original ad set has it enabled
-          // This is required for ads using asset_feed_spec (dynamic text variations)
-          if (isDynamicCreative) {
-            newAdSetData.is_dynamic_creative = true;
-            console.log(`  ✅ Setting is_dynamic_creative=true on duplicated ad set (required for asset_feed_spec)`);
-          }
+          // Note: We do NOT set is_dynamic_creative on duplicated ad sets
+          // This allows multiple ads with asset_feed_spec in the same ad set
+          console.log(`  ℹ️  NOT setting is_dynamic_creative to allow multiple ads per ad set`);
 
           // Copy attribution_spec from original ad set if it exists
           if (originalAdSet.attribution_spec) {
@@ -2281,32 +2273,7 @@ class FacebookAPI {
           if (copyResponse.data && copyResponse.data.id) {
             const newAdSetId = copyResponse.data.id;
             newAdSetIds.push(newAdSetId);
-            adSetDynamicCreativeStatus.push(isDynamicCreative); // Store dynamic creative status for this ad set
             console.log(`  ✅ Created ad set copy: ${newAdSetId}`);
-
-            // CRITICAL: Verify is_dynamic_creative was set correctly if needed
-            if (isDynamicCreative) {
-              try {
-                const verifyResponse = await axios.get(
-                  `${this.baseURL}/${newAdSetId}`,
-                  {
-                    params: {
-                      fields: 'is_dynamic_creative',
-                      access_token: this.accessToken
-                    }
-                  }
-                );
-
-                if (verifyResponse.data.is_dynamic_creative === true) {
-                  console.log(`  ✅ Verified: Dynamic Creative is ENABLED on duplicated ad set ${newAdSetId}`);
-                } else {
-                  console.warn(`  ⚠️ WARNING: is_dynamic_creative NOT set on ${newAdSetId} despite being requested`);
-                  console.warn(`  ⚠️ This may cause "Cannot Create Dynamic Creative ad In Non-Dynamic Creative Ad Set" errors`);
-                }
-              } catch (verifyError) {
-                console.error(`  ⚠️ Could not verify is_dynamic_creative setting:`, verifyError.message);
-              }
-            }
 
             // Update progress: Ad set created successfully
             updateProgress({
@@ -2365,7 +2332,6 @@ class FacebookAPI {
         // Create ads for each copied adset with retry logic
         for (let i = 0; i < newAdSetIds.length; i++) {
           const newAdSetId = newAdSetIds[i];
-          const isAdSetDynamicCreative = adSetDynamicCreativeStatus[i] || false; // Get dynamic creative status for this ad set
 
           // Check if this ad set should have variations (Strategy for Ads)
           const hasVariations = adVariationConfig &&
@@ -2393,35 +2359,22 @@ class FacebookAPI {
                                        variation.primaryTextVariations?.length > 0 &&
                                        variation.headlineVariations?.length > 0;
 
-                // CRITICAL: If ad set has is_dynamic_creative, ALL ads must use asset_feed_spec
-                const mustUseDynamicFormat = isAdSetDynamicCreative;
-
                 if (hasDynamicTexts) {
                   console.log(`  🎨 Variation ${v + 1} has Dynamic Text Variations ENABLED`);
                   console.log(`    📝 Primary Text Variations: ${variation.primaryTextVariations.filter(t => t?.trim()).length}`);
                   console.log(`    📰 Headline Variations: ${variation.headlineVariations.filter(h => h?.trim()).length}`);
-                } else if (mustUseDynamicFormat) {
-                  console.log(`  ⚙️ Variation ${v + 1} will use asset_feed_spec (required by dynamic creative ad set)`);
-                  console.log(`    Converting standard variation to single-item asset_feed_spec format`);
                 }
 
                 // Build creative based on whether dynamic text is enabled
                 let creative;
 
-                if (hasDynamicTexts || mustUseDynamicFormat) {
+                if (hasDynamicTexts) {
                   // Use asset_feed_spec for dynamic creative variations
                   console.log(`  🎨 Building asset_feed_spec for variation ${v + 1}...`);
 
-                  // Build text arrays - use dynamic variations if available, otherwise single item
-                  let primaryTexts, headlines;
-                  if (hasDynamicTexts) {
-                    primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
-                    headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
-                  } else {
-                    // Convert single text/headline to arrays for asset_feed_spec
-                    primaryTexts = [variation.primaryText || formData.primaryText || 'Ad'];
-                    headlines = [variation.headline || formData.headline || 'Headline'];
-                  }
+                  // Build text arrays from dynamic variations
+                  let primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
+                  let headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
 
                   creative = {
                     object_story_spec: {
