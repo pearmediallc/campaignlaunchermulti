@@ -884,6 +884,64 @@ class FacebookAPI {
         }
       }
 
+      // CHECK FOR DYNAMIC TEXT VARIATIONS (Facebook's Multiple Text Options)
+      if (adData.dynamicTextEnabled &&
+          adData.primaryTextVariations &&
+          adData.primaryTextVariations.length > 0 &&
+          adData.headlineVariations &&
+          adData.headlineVariations.length > 0) {
+
+        console.log('🎨 Creating ad with Dynamic Creative (Multiple Text Options)');
+        console.log(`  📝 Primary Text Variations: ${adData.primaryTextVariations.length}`);
+        console.log(`  📰 Headline Variations: ${adData.headlineVariations.length}`);
+
+        // Use Facebook's asset_feed_spec for dynamic creative
+        creative.asset_feed_spec = {
+          bodies: adData.primaryTextVariations
+            .filter(text => text && text.trim())
+            .map(text => ({ text: text })),
+          titles: adData.headlineVariations
+            .filter(headline => headline && headline.trim())
+            .map(headline => ({ text: headline })),
+          link_urls: [{ website_url: adData.url }],
+          call_to_action_types: [adData.callToAction || 'LEARN_MORE']
+        };
+
+        // Add descriptions if provided
+        if (adData.description) {
+          creative.asset_feed_spec.descriptions = [{ text: adData.description }];
+        }
+
+        // Add display link (caption) if provided
+        if (adData.displayLink) {
+          creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
+          creative.asset_feed_spec.link_urls[0].display_url = adData.displayLink;
+        }
+
+        // Add images/videos to asset_feed_spec
+        if (adData.imageHash) {
+          creative.asset_feed_spec.images = [{ hash: adData.imageHash }];
+        } else if (adData.videoId) {
+          creative.asset_feed_spec.videos = [{ video_id: adData.videoId }];
+        }
+
+        // Enable optimization
+        creative.degrees_of_freedom_spec = {
+          creative_features_spec: {
+            standard_enhancements: {
+              enroll_status: "OPT_IN"
+            }
+          }
+        };
+
+        // Remove object_story_spec (not needed with asset_feed_spec)
+        delete creative.object_story_spec;
+
+        console.log('✅ Asset feed spec configured for dynamic creative');
+        console.log('  Bodies:', creative.asset_feed_spec.bodies.length);
+        console.log('  Titles:', creative.asset_feed_spec.titles.length);
+      }
+
       // Generate ad name with date and editor name if available
       let adName = adData.name;
       if (!adName) {

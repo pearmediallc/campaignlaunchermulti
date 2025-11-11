@@ -596,6 +596,11 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       callToAction: req.body.callToAction,  // Required - user must select
       displayLink: req.body.displayLink,
 
+      // Dynamic Text Variations (Facebook's Multiple Text Options)
+      dynamicTextEnabled: req.body.dynamicTextEnabled || false,
+      primaryTextVariations: req.body.primaryTextVariations || [],
+      headlineVariations: req.body.headlineVariations || [],
+
       // Media specifications
       mediaType: req.body.mediaType,  // Required - user must select
       mediaSpecs: req.body.mediaSpecs,

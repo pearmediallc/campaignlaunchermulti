@@ -94,6 +94,19 @@ const AdSection: React.FC = () => {
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
 
+  // Sync dynamic text variations to form data
+  useEffect(() => {
+    if (enableDynamicVariations) {
+      setValue('dynamicTextEnabled', true);
+      setValue('primaryTextVariations', primaryTextVariations.filter(t => t.trim()));
+      setValue('headlineVariations', headlineVariations.filter(h => h.trim()));
+    } else {
+      setValue('dynamicTextEnabled', false);
+      setValue('primaryTextVariations', undefined);
+      setValue('headlineVariations', undefined);
+    }
+  }, [enableDynamicVariations, primaryTextVariations, headlineVariations, setValue]);
+
   // Auto-select saved page or first available page
   useEffect(() => {
     if (resources.pages.length > 0 && !watch('facebookPage')) {

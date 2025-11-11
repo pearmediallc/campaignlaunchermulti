@@ -105,6 +105,11 @@ export interface StrategyForAdsFormData {
   callToAction?: string;
   displayLink?: string;
 
+  // Dynamic Text Variations (Facebook's Multiple Text Options)
+  dynamicTextEnabled?: boolean;
+  primaryTextVariations?: string[];
+  headlineVariations?: string[];
+
   // Media fields
   mediaType?: 'single_image' | 'single_video' | 'carousel';
   mediaFiles?: File[];
