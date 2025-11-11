@@ -366,6 +366,11 @@ const StrategyForAdsContainer: React.FC = () => {
       // CRITICAL: Include ad variation config for Strategy for Ads
       workingCampaignData.adVariationConfig = data.adVariationConfig;
 
+      // CRITICAL: Include dynamic text variations (Facebook's Multiple Text Options)
+      workingCampaignData.dynamicTextEnabled = data.dynamicTextEnabled || false;
+      workingCampaignData.primaryTextVariations = data.primaryTextVariations || [];
+      workingCampaignData.headlineVariations = data.headlineVariations || [];
+
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {
         budgetType: workingCampaignData.budgetType,
