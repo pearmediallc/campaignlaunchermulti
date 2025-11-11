@@ -2120,6 +2120,7 @@ class FacebookAPI {
 
       // Fetch original ad's creative data for variations (needed for video/image assets)
       let originalCreativeData = null;
+      let originalImageHash = null;
       if (adVariationConfig && adVariationConfig.selectedAdSetIndices && adVariationConfig.selectedAdSetIndices.length > 0) {
         console.log('🎨 Fetching original ad creative data for variations...');
         try {
@@ -2127,19 +2128,29 @@ class FacebookAPI {
             `${this.baseURL}/${originalAdSetId}/ads`,
             {
               params: {
-                fields: 'creative{object_story_spec,effective_object_story_id}',
+                fields: 'creative{object_story_spec,effective_object_story_id,asset_feed_spec,image_hash}',
                 access_token: this.accessToken,
                 limit: 1
               }
             }
           );
 
-          if (adsResponse.data?.data?.[0]?.creative?.object_story_spec) {
-            originalCreativeData = adsResponse.data.data[0].creative.object_story_spec;
+          if (adsResponse.data?.data?.[0]?.creative) {
+            const creativeData = adsResponse.data.data[0].creative;
+            originalCreativeData = creativeData.object_story_spec;
+
+            // Try to get image hash from multiple sources
+            if (creativeData.image_hash) {
+              originalImageHash = creativeData.image_hash;
+            } else if (creativeData.asset_feed_spec?.images?.[0]?.hash) {
+              originalImageHash = creativeData.asset_feed_spec.images[0].hash;
+            }
+
             console.log('✅ Original creative data fetched:', {
-              hasVideoData: !!originalCreativeData.video_data,
-              hasLinkData: !!originalCreativeData.link_data,
-              videoId: originalCreativeData.video_data?.video_id || 'N/A'
+              hasVideoData: !!originalCreativeData?.video_data,
+              hasLinkData: !!originalCreativeData?.link_data,
+              videoId: originalCreativeData?.video_data?.video_id || 'N/A',
+              imageHash: originalImageHash || 'N/A'
             });
           }
         } catch (error) {
@@ -2382,30 +2393,43 @@ class FacebookAPI {
                                        variation.primaryTextVariations?.length > 0 &&
                                        variation.headlineVariations?.length > 0;
 
+                // CRITICAL: If ad set has is_dynamic_creative, ALL ads must use asset_feed_spec
+                const mustUseDynamicFormat = isAdSetDynamicCreative;
+
                 if (hasDynamicTexts) {
                   console.log(`  🎨 Variation ${v + 1} has Dynamic Text Variations ENABLED`);
                   console.log(`    📝 Primary Text Variations: ${variation.primaryTextVariations.filter(t => t?.trim()).length}`);
                   console.log(`    📰 Headline Variations: ${variation.headlineVariations.filter(h => h?.trim()).length}`);
+                } else if (mustUseDynamicFormat) {
+                  console.log(`  ⚙️ Variation ${v + 1} will use asset_feed_spec (required by dynamic creative ad set)`);
+                  console.log(`    Converting standard variation to single-item asset_feed_spec format`);
                 }
 
                 // Build creative based on whether dynamic text is enabled
                 let creative;
 
-                if (hasDynamicTexts) {
+                if (hasDynamicTexts || mustUseDynamicFormat) {
                   // Use asset_feed_spec for dynamic creative variations
-                  console.log(`  🎨 Building asset_feed_spec for dynamic variation ${v + 1}...`);
+                  console.log(`  🎨 Building asset_feed_spec for variation ${v + 1}...`);
+
+                  // Build text arrays - use dynamic variations if available, otherwise single item
+                  let primaryTexts, headlines;
+                  if (hasDynamicTexts) {
+                    primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
+                    headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
+                  } else {
+                    // Convert single text/headline to arrays for asset_feed_spec
+                    primaryTexts = [variation.primaryText || formData.primaryText || 'Ad'];
+                    headlines = [variation.headline || formData.headline || 'Headline'];
+                  }
 
                   creative = {
                     object_story_spec: {
                       page_id: this.pageId
                     },
                     asset_feed_spec: {
-                      bodies: variation.primaryTextVariations
-                        .filter(text => text && text.trim())
-                        .map(text => ({ text: text })),
-                      titles: variation.headlineVariations
-                        .filter(headline => headline && headline.trim())
-                        .map(headline => ({ text: headline })),
+                      bodies: primaryTexts.map(text => ({ text: text })),
+                      titles: headlines.map(headline => ({ text: headline })),
                       link_urls: [{ website_url: variation.websiteUrl || formData.url }],
                       call_to_action_types: [variation.callToAction || formData.callToAction || 'LEARN_MORE'],
                       ad_formats: variation.videoId || variation.videoHash ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE']
@@ -2423,13 +2447,17 @@ class FacebookAPI {
                   } else if (originalCreativeData?.video_data?.video_id) {
                     creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
                     console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
-                  } else if (originalCreativeData?.link_data?.picture) {
-                    // For original image, we need the hash - try to extract from picture URL or use formData imageHash
-                    const imageHash = formData.imageHash || variation.imageHash;
-                    if (imageHash) {
-                      creative.asset_feed_spec.images = [{ hash: imageHash }];
-                      console.log(`  ✅ Added original image hash to asset_feed_spec: ${imageHash}`);
-                    }
+                  } else if (originalImageHash) {
+                    // Use the original image hash we fetched earlier
+                    creative.asset_feed_spec.images = [{ hash: originalImageHash }];
+                    console.log(`  ✅ Added original image hash to asset_feed_spec: ${originalImageHash}`);
+                  } else if (formData.imageHash) {
+                    // Fallback to formData image hash
+                    creative.asset_feed_spec.images = [{ hash: formData.imageHash }];
+                    console.log(`  ✅ Added image hash from formData to asset_feed_spec: ${formData.imageHash}`);
+                  } else {
+                    console.error(`  ❌ No image hash available for variation ${v + 1}`);
+                    throw new Error('No image hash available for dynamic creative ad');
                   }
 
                   console.log(`  ✅ Dynamic creative variation ${v + 1} configured with asset_feed_spec`);
