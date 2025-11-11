@@ -943,8 +943,10 @@ class FacebookAPI {
           }
         };
 
-        // Remove object_story_spec (not needed with asset_feed_spec)
-        delete creative.object_story_spec;
+        // Keep minimal object_story_spec with page_id (required for asset_feed_spec)
+        creative.object_story_spec = {
+          page_id: this.pageId
+        };
 
         console.log('✅ Asset feed spec configured for dynamic creative');
         console.log('  Bodies:', creative.asset_feed_spec.bodies.length);
