@@ -300,6 +300,9 @@ const parseFormDataJson = (req, res, next) => {
   if (req.body.customBudgets && typeof req.body.customBudgets === 'string') {
     req.body.customBudgets = parseJsonField(req.body.customBudgets);
   }
+  if (req.body.adVariationConfig && typeof req.body.adVariationConfig === 'string') {
+    req.body.adVariationConfig = parseJsonField(req.body.adVariationConfig);
+  }
 
   next();
 };

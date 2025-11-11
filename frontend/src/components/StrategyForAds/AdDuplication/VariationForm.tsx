@@ -39,6 +39,7 @@ const VariationForm: React.FC<VariationFormProps> = ({
   const [uploadError, setUploadError] = useState<string>('');
   const [showLibrarySelector, setShowLibrarySelector] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
+  const [useDynamicText, setUseDynamicText] = useState<boolean>(false);
 
   // Extract original values from originalAdData
   const getOriginalValue = (field: string): string => {
@@ -341,26 +342,60 @@ const VariationForm: React.FC<VariationFormProps> = ({
             )}
           </Paper>
 
-          {/* Text Fields */}
-          <TextField
-            label="Primary Text"
-            multiline
-            rows={3}
-            fullWidth
-            value={variation.primaryText || ''}
-            onChange={(e) => handleFieldChange('primaryText', e.target.value)}
-            placeholder={`Original: ${getOriginalValue('primaryText')}`}
-            helperText={`Original value: ${getOriginalValue('primaryText').substring(0, 50)}${getOriginalValue('primaryText').length > 50 ? '...' : ''}`}
-          />
+          {/* Dynamic Text Toggle */}
+          <Paper sx={{ p: 2, backgroundColor: 'info.light' }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Dynamic Text Variations
+            </Typography>
+            <RadioGroup
+              value={useDynamicText ? 'dynamic' : 'original'}
+              onChange={(e) => {
+                const isDynamic = e.target.value === 'dynamic';
+                setUseDynamicText(isDynamic);
+                if (!isDynamic) {
+                  // Clear text fields when switching to original
+                  handleFieldChange('primaryText', undefined);
+                  handleFieldChange('headline', undefined);
+                }
+              }}
+            >
+              <FormControlLabel
+                value="original"
+                control={<Radio />}
+                label="Use Original Text (Same as first ad)"
+              />
+              <FormControlLabel
+                value="dynamic"
+                control={<Radio />}
+                label="Use Custom Text for this Variation"
+              />
+            </RadioGroup>
+          </Paper>
 
-          <TextField
-            label="Headline"
-            fullWidth
-            value={variation.headline || ''}
-            onChange={(e) => handleFieldChange('headline', e.target.value)}
-            placeholder={`Original: ${getOriginalValue('headline')}`}
-            helperText={`Original value: ${getOriginalValue('headline')}`}
-          />
+          {/* Text Fields - Only show if dynamic text is enabled */}
+          {useDynamicText && (
+            <>
+              <TextField
+                label="Primary Text"
+                multiline
+                rows={3}
+                fullWidth
+                value={variation.primaryText || ''}
+                onChange={(e) => handleFieldChange('primaryText', e.target.value)}
+                placeholder={`Original: ${getOriginalValue('primaryText')}`}
+                helperText={`Original value: ${getOriginalValue('primaryText').substring(0, 50)}${getOriginalValue('primaryText').length > 50 ? '...' : ''}`}
+              />
+
+              <TextField
+                label="Headline"
+                fullWidth
+                value={variation.headline || ''}
+                onChange={(e) => handleFieldChange('headline', e.target.value)}
+                placeholder={`Original: ${getOriginalValue('headline')}`}
+                helperText={`Original value: ${getOriginalValue('headline')}`}
+              />
+            </>
+          )}
 
           <TextField
             label="Description"
