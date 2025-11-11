@@ -913,7 +913,8 @@ class FacebookAPI {
             .filter(headline => headline && headline.trim())
             .map(headline => ({ text: headline })),
           link_urls: [{ website_url: adData.url }],
-          call_to_action_types: [adData.callToAction || 'LEARN_MORE']
+          call_to_action_types: [adData.callToAction || 'LEARN_MORE'],
+          ad_formats: adData.videoId ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE'] // Required: specify ad format
         };
 
         // Add descriptions if provided
@@ -923,7 +924,6 @@ class FacebookAPI {
 
         // Add display link (caption) if provided
         if (adData.displayLink) {
-          creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
           creative.asset_feed_spec.link_urls[0].display_url = adData.displayLink;
         }
 
