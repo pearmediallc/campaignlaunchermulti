@@ -934,19 +934,14 @@ class FacebookAPI {
           creative.asset_feed_spec.videos = [{ video_id: adData.videoId }];
         }
 
-        // Enable optimization
-        creative.degrees_of_freedom_spec = {
-          creative_features_spec: {
-            standard_enhancements: {
-              enroll_status: "OPT_IN"
-            }
-          }
-        };
-
         // Keep minimal object_story_spec with page_id (required for asset_feed_spec)
         creative.object_story_spec = {
           page_id: this.pageId
         };
+
+        // Note: Do NOT add degrees_of_freedom_spec when using asset_feed_spec
+        // Facebook error: "Asset Feed Optimization Type And DoF Spec Mismatch"
+        // asset_feed_spec handles optimization internally
 
         console.log('✅ Asset feed spec configured for dynamic creative');
         console.log('  Bodies:', creative.asset_feed_spec.bodies.length);
