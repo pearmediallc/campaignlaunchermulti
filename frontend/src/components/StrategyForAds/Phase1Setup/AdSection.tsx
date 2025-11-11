@@ -96,11 +96,27 @@ const AdSection: React.FC = () => {
 
   // Sync dynamic text variations to form data
   useEffect(() => {
+    console.log('🎨 Dynamic Text Variations State Changed:', {
+      enableDynamicVariations,
+      primaryTextVariations,
+      headlineVariations
+    });
+
     if (enableDynamicVariations) {
+      const filteredPrimary = primaryTextVariations.filter(t => t.trim());
+      const filteredHeadlines = headlineVariations.filter(h => h.trim());
+
+      console.log('✅ Setting form values:', {
+        dynamicTextEnabled: true,
+        primaryTextVariations: filteredPrimary,
+        headlineVariations: filteredHeadlines
+      });
+
       setValue('dynamicTextEnabled', true);
-      setValue('primaryTextVariations', primaryTextVariations.filter(t => t.trim()));
-      setValue('headlineVariations', headlineVariations.filter(h => h.trim()));
+      setValue('primaryTextVariations', filteredPrimary);
+      setValue('headlineVariations', filteredHeadlines);
     } else {
+      console.log('❌ Disabling dynamic text variations');
       setValue('dynamicTextEnabled', false);
       setValue('primaryTextVariations', undefined);
       setValue('headlineVariations', undefined);
