@@ -1576,6 +1576,10 @@ class FacebookAPI {
             callToAction: variation.callToAction || campaignData.callToAction || 'LEARN_MORE',
             mediaType: variation.mediaType || campaignData.mediaType || 'single_image',
             editorName: variationEditorName, // Pass editor name for ad naming
+            // Dynamic Text Variations (Facebook's Multiple Text Options)
+            dynamicTextEnabled: campaignData.dynamicTextEnabled,
+            primaryTextVariations: campaignData.primaryTextVariations,
+            headlineVariations: campaignData.headlineVariations,
             ...variationMediaAssets
           });
 
@@ -1584,6 +1588,11 @@ class FacebookAPI {
         }
       } else {
         console.log('📝 Creating ad with editor name:', campaignData.editorName || 'none (local upload)');
+        console.log('🎨 Dynamic Text Check BEFORE createAd:', {
+          enabled: campaignData.dynamicTextEnabled,
+          primaryTextVariations: campaignData.primaryTextVariations?.length || 0,
+          headlineVariations: campaignData.headlineVariations?.length || 0
+        });
 
         const ad = await this.createAd({
           campaignName: campaignData.campaignName,
@@ -1596,6 +1605,10 @@ class FacebookAPI {
           callToAction: campaignData.callToAction || 'LEARN_MORE',
           mediaType: campaignData.mediaType || 'single_image',
           editorName: campaignData.editorName, // Pass editor name for ad naming
+          // Dynamic Text Variations (Facebook's Multiple Text Options)
+          dynamicTextEnabled: campaignData.dynamicTextEnabled,
+          primaryTextVariations: campaignData.primaryTextVariations,
+          headlineVariations: campaignData.headlineVariations,
           ...mediaAssets
         });
 
