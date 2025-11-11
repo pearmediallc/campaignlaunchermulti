@@ -150,6 +150,7 @@ class FacebookAPI {
       console.log('  - Page ID:', this.pageId || 'NONE');
       console.log('  - Conversion Event:', adSetData.conversionEvent || 'Not set');
       console.log('  - Optimization Goal:', this.getOptimizationGoal ? 'Will be calculated' : 'Not set');
+      console.log('  - Dynamic Creative:', adSetData.dynamicTextEnabled ? 'ENABLED' : 'DISABLED');
 
       params = {
         name: `[Launcher] ${adSetData.campaignName} - AdSet`,
@@ -160,6 +161,12 @@ class FacebookAPI {
         status: 'ACTIVE',
         access_token: this.accessToken
       };
+
+      // Enable Dynamic Creative on Ad Set if using Dynamic Text Variations (Facebook's Multiple Text Options)
+      if (adSetData.dynamicTextEnabled) {
+        params.is_dynamic_creative = true;
+        console.log('🎨 Dynamic Creative ENABLED on Ad Set (required for asset_feed_spec)');
+      }
 
       // Only add promoted_object if we have valid data
       console.log('\n🎯 Creating promoted_object...');
@@ -1412,6 +1419,9 @@ class FacebookAPI {
       console.log('🔍 createCampaignStructure received:');
       console.log('  attributionSetting:', campaignData.attributionSetting);
       console.log('  attributionWindow:', JSON.stringify(campaignData.attributionWindow));
+      console.log('  dynamicTextEnabled:', campaignData.dynamicTextEnabled);
+      console.log('  primaryTextVariations:', campaignData.primaryTextVariations?.length || 0);
+      console.log('  headlineVariations:', campaignData.headlineVariations?.length || 0);
 
       const campaign = await this.createCampaign({
         name: campaignData.campaignName,
@@ -1442,7 +1452,9 @@ class FacebookAPI {
         placementType: campaignData.placementType,
         // CRITICAL: Pass spending limits for StrategyForAll
         spendingLimits: campaignData.spendingLimits || campaignData.adSetBudget?.spendingLimits,
-        adSetBudget: campaignData.adSetBudget
+        adSetBudget: campaignData.adSetBudget,
+        // Dynamic Text Variations (Facebook's Multiple Text Options) - Enable Dynamic Creative on Ad Set
+        dynamicTextEnabled: campaignData.dynamicTextEnabled
       });
 
       // Handle media upload based on type
