@@ -2376,10 +2376,69 @@ class FacebookAPI {
               const variation = adVariationConfig.variations[v];
 
               try {
-                // Build object_story_spec based on media type
-                let objectStorySpec = {
-                  page_id: this.pageId
-                };
+                // Check if this variation has dynamic text variations enabled
+                const isVariationDynamic = variation.dynamicTextEnabled === true;
+                const hasDynamicTexts = isVariationDynamic &&
+                                       variation.primaryTextVariations?.length > 0 &&
+                                       variation.headlineVariations?.length > 0;
+
+                if (hasDynamicTexts) {
+                  console.log(`  🎨 Variation ${v + 1} has Dynamic Text Variations ENABLED`);
+                  console.log(`    📝 Primary Text Variations: ${variation.primaryTextVariations.filter(t => t?.trim()).length}`);
+                  console.log(`    📰 Headline Variations: ${variation.headlineVariations.filter(h => h?.trim()).length}`);
+                }
+
+                // Build creative based on whether dynamic text is enabled
+                let creative;
+
+                if (hasDynamicTexts) {
+                  // Use asset_feed_spec for dynamic creative variations
+                  console.log(`  🎨 Building asset_feed_spec for dynamic variation ${v + 1}...`);
+
+                  creative = {
+                    object_story_spec: {
+                      page_id: this.pageId
+                    },
+                    asset_feed_spec: {
+                      bodies: variation.primaryTextVariations
+                        .filter(text => text && text.trim())
+                        .map(text => ({ text: text })),
+                      titles: variation.headlineVariations
+                        .filter(headline => headline && headline.trim())
+                        .map(headline => ({ text: headline })),
+                      link_urls: [{ website_url: variation.websiteUrl || formData.url }],
+                      call_to_action_types: [variation.callToAction || formData.callToAction || 'LEARN_MORE'],
+                      ad_formats: variation.videoId || variation.videoHash ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE']
+                    }
+                  };
+
+                  // Add media to asset_feed_spec
+                  if (variation.videoId || variation.videoHash) {
+                    const videoId = variation.videoId || variation.videoHash;
+                    creative.asset_feed_spec.videos = [{ video_id: videoId }];
+                    console.log(`  ✅ Added video to asset_feed_spec: ${videoId}`);
+                  } else if (variation.imageHash) {
+                    creative.asset_feed_spec.images = [{ hash: variation.imageHash }];
+                    console.log(`  ✅ Added image hash to asset_feed_spec: ${variation.imageHash}`);
+                  } else if (originalCreativeData?.video_data?.video_id) {
+                    creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
+                    console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
+                  } else if (originalCreativeData?.link_data?.picture) {
+                    // For original image, we need the hash - try to extract from picture URL or use formData imageHash
+                    const imageHash = formData.imageHash || variation.imageHash;
+                    if (imageHash) {
+                      creative.asset_feed_spec.images = [{ hash: imageHash }];
+                      console.log(`  ✅ Added original image hash to asset_feed_spec: ${imageHash}`);
+                    }
+                  }
+
+                  console.log(`  ✅ Dynamic creative variation ${v + 1} configured with asset_feed_spec`);
+                  console.log(`    Bodies: ${creative.asset_feed_spec.bodies.length}, Titles: ${creative.asset_feed_spec.titles.length}`);
+                } else {
+                  // Use standard object_story_spec for non-dynamic variations
+                  let objectStorySpec = {
+                    page_id: this.pageId
+                  };
 
                 // Check if original ad has video or image data
                 // Check if variation has uploaded media, otherwise use original ad media
@@ -2490,6 +2549,13 @@ class FacebookAPI {
                   };
                 }
 
+                  // Build standard creative with object_story_spec
+                  creative = {
+                    name: `Ad Variation ${v + 1}`,
+                    object_story_spec: objectStorySpec
+                  };
+                } // End of else block for non-dynamic variations
+
                 // Generate ad variation name with date and editor name
                 console.log('\n🎯 ========== AD VARIATION NAMING DEBUG ==========');
                 console.log('📝 Variation object:', JSON.stringify(variation, null, 2));
@@ -2514,19 +2580,24 @@ class FacebookAPI {
                 }
                 console.log('================================================\n');
 
+                // Update creative name with date and editor
+                creative.name = `Ad Variation ${v + 1} - ${dateStr}${variationEditorName ? ' - ' + variationEditorName.toUpperCase() : ''}`;
+
                 // Create ad with variation content
                 const variationAdData = {
                   name: variationAdName,
                   adset_id: newAdSetId,
-                  creative: JSON.stringify({
-                    name: `Ad Variation ${v + 1} - ${dateStr}${variationEditorName ? ' - ' + variationEditorName.toUpperCase() : ''}`,
-                    object_story_spec: objectStorySpec
-                  }),
+                  creative: JSON.stringify(creative),
                   status: 'ACTIVE',
                   access_token: this.accessToken
                 };
 
                 console.log(`📤 Creating ad variation with name: "${variationAdName}"`);
+                if (hasDynamicTexts) {
+                  console.log(`  🎨 This is a DYNAMIC CREATIVE ad (using asset_feed_spec)`);
+                } else {
+                  console.log(`  📝 This is a STANDARD ad (using object_story_spec)`);
+                }
 
                 await axios.post(
                   `${this.baseURL}/act_${campaignAccountId}/ads`,

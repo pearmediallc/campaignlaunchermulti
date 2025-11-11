@@ -24,6 +24,11 @@ export interface AdVariation {
   websiteUrl?: string;
   callToAction?: string;
 
+  // Dynamic Text Variations (Facebook's Multiple Text Options) - per variation
+  dynamicTextEnabled?: boolean;
+  primaryTextVariations?: string[]; // Up to 5 primary text variations
+  headlineVariations?: string[]; // Up to 5 headline variations
+
   // Creative Library integration
   editorName?: string; // Editor name from Creative Library (for ad naming)
 
