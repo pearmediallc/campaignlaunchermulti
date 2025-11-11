@@ -105,6 +105,14 @@ const StrategyForAdsContainer: React.FC = () => {
     console.log('  - Conversion Event:', data.conversionEvent);
     console.log('  - Attribution Setting:', data.attributionSetting);
     console.log('  - Attribution Window:', data.attributionWindow);
+    console.log('\n🎨 DYNAMIC TEXT VARIATIONS:');
+    console.log('  - Enabled:', data.dynamicTextEnabled);
+    console.log('  - Primary Text Variations:', data.primaryTextVariations?.length || 0);
+    console.log('  - Headline Variations:', data.headlineVariations?.length || 0);
+    if (data.dynamicTextEnabled) {
+      console.log('  - Primary Texts:', data.primaryTextVariations);
+      console.log('  - Headlines:', data.headlineVariations);
+    }
     console.log('\n🎨 AD VARIATION CONFIG:');
     console.log('  - Selected Ad Sets:', data.adVariationConfig?.selectedAdSetIndices);
     console.log('  - Ads Per Ad Set:', data.adVariationConfig?.adsPerAdSet);
@@ -150,6 +158,11 @@ const StrategyForAdsContainer: React.FC = () => {
         urlType: data.urlType,
         callToAction: data.callToAction,
         displayLink: data.displayLink,
+
+        // Dynamic Text Variations (Facebook's Multiple Text Options)
+        dynamicTextEnabled: data.dynamicTextEnabled || false,
+        primaryTextVariations: data.primaryTextVariations || [],
+        headlineVariations: data.headlineVariations || [],
 
         // Media data
         mediaType: data.mediaType,

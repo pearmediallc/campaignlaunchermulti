@@ -662,6 +662,14 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('🟢 Special Ad Categories detail:', JSON.stringify(campaignData.specialAdCategories));
     console.log('🟢 Targeting detail:', JSON.stringify(campaignData.targeting));
     console.log('🎨 Ad Variation Config:', JSON.stringify(campaignData.adVariationConfig, null, 2));
+    console.log('🎨 Dynamic Text Variations:');
+    console.log('  - Enabled:', campaignData.dynamicTextEnabled);
+    console.log('  - Primary Text Variations:', campaignData.primaryTextVariations?.length || 0);
+    console.log('  - Headline Variations:', campaignData.headlineVariations?.length || 0);
+    if (campaignData.dynamicTextEnabled) {
+      console.log('  - Primary Texts:', campaignData.primaryTextVariations);
+      console.log('  - Headlines:', campaignData.headlineVariations);
+    }
 
     // DEBUG: Check spending limits data
     console.log('🔍 DEBUG - Spending Limits Data Flow:');

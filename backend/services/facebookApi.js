@@ -720,7 +720,16 @@ class FacebookAPI {
         mediaType: adData.mediaType,
         displayLink: adData.displayLink,
         headline: adData.headline,
-        url: adData.url
+        url: adData.url,
+        dynamicTextEnabled: adData.dynamicTextEnabled,
+        primaryTextVariations: adData.primaryTextVariations?.length || 0,
+        headlineVariations: adData.headlineVariations?.length || 0
+      });
+      console.log('🎨 Dynamic Creative Check:', {
+        enabled: adData.dynamicTextEnabled,
+        hasPrimaryTexts: !!adData.primaryTextVariations && adData.primaryTextVariations.length > 0,
+        hasHeadlines: !!adData.headlineVariations && adData.headlineVariations.length > 0,
+        willUseAssetFeedSpec: !!(adData.dynamicTextEnabled && adData.primaryTextVariations?.length > 0 && adData.headlineVariations?.length > 0)
       });
       const url = `${this.baseURL}/act_${this.adAccountId}/ads`;
 
