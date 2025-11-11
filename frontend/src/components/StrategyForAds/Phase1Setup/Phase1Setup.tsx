@@ -84,6 +84,11 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
     callToAction: 'LEARN_MORE',
     publishDirectly: false,
 
+    // Dynamic Text Variations (Facebook's Multiple Text Options)
+    dynamicTextEnabled: false,
+    primaryTextVariations: [],
+    headlineVariations: [],
+
     // Enhanced Targeting
     targeting: {
       locations: {
