@@ -13,6 +13,7 @@ import VariationForm from '../AdDuplication/VariationForm';
 
 interface AdVariationFormsProps {
   adsPerAdSet: number;
+  isDynamicMode?: boolean;
   originalAdData: {
     primaryText: string;
     headline: string;
@@ -22,11 +23,17 @@ interface AdVariationFormsProps {
     callToAction?: string;
     mediaType: string;
   };
+  originalDynamicData?: {
+    primaryTextVariations: string[];
+    headlineVariations: string[];
+  };
 }
 
 const AdVariationForms: React.FC<AdVariationFormsProps> = ({
   adsPerAdSet,
-  originalAdData
+  isDynamicMode = false,
+  originalAdData,
+  originalDynamicData
 }) => {
   const { setValue, watch } = useFormContext<StrategyForAdsFormData>();
   const [activeTab, setActiveTab] = useState(0);
@@ -36,39 +43,58 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
   useEffect(() => {
     const initialVariations = [];
 
-    // First variation - use original data
-    initialVariations.push({
-      variationNumber: 1,
-      useOriginal: true,
-      primaryText: originalAdData.primaryText,
-      headline: originalAdData.headline,
-      description: originalAdData.description,
-      websiteUrl: originalAdData.url,
-      displayLink: originalAdData.displayLink,
-      callToAction: originalAdData.callToAction,
-      useOriginalMedia: true
-    });
-
-    // Remaining variations - blank for user to customize
-    for (let i = 2; i <= adsPerAdSet; i++) {
+    if (isDynamicMode) {
+      // In dynamic mode, create one variation with dynamic text enabled
       initialVariations.push({
-        variationNumber: i,
-        useOriginal: false,
-        primaryText: '',
-        headline: '',
-        description: '',
-        websiteUrl: originalAdData.url, // Keep same URL by default
-        displayLink: '',
+        variationNumber: 1,
+        useOriginal: false, // Always custom in dynamic mode
+        primaryText: originalAdData.primaryText,
+        headline: originalAdData.headline,
+        description: originalAdData.description,
+        websiteUrl: originalAdData.url,
+        displayLink: originalAdData.displayLink,
         callToAction: originalAdData.callToAction,
-        useOriginalMedia: true // Default to using original media
+        useOriginalMedia: true,
+        dynamicTextEnabled: true, // Enable dynamic text for the variation
+        primaryTextVariations: originalDynamicData?.primaryTextVariations || [''],
+        headlineVariations: originalDynamicData?.headlineVariations || ['']
       });
+    } else {
+      // Non-dynamic mode - original behavior
+      // First variation - use original data
+      initialVariations.push({
+        variationNumber: 1,
+        useOriginal: true,
+        primaryText: originalAdData.primaryText,
+        headline: originalAdData.headline,
+        description: originalAdData.description,
+        websiteUrl: originalAdData.url,
+        displayLink: originalAdData.displayLink,
+        callToAction: originalAdData.callToAction,
+        useOriginalMedia: true
+      });
+
+      // Remaining variations - blank for user to customize
+      for (let i = 2; i <= adsPerAdSet; i++) {
+        initialVariations.push({
+          variationNumber: i,
+          useOriginal: false,
+          primaryText: '',
+          headline: '',
+          description: '',
+          websiteUrl: originalAdData.url, // Keep same URL by default
+          displayLink: '',
+          callToAction: originalAdData.callToAction,
+          useOriginalMedia: true // Default to using original media
+        });
+      }
     }
 
     setVariations(initialVariations);
 
     // Update form context
     setValue('adVariationConfig.variations', initialVariations);
-  }, [adsPerAdSet, originalAdData, setValue]);
+  }, [adsPerAdSet, isDynamicMode, originalAdData, originalDynamicData, setValue]);
 
   const handleVariationUpdate = (index: number, updatedVariation: any) => {
     const newVariations = [...variations];
@@ -89,13 +115,23 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
   return (
     <Paper sx={{ p: 3, mb: 3 }}>
       <Typography variant="h6" gutterBottom>
-        Configure Ad Variations ({adsPerAdSet} variations)
+        Configure Ad Variations {isDynamicMode ? '(Dynamic Text Mode)' : `(${adsPerAdSet} variations)`}
       </Typography>
 
       <Alert severity="info" sx={{ mb: 3 }}>
         <Typography variant="body2">
-          <strong>Tip:</strong> Variation 1 is pre-filled with your original ad content.
-          Customize variations 2-{adsPerAdSet} with different headlines, copy, or media for A/B testing.
+          {isDynamicMode ? (
+            <>
+              <strong>Dynamic Text Mode:</strong> Configure different text variations for the selected ad sets.
+              Each selected ad set will receive 1 ad with these dynamic text variations.
+              Facebook will automatically test up to 25 combinations of your headlines and primary text.
+            </>
+          ) : (
+            <>
+              <strong>Tip:</strong> Variation 1 is pre-filled with your original ad content.
+              Customize variations 2-{adsPerAdSet} with different headlines, copy, or media for A/B testing.
+            </>
+          )}
         </Typography>
       </Alert>
 
@@ -111,9 +147,11 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
           <Tab
             key={index}
             label={
-              index === 0
-                ? `Variation ${index + 1} (Original)`
-                : `Variation ${index + 1}`
+              isDynamicMode
+                ? 'Dynamic Text Variation'
+                : (index === 0
+                    ? `Variation ${index + 1} (Original)`
+                    : `Variation ${index + 1}`)
             }
           />
         ))}

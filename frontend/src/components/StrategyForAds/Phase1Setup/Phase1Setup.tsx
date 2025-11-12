@@ -285,12 +285,12 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
               adSetCount={methods.watch('duplicationSettings.adSetCount') || 0}
             />
 
-            {/* Ad Variation Forms - Show only if ad sets are selected for variations AND dynamic text is NOT enabled */}
+            {/* Ad Variation Forms - Show if ad sets are selected for variations */}
             {(methods.watch('adVariationConfig.selectedAdSetIndices') || []).length > 0 &&
-              (methods.watch('adVariationConfig.adsPerAdSet') || 0) > 0 &&
-              !methods.watch('dynamicTextEnabled') && (
+              (methods.watch('adVariationConfig.adsPerAdSet') || 0) > 0 && (
               <AdVariationForms
                 adsPerAdSet={methods.watch('adVariationConfig.adsPerAdSet') || 3}
+                isDynamicMode={methods.watch('dynamicTextEnabled') || false}
                 originalAdData={{
                   primaryText: methods.watch('primaryText') || '',
                   headline: methods.watch('headline') || '',
@@ -299,6 +299,10 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
                   displayLink: methods.watch('displayLink') || '',
                   callToAction: methods.watch('callToAction') || 'LEARN_MORE',
                   mediaType: methods.watch('mediaType') || 'single_image'
+                }}
+                originalDynamicData={{
+                  primaryTextVariations: methods.watch('primaryTextVariations') || [],
+                  headlineVariations: methods.watch('headlineVariations') || []
                 }}
               />
             )}
