@@ -162,12 +162,13 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      // Note: We do NOT set is_dynamic_creative on the ad set
-      // Instead, we use asset_feed_spec on individual ads
-      // This allows multiple ads with dynamic variations in the same ad set
+      // CRITICAL: Set is_dynamic_creative=true when dynamic text variations are enabled
+      // This is REQUIRED by Facebook for ads using asset_feed_spec
+      // Note: This limits to 1 ad per ad set (enforced in UI)
       if (adSetData.dynamicTextEnabled) {
-        console.log('🎨 Dynamic Text Variations enabled - will use asset_feed_spec on individual ads');
-        console.log('   ℹ️  NOT setting is_dynamic_creative on ad set to allow multiple ads');
+        params.is_dynamic_creative = true;
+        console.log('🎨 Dynamic Text Variations enabled - Setting is_dynamic_creative=true on ad set');
+        console.log('   ℹ️  Facebook requires this flag for asset_feed_spec (limits to 1 ad per ad set)');
       }
 
       // Only add promoted_object if we have valid data
@@ -2186,18 +2187,24 @@ class FacebookAPI {
 
           // For AD SET copies, we don't use campaign_id or deep_copy
           // We create a new ad set with the same settings
-          // Note: We do NOT copy is_dynamic_creative to allow multiple ads per ad set
+          // CRITICAL: Include is_dynamic_creative to preserve dynamic creative settings
           const originalAdSetResponse = await axios.get(
             `${this.baseURL}/${originalAdSetId}`,
             {
               params: {
-                fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap',
+                fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap,is_dynamic_creative',
                 access_token: this.accessToken
               }
             }
           );
 
           const originalAdSet = originalAdSetResponse.data;
+
+          // Check if original ad set has dynamic creative enabled
+          const isDynamicCreative = originalAdSet.is_dynamic_creative === true || formData?.dynamicTextEnabled === true;
+          if (isDynamicCreative) {
+            console.log(`  🎨 Original ad set has dynamic creative enabled - will preserve this setting`);
+          }
 
           // Log if spending limits were found on original ad set
           if (originalAdSet.daily_min_spend_target || originalAdSet.daily_spend_cap) {
@@ -2246,9 +2253,12 @@ class FacebookAPI {
             access_token: this.accessToken
           };
 
-          // Note: We do NOT set is_dynamic_creative on duplicated ad sets
-          // This allows multiple ads with asset_feed_spec in the same ad set
-          console.log(`  ℹ️  NOT setting is_dynamic_creative to allow multiple ads per ad set`);
+          // CRITICAL: Set is_dynamic_creative if original ad set has it enabled
+          // This is required for ads using asset_feed_spec (dynamic text variations)
+          if (isDynamicCreative) {
+            newAdSetData.is_dynamic_creative = true;
+            console.log(`  ✅ Setting is_dynamic_creative=true on duplicated ad set (required for asset_feed_spec)`);
+          }
 
           // Copy attribution_spec from original ad set if it exists
           if (originalAdSet.attribution_spec) {

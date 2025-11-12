@@ -27,6 +27,17 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
   const [selectedAdSetIndices, setSelectedAdSetIndices] = useState<number[]>([]);
   const [adsPerAdSet, setAdsPerAdSet] = useState<number>(3);
 
+  // Check if dynamic text variations are enabled at top level
+  const dynamicTextEnabled = watch('dynamicTextEnabled');
+
+  // If dynamic text is enabled, force adsPerAdSet to 1
+  useEffect(() => {
+    if (dynamicTextEnabled) {
+      setAdsPerAdSet(1);
+      setValue('adVariationConfig.adsPerAdSet', 1);
+    }
+  }, [dynamicTextEnabled, setValue]);
+
   // Generate ad set options (1 to adSetCount)
   const adSetOptions = Array.from({ length: adSetCount }, (_, i) => ({
     value: i,
@@ -67,11 +78,24 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
         </Typography>
       </Box>
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Configure which ad sets should have multiple ad variations for A/B testing.
-        Ad sets without variations will use the original ad post ID (preserving social proof).
-        Each variation can have its own dynamic text variations (5 texts × 5 headlines) for maximum testing power!
-      </Alert>
+      {dynamicTextEnabled ? (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+            🎨 Dynamic Text Variation Mode
+          </Typography>
+          <Typography variant="body2">
+            You have enabled Dynamic Text Variations in the Ad section. Each selected ad set will receive <strong>1 ad with multiple text combinations</strong> (up to 25 variants per ad).
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 1 }}>
+            Select which ad sets should use the dynamic text variations from the main form.
+          </Typography>
+        </Alert>
+      ) : (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Configure which ad sets should have multiple ad variations for A/B testing.
+          Ad sets without variations will use the original ad post ID (preserving social proof).
+        </Alert>
+      )}
 
       {/* Ad Set Selection */}
       <FormControl fullWidth sx={{ mb: 3 }}>
@@ -106,16 +130,27 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
       {/* Ads Per Ad Set */}
       {selectedAdSetIndices.length > 0 && (
         <>
-          <TextField
-            fullWidth
-            type="number"
-            label="How many ads per selected ad set?"
-            value={adsPerAdSet}
-            onChange={handleAdsPerAdSetChange}
-            inputProps={{ min: 1, max: 7 }}
-            helperText="Maximum 7 ads per ad set (including the original ad). Each variation will have different content/post ID."
-            sx={{ mb: 3 }}
-          />
+          {dynamicTextEnabled ? (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Ads per selected ad set: <strong>1 ad</strong>
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                Dynamic text mode automatically creates 1 ad per ad set with multiple text variations (up to 25 combinations).
+              </Typography>
+            </Alert>
+          ) : (
+            <TextField
+              fullWidth
+              type="number"
+              label="How many ads per selected ad set?"
+              value={adsPerAdSet}
+              onChange={handleAdsPerAdSetChange}
+              inputProps={{ min: 1, max: 7 }}
+              helperText="Maximum 7 ads per ad set (including the original ad). Each variation will have different content/post ID."
+              sx={{ mb: 3 }}
+            />
+          )}
 
           <Divider sx={{ my: 3 }} />
 
@@ -144,11 +179,19 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
             </Box>
           </Paper>
 
-          {selectedAdSetIndices.length > 0 && (
+          {selectedAdSetIndices.length > 0 && !dynamicTextEnabled && (
             <Alert severity="warning" sx={{ mt: 2 }}>
               <Typography variant="body2">
                 <strong>Note:</strong> You'll configure the {adsPerAdSet} ad variations in the next section.
                 These variations will be applied to all selected ad sets ({adSetsWithVariations} ad sets).
+              </Typography>
+            </Alert>
+          )}
+
+          {selectedAdSetIndices.length > 0 && dynamicTextEnabled && (
+            <Alert severity="success" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                <strong>✅ Ready:</strong> {adSetsWithVariations} ad sets will each receive 1 ad with dynamic text variations from the main form.
               </Typography>
             </Alert>
           )}

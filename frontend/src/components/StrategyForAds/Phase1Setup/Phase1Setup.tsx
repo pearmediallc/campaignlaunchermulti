@@ -285,9 +285,10 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
               adSetCount={methods.watch('duplicationSettings.adSetCount') || 0}
             />
 
-            {/* Ad Variation Forms - Show only if ad sets are selected for variations */}
+            {/* Ad Variation Forms - Show only if ad sets are selected for variations AND dynamic text is NOT enabled */}
             {(methods.watch('adVariationConfig.selectedAdSetIndices') || []).length > 0 &&
-              (methods.watch('adVariationConfig.adsPerAdSet') || 0) > 0 && (
+              (methods.watch('adVariationConfig.adsPerAdSet') || 0) > 0 &&
+              !methods.watch('dynamicTextEnabled') && (
               <AdVariationForms
                 adsPerAdSet={methods.watch('adVariationConfig.adsPerAdSet') || 3}
                 originalAdData={{
