@@ -131,14 +131,22 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
       {selectedAdSetIndices.length > 0 && (
         <>
           {dynamicTextEnabled ? (
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Ads per selected ad set: <strong>1 ad</strong>
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel id="ads-per-adset-label">How many ads per selected ad set?</InputLabel>
+              <Select
+                labelId="ads-per-adset-label"
+                value={1}
+                label="How many ads per selected ad set?"
+                disabled
+              >
+                <MenuItem value={1}>1 Ad Variation</MenuItem>
+              </Select>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                <strong>Why only 1 ad?</strong> When using Dynamic Text Variations, Facebook limits each ad set to 1 ad.
+                This single ad will automatically rotate between all your text variations (headlines & primary text) to find the best performing combination.
+                Facebook can test up to 25 different combinations within this single ad.
               </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5 }}>
-                Dynamic text mode automatically creates 1 ad per ad set with multiple text variations (up to 25 combinations).
-              </Typography>
-            </Alert>
+            </FormControl>
           ) : (
             <TextField
               fullWidth
