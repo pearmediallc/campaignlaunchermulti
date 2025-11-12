@@ -187,19 +187,15 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
             </Box>
           </Paper>
 
-          {selectedAdSetIndices.length > 0 && !dynamicTextEnabled && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              <Typography variant="body2">
-                <strong>Note:</strong> You'll configure the {adsPerAdSet} ad variations in the next section.
-                These variations will be applied to all selected ad sets ({adSetsWithVariations} ad sets).
-              </Typography>
-            </Alert>
-          )}
-
-          {selectedAdSetIndices.length > 0 && dynamicTextEnabled && (
+          {selectedAdSetIndices.length > 0 && (
             <Alert severity="success" sx={{ mt: 2 }}>
-              <Typography variant="body2">
-                <strong>✅ Ready:</strong> {adSetsWithVariations} ad sets will each receive 1 ad with dynamic text variations from the main form.
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                ✅ Next Step: Configure unique content for each selected ad set
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                • Each selected ad set will get its own variation form below
+                • You can set different text, creative, and even enable dynamic variations per ad set
+                • Ad sets not selected will use the original ad {dynamicTextEnabled ? 'with its dynamic text variations' : ''}
               </Typography>
             </Alert>
           )}

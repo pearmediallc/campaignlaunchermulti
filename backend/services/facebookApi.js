@@ -2372,18 +2372,23 @@ class FacebookAPI {
                                 adVariationConfig.selectedAdSetIndices.includes(i);
 
           if (hasVariations && adVariationConfig.variations && adVariationConfig.variations.length > 0) {
-            // Strategy for Ads: Create multiple ads with variations
-            const adsPerAdSet = Math.min(adVariationConfig.adsPerAdSet || 1, adVariationConfig.variations.length);
-            console.log(`🎨 Creating ${adsPerAdSet} ad variations for AdSet ${i + 1} (${newAdSetId})...`);
+            // Find the variation for this specific ad set
+            // Each variation now has an adSetIndex property that matches the selected index
+            const variationForThisAdSet = adVariationConfig.variations.find(v => v.adSetIndex === i);
 
-            // Log if this ad set has dynamic creative enabled (important for debugging)
-            if (isAdSetDynamicCreative) {
-              console.log(`  🎨 NOTE: This ad set has Dynamic Creative ENABLED`);
-              console.log(`  🎨 Ads created in this ad set MUST use asset_feed_spec format`);
-            }
+            if (!variationForThisAdSet) {
+              console.warn(`⚠️ No variation found for ad set index ${i}, using original ad`);
+              // Fall through to else block to use original ad
+            } else {
+              console.log(`🎨 Creating unique ad for AdSet ${i + 1} (${newAdSetId}) with its specific variation...`);
 
-            for (let v = 0; v < adsPerAdSet; v++) {
-              const variation = adVariationConfig.variations[v];
+              // Log if this ad set has dynamic creative enabled (important for debugging)
+              if (isAdSetDynamicCreative) {
+                console.log(`  🎨 NOTE: This ad set has Dynamic Creative ENABLED`);
+                console.log(`  🎨 Ad MUST use asset_feed_spec format`);
+              }
+
+              const variation = variationForThisAdSet;
 
               try {
                 // Check if this variation has dynamic text variations enabled
@@ -2632,28 +2637,34 @@ class FacebookAPI {
                   { params: variationAdData }
                 );
 
-                console.log(`✅ Created ad variation ${v + 1}/${adsPerAdSet} for AdSet ${i + 1} - "${variationAdName}"`);
+                console.log(`✅ Created unique ad for AdSet ${i + 1} - "${variationAdName}"`);
+
+                results.adSets.push({
+                  id: newAdSetId,
+                  name: `AdSet Copy ${i + 1} (with unique variation)`
+                });
+
+                updateProgress({
+                  currentOperation: `Created unique ad for ad set ${i + 1} of ${newAdSetIds.length}`
+                });
+
               } catch (adError) {
-                console.error(`❌ Failed to create ad variation ${v + 1} for AdSet ${i + 1}:`, adError.response?.data?.error?.message || adError.message);
+                console.error(`❌ Failed to create ad for AdSet ${i + 1}:`, adError.response?.data?.error?.message || adError.message);
                 console.error('  📋 Full Facebook API error:', JSON.stringify(adError.response?.data, null, 2));
                 console.error('  📋 Variation data:', JSON.stringify(variation, null, 2));
                 results.errors.push({
                   adSetIndex: i + 1,
-                  variationIndex: v + 1,
                   error: adError.response?.data?.error?.message || adError.message
+                });
+
+                updateProgress({
+                  errors: results.errors.map(err => ({
+                    adSetIndex: err.copyNumber || err.adSetIndex,
+                    error: err.error
+                  }))
                 });
               }
             }
-
-            results.adSets.push({
-              id: newAdSetId,
-              name: `AdSet Copy ${i + 1} (with ${adsPerAdSet} variations)`
-            });
-
-            updateProgress({
-              currentOperation: `Created ${adsPerAdSet} ad variations for ad set ${i + 1} of ${newAdSetIds.length}`
-            });
-
           } else {
             // Standard duplication: Create single ad
             let adCreated = false;
