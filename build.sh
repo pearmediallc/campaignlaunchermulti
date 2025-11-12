@@ -13,8 +13,8 @@ echo "Installing frontend dependencies..."
 npm install || { echo "❌ Frontend install failed!"; exit 1; }
 
 echo "Building React app (with increased memory)..."
-# Increase Node memory for build process
-export NODE_OPTIONS="--max-old-space-size=2048"
+# Increase Node memory for build process and fix localStorage issue
+export NODE_OPTIONS="--max-old-space-size=2048 --localstorage-file=/tmp/localstorage"
 npm run build || { echo "❌ Frontend build failed!"; exit 1; }
 
 echo "Frontend build completed. Checking build directory:"
