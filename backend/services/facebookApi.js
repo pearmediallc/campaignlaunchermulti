@@ -2339,6 +2339,29 @@ class FacebookAPI {
       // Now create ads for each copied adset
       if (newAdSetIds.length > 0) {
 
+        // CRITICAL: Fetch original ad set data to check if it has dynamic creative enabled
+        let originalAdSetData = null;
+        let isAdSetDynamicCreative = false;
+
+        try {
+          const originalAdSetResponse = await axios.get(
+            `${this.baseURL}/${originalAdSetId}`,
+            {
+              params: {
+                fields: 'is_dynamic_creative',
+                access_token: this.accessToken
+              }
+            }
+          );
+          originalAdSetData = originalAdSetResponse.data;
+          isAdSetDynamicCreative = originalAdSetData.is_dynamic_creative === true;
+          console.log(`📊 Original ad set dynamic creative status: ${isAdSetDynamicCreative}`);
+        } catch (error) {
+          console.warn('⚠️ Could not fetch original ad set dynamic creative status:', error.message);
+          // Fallback: check if formData indicates dynamic text is enabled
+          isAdSetDynamicCreative = formData?.dynamicTextEnabled === true;
+        }
+
         // Create ads for each copied adset with retry logic
         for (let i = 0; i < newAdSetIds.length; i++) {
           const newAdSetId = newAdSetIds[i];
@@ -2356,7 +2379,7 @@ class FacebookAPI {
             // Log if this ad set has dynamic creative enabled (important for debugging)
             if (isAdSetDynamicCreative) {
               console.log(`  🎨 NOTE: This ad set has Dynamic Creative ENABLED`);
-              console.log(`  🎨 Ads created in this ad set can use asset_feed_spec for dynamic text variations`);
+              console.log(`  🎨 Ads created in this ad set MUST use asset_feed_spec format`);
             }
 
             for (let v = 0; v < adsPerAdSet; v++) {
@@ -2375,16 +2398,29 @@ class FacebookAPI {
                   console.log(`    📰 Headline Variations: ${variation.headlineVariations.filter(h => h?.trim()).length}`);
                 }
 
-                // Build creative based on whether dynamic text is enabled
+                // Build creative based on ad set type and variation content
                 let creative;
 
-                if (hasDynamicTexts) {
-                  // Use asset_feed_spec for dynamic creative variations
-                  console.log(`  🎨 Building asset_feed_spec for variation ${v + 1}...`);
+                // CRITICAL: If ad set is dynamic creative, MUST use asset_feed_spec
+                if (isAdSetDynamicCreative) {
+                  console.log(`  🎨 Ad set is DYNAMIC - building asset_feed_spec for variation ${v + 1}...`);
 
-                  // Build text arrays from dynamic variations
-                  let primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
-                  let headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
+                  // Determine text values to use
+                  let primaryTexts, headlines;
+
+                  if (hasDynamicTexts) {
+                    // Variation has its own dynamic arrays
+                    primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
+                    headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
+                  } else if (variation.primaryText || variation.headline) {
+                    // Variation has simple text values - wrap them in arrays
+                    primaryTexts = variation.primaryText ? [variation.primaryText] : [formData.primaryText];
+                    headlines = variation.headline ? [variation.headline] : [formData.headline];
+                  } else {
+                    // No variation values - use original form data
+                    primaryTexts = formData.primaryTextVariations || [formData.primaryText];
+                    headlines = formData.headlineVariations || [formData.headline];
+                  }
 
                   creative = {
                     object_story_spec: {
@@ -2619,7 +2655,7 @@ class FacebookAPI {
             });
 
           } else {
-            // Standard duplication: Create single ad using existing post (preserves social proof)
+            // Standard duplication: Create single ad
             let adCreated = false;
             let lastError = null;
 
@@ -2636,13 +2672,53 @@ class FacebookAPI {
               console.log(`ℹ️  Ad Copy ${i + 1} - Adding date (${dateStr}) - No editor name (local upload or not from library)`);
             }
 
+            // CRITICAL: Check if this is a dynamic creative ad set
+            let creative;
+            if (isAdSetDynamicCreative) {
+              // Dynamic creative ad set - MUST use asset_feed_spec, cannot use object_story_id
+              console.log(`🎨 Ad Set ${i + 1} is DYNAMIC - creating ad with asset_feed_spec`);
+
+              // Use the original dynamic text variations from formData
+              const primaryTexts = formData.primaryTextVariations || [formData.primaryText];
+              const headlines = formData.headlineVariations || [formData.headline];
+
+              creative = {
+                object_story_spec: {
+                  page_id: this.pageId
+                },
+                asset_feed_spec: {
+                  bodies: Array.isArray(primaryTexts)
+                    ? primaryTexts.filter(t => t?.trim()).map(text => ({ text }))
+                    : [{ text: primaryTexts }],
+                  titles: Array.isArray(headlines)
+                    ? headlines.filter(h => h?.trim()).map(text => ({ text }))
+                    : [{ text: headlines }],
+                  link_urls: [{ website_url: formData.url }],
+                  call_to_action_types: [formData.callToAction || 'LEARN_MORE'],
+                  ad_formats: ['SINGLE_IMAGE']
+                }
+              };
+
+              // Add image if we have the hash
+              if (originalImageHash) {
+                creative.asset_feed_spec.images = [{ hash: originalImageHash }];
+              }
+
+              console.log(`  📝 Using ${creative.asset_feed_spec.bodies.length} primary text variations`);
+              console.log(`  📰 Using ${creative.asset_feed_spec.titles.length} headline variations`);
+            } else {
+              // Non-dynamic ad set - can use object_story_id to preserve social proof
+              console.log(`📋 Ad Set ${i + 1} is STANDARD - using existing post ID`);
+              creative = {
+                object_story_id: actualPostId,
+                page_id: this.pageId
+              };
+            }
+
             const adData = {
               name: adName,
               adset_id: newAdSetId,
-              creative: JSON.stringify({
-                object_story_id: actualPostId,
-                page_id: this.pageId
-              }),
+              creative: JSON.stringify(creative),
               status: 'ACTIVE',
               access_token: this.accessToken
             };

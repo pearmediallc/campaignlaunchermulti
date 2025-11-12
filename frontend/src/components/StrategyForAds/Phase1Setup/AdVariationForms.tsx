@@ -44,20 +44,22 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
     const initialVariations = [];
 
     if (isDynamicMode) {
-      // In dynamic mode, create one variation with dynamic text enabled
+      // In dynamic mode, create one variation with simple fields
+      // The dynamic text is already handled at campaign level
       initialVariations.push({
         variationNumber: 1,
-        useOriginal: false, // Always custom in dynamic mode
-        primaryText: originalAdData.primaryText,
-        headline: originalAdData.headline,
-        description: originalAdData.description,
+        useOriginal: false, // Start with custom mode so user can edit
+        primaryText: '', // Leave blank for user to fill
+        headline: '', // Leave blank for user to fill
+        description: '',
         websiteUrl: originalAdData.url,
         displayLink: originalAdData.displayLink,
         callToAction: originalAdData.callToAction,
         useOriginalMedia: true,
-        dynamicTextEnabled: true, // Enable dynamic text for the variation
-        primaryTextVariations: originalDynamicData?.primaryTextVariations || [''],
-        headlineVariations: originalDynamicData?.headlineVariations || ['']
+        dynamicTextEnabled: false, // Don't enable internal dynamic fields
+        // These will be used by backend to create dynamic ads
+        primaryTextVariations: [], // Backend will wrap single values in array
+        headlineVariations: [] // Backend will wrap single values in array
       });
     } else {
       // Non-dynamic mode - original behavior
