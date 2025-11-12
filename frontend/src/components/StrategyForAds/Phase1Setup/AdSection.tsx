@@ -956,7 +956,7 @@ const AdSection: React.FC = () => {
                                       key={index}
                                       label={`${file.name.substring(0, 20)}...`}
                                       onDelete={() => {
-                                        const newFiles = field.value.filter((_, i) => i !== index);
+                                        const newFiles = field.value?.filter((_, i) => i !== index) || [];
                                         field.onChange(newFiles);
                                       }}
                                       size="small"
