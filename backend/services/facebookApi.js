@@ -162,13 +162,16 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      // CRITICAL: Set is_dynamic_creative=true when dynamic text variations are enabled
-      // This is REQUIRED by Facebook for ads using asset_feed_spec
-      // Note: This limits to 1 ad per ad set (enforced in UI)
-      if (adSetData.dynamicTextEnabled) {
+      // UPDATED: Only set is_dynamic_creative when using Dynamic Creative (multiple media)
+      // Text variations alone do NOT require this flag
+      if (adSetData.dynamicCreativeEnabled) {
         params.is_dynamic_creative = true;
-        console.log('🎨 Dynamic Text Variations enabled - Setting is_dynamic_creative=true on ad set');
-        console.log('   ℹ️  Facebook requires this flag for asset_feed_spec (limits to 1 ad per ad set)');
+        console.log('🎨 Dynamic Creative enabled - Setting is_dynamic_creative=true on ad set');
+        console.log('   ℹ️  This allows multiple media assets but limits to 1 ad per ad set');
+      } else if (adSetData.dynamicTextEnabled) {
+        // Text variations work WITHOUT is_dynamic_creative
+        console.log('📝 Text Variations enabled - NOT setting is_dynamic_creative');
+        console.log('   ✅ Text variations work without dynamic creative flag');
       }
 
       // Only add promoted_object if we have valid data
@@ -903,25 +906,45 @@ class FacebookAPI {
         }
       }
 
-      // CHECK FOR DYNAMIC TEXT VARIATIONS (Facebook's Multiple Text Options)
-      if (adData.dynamicTextEnabled &&
-          adData.primaryTextVariations &&
-          adData.primaryTextVariations.length > 0 &&
-          adData.headlineVariations &&
-          adData.headlineVariations.length > 0) {
+      // CHECK FOR TEXT VARIATIONS (Facebook's Multiple Text Options)
+      // Text variations work WITHOUT requiring dynamic creative flag
+      const hasTextVariations = (adData.primaryTextVariations && adData.primaryTextVariations.filter(t => t?.trim()).length > 0) ||
+                               (adData.headlineVariations && adData.headlineVariations.filter(h => h?.trim()).length > 0);
 
-        console.log('🎨 Creating ad with Dynamic Creative (Multiple Text Options)');
-        console.log(`  📝 Primary Text Variations: ${adData.primaryTextVariations.length}`);
-        console.log(`  📰 Headline Variations: ${adData.headlineVariations.length}`);
+      if (hasTextVariations) {
+        console.log('📝 Creating ad with Text Variations (Multiple Text Options)');
 
-        // Use Facebook's asset_feed_spec for dynamic creative
+        // Build arrays including main text + variations
+        const primaryTexts = [];
+        const headlines = [];
+
+        // Add main text first if it exists
+        if (adData.primaryText && adData.primaryText.trim()) {
+          primaryTexts.push(adData.primaryText);
+        }
+        // Add variations
+        if (adData.primaryTextVariations) {
+          const validVariations = adData.primaryTextVariations.filter(text => text && text.trim());
+          primaryTexts.push(...validVariations);
+        }
+
+        // Add main headline first if it exists
+        if (adData.headline && adData.headline.trim()) {
+          headlines.push(adData.headline);
+        }
+        // Add variations
+        if (adData.headlineVariations) {
+          const validVariations = adData.headlineVariations.filter(headline => headline && headline.trim());
+          headlines.push(...validVariations);
+        }
+
+        console.log(`  📝 Primary Text Options: ${primaryTexts.length} (main + variations)`);
+        console.log(`  📰 Headline Options: ${headlines.length} (main + variations)`);
+
+        // Use Facebook's asset_feed_spec for text variations
         creative.asset_feed_spec = {
-          bodies: adData.primaryTextVariations
-            .filter(text => text && text.trim())
-            .map(text => ({ text: text })),
-          titles: adData.headlineVariations
-            .filter(headline => headline && headline.trim())
-            .map(headline => ({ text: headline })),
+          bodies: primaryTexts.map(text => ({ text: text })),
+          titles: headlines.map(headline => ({ text: headline })),
           link_urls: [{ website_url: adData.url }],
           call_to_action_types: [adData.callToAction || 'LEARN_MORE'],
           ad_formats: adData.videoId ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE'] // Required: specify ad format
@@ -2466,8 +2489,58 @@ class FacebookAPI {
 
                   console.log(`  ✅ Dynamic creative variation ${v + 1} configured with asset_feed_spec`);
                   console.log(`    Bodies: ${creative.asset_feed_spec.bodies.length}, Titles: ${creative.asset_feed_spec.titles.length}`);
+                } else if (hasDynamicTexts) {
+                  // Non-dynamic ad set BUT variation has text variations - use asset_feed_spec
+                  console.log(`  📝 Non-dynamic ad set but variation has text variations - using asset_feed_spec`);
+
+                  const primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
+                  const headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
+
+                  // Include the main text as well if it exists
+                  if (variation.primaryText && !primaryTexts.includes(variation.primaryText)) {
+                    primaryTexts.unshift(variation.primaryText);
+                  }
+                  if (variation.headline && !headlines.includes(variation.headline)) {
+                    headlines.unshift(variation.headline);
+                  }
+
+                  creative = {
+                    object_story_spec: {
+                      page_id: this.pageId
+                    },
+                    asset_feed_spec: {
+                      bodies: primaryTexts.map(text => ({ text: text })),
+                      titles: headlines.map(headline => ({ text: headline })),
+                      link_urls: [{ website_url: variation.websiteUrl || formData.url }],
+                      descriptions: variation.description ? [{ text: variation.description }] : [],
+                      call_to_action_types: [variation.callToAction || formData.callToAction || 'LEARN_MORE'],
+                      ad_formats: variation.videoId || variation.videoHash ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE']
+                    }
+                  };
+
+                  // Add media to asset_feed_spec
+                  if (variation.videoId || variation.videoHash) {
+                    const videoId = variation.videoId || variation.videoHash;
+                    creative.asset_feed_spec.videos = [{ video_id: videoId }];
+                    console.log(`  ✅ Added video to asset_feed_spec: ${videoId}`);
+                  } else if (variation.imageHash) {
+                    creative.asset_feed_spec.images = [{ hash: variation.imageHash }];
+                    console.log(`  ✅ Added image hash to asset_feed_spec: ${variation.imageHash}`);
+                  } else if (originalCreativeData?.video_data?.video_id) {
+                    creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
+                    console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
+                  } else if (originalImageHash) {
+                    creative.asset_feed_spec.images = [{ hash: originalImageHash }];
+                    console.log(`  ✅ Added original image hash to asset_feed_spec: ${originalImageHash}`);
+                  } else if (formData.imageHash) {
+                    creative.asset_feed_spec.images = [{ hash: formData.imageHash }];
+                    console.log(`  ✅ Added image hash from formData to asset_feed_spec: ${formData.imageHash}`);
+                  }
+
+                  console.log(`  ✅ Text variation configured with asset_feed_spec`);
+                  console.log(`    Bodies: ${creative.asset_feed_spec.bodies.length}, Titles: ${creative.asset_feed_spec.titles.length}`);
                 } else {
-                  // Use standard object_story_spec for non-dynamic variations
+                  // Use standard object_story_spec for non-dynamic variations without text variations
                   let objectStorySpec = {
                     page_id: this.pageId
                   };
@@ -2683,43 +2756,83 @@ class FacebookAPI {
               console.log(`ℹ️  Ad Copy ${i + 1} - Adding date (${dateStr}) - No editor name (local upload or not from library)`);
             }
 
-            // CRITICAL: Check if this is a dynamic creative ad set
+            // Check if we need to use asset_feed_spec (for dynamic creative OR text variations)
             let creative;
-            if (isAdSetDynamicCreative) {
-              // Dynamic creative ad set - MUST use asset_feed_spec, cannot use object_story_id
-              console.log(`🎨 Ad Set ${i + 1} is DYNAMIC - creating ad with asset_feed_spec`);
 
-              // Use the original dynamic text variations from formData
-              const primaryTexts = formData.primaryTextVariations || [formData.primaryText];
-              const headlines = formData.headlineVariations || [formData.headline];
+            // Check if original ad has text variations
+            const hasTextVariations = (formData.primaryTextVariations && formData.primaryTextVariations.filter(t => t?.trim()).length > 0) ||
+                                     (formData.headlineVariations && formData.headlineVariations.filter(h => h?.trim()).length > 0);
+
+            if (isAdSetDynamicCreative || hasTextVariations) {
+              // Either dynamic creative ad set OR has text variations - MUST use asset_feed_spec
+              if (isAdSetDynamicCreative) {
+                console.log(`🎨 Ad Set ${i + 1} is DYNAMIC CREATIVE - creating ad with asset_feed_spec`);
+              } else {
+                console.log(`📝 Ad Set ${i + 1} has TEXT VARIATIONS - creating ad with asset_feed_spec`);
+              }
+
+              // Build text arrays including main + variations
+              const primaryTexts = [];
+              const headlines = [];
+
+              // Add main text if it exists
+              if (formData.primaryText && formData.primaryText.trim()) {
+                primaryTexts.push(formData.primaryText);
+              }
+              // Add text variations
+              if (formData.primaryTextVariations) {
+                const validVariations = formData.primaryTextVariations.filter(t => t && t.trim());
+                primaryTexts.push(...validVariations);
+              }
+              // Fallback if no texts at all
+              if (primaryTexts.length === 0 && formData.primaryText) {
+                primaryTexts.push(formData.primaryText);
+              }
+
+              // Add main headline if it exists
+              if (formData.headline && formData.headline.trim()) {
+                headlines.push(formData.headline);
+              }
+              // Add headline variations
+              if (formData.headlineVariations) {
+                const validVariations = formData.headlineVariations.filter(h => h && h.trim());
+                headlines.push(...validVariations);
+              }
+              // Fallback if no headlines at all
+              if (headlines.length === 0 && formData.headline) {
+                headlines.push(formData.headline);
+              }
 
               creative = {
                 object_story_spec: {
                   page_id: this.pageId
                 },
                 asset_feed_spec: {
-                  bodies: Array.isArray(primaryTexts)
-                    ? primaryTexts.filter(t => t?.trim()).map(text => ({ text }))
-                    : [{ text: primaryTexts }],
-                  titles: Array.isArray(headlines)
-                    ? headlines.filter(h => h?.trim()).map(text => ({ text }))
-                    : [{ text: headlines }],
+                  bodies: primaryTexts.map(text => ({ text })),
+                  titles: headlines.map(text => ({ text })),
                   link_urls: [{ website_url: formData.url }],
                   call_to_action_types: [formData.callToAction || 'LEARN_MORE'],
                   ad_formats: ['SINGLE_IMAGE']
                 }
               };
 
+              // Add description if provided
+              if (formData.description) {
+                creative.asset_feed_spec.descriptions = [{ text: formData.description }];
+              }
+
               // Add image if we have the hash
               if (originalImageHash) {
                 creative.asset_feed_spec.images = [{ hash: originalImageHash }];
+              } else if (formData.imageHash) {
+                creative.asset_feed_spec.images = [{ hash: formData.imageHash }];
               }
 
-              console.log(`  📝 Using ${creative.asset_feed_spec.bodies.length} primary text variations`);
-              console.log(`  📰 Using ${creative.asset_feed_spec.titles.length} headline variations`);
+              console.log(`  📝 Using ${creative.asset_feed_spec.bodies.length} primary text options`);
+              console.log(`  📰 Using ${creative.asset_feed_spec.titles.length} headline options`);
             } else {
-              // Non-dynamic ad set - can use object_story_id to preserve social proof
-              console.log(`📋 Ad Set ${i + 1} is STANDARD - using existing post ID`);
+              // Standard ad set WITHOUT text variations - can use object_story_id to preserve social proof
+              console.log(`📋 Ad Set ${i + 1} is STANDARD (no variations) - using existing post ID`);
               creative = {
                 object_story_id: actualPostId,
                 page_id: this.pageId

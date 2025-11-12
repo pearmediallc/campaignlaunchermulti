@@ -341,26 +341,90 @@ const VariationForm: React.FC<VariationFormProps> = ({
             )}
           </Paper>
 
-          {/* Text Fields */}
-          <TextField
-            label="Primary Text"
-            multiline
-            rows={3}
-            fullWidth
-            value={variation.primaryText || ''}
-            onChange={(e) => handleFieldChange('primaryText', e.target.value)}
-            placeholder={`Original: ${getOriginalValue('primaryText')}`}
-            helperText={`Original value: ${getOriginalValue('primaryText').substring(0, 50)}${getOriginalValue('primaryText').length > 50 ? '...' : ''}`}
-          />
+          {/* Text Fields with Variations */}
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Primary Text & Variations
+            </Typography>
+            <TextField
+              label="Primary Text (Main)"
+              multiline
+              rows={3}
+              fullWidth
+              value={variation.primaryText || ''}
+              onChange={(e) => handleFieldChange('primaryText', e.target.value)}
+              placeholder={`Original: ${getOriginalValue('primaryText')}`}
+              helperText="This is your main primary text"
+              sx={{ mb: 2 }}
+            />
 
-          <TextField
-            label="Headline"
-            fullWidth
-            value={variation.headline || ''}
-            onChange={(e) => handleFieldChange('headline', e.target.value)}
-            placeholder={`Original: ${getOriginalValue('headline')}`}
-            helperText={`Original value: ${getOriginalValue('headline')}`}
-          />
+            <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>
+              + Add Text Variations (Optional - Facebook will test combinations)
+            </Typography>
+            {[0, 1, 2, 3, 4].map((index) => (
+              <TextField
+                key={`primary-var-${index}`}
+                label={`Primary Text Variation ${index + 1}`}
+                multiline
+                rows={2}
+                fullWidth
+                value={variation.primaryTextVariations?.[index] || ''}
+                onChange={(e) => {
+                  const newVariations = [...(variation.primaryTextVariations || Array(5).fill(''))];
+                  newVariations[index] = e.target.value;
+                  handleFieldChange('primaryTextVariations', newVariations);
+                }}
+                placeholder={`Optional variation ${index + 1}`}
+                sx={{ mb: 1 }}
+              />
+            ))}
+          </Paper>
+
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Headline & Variations
+            </Typography>
+            <TextField
+              label="Headline (Main)"
+              fullWidth
+              value={variation.headline || ''}
+              onChange={(e) => handleFieldChange('headline', e.target.value)}
+              placeholder={`Original: ${getOriginalValue('headline')}`}
+              helperText="This is your main headline"
+              sx={{ mb: 2 }}
+            />
+
+            <Typography variant="subtitle2" sx={{ mb: 1, color: 'primary.main' }}>
+              + Add Headline Variations (Optional - Facebook will test combinations)
+            </Typography>
+            {[0, 1, 2, 3, 4].map((index) => (
+              <TextField
+                key={`headline-var-${index}`}
+                label={`Headline Variation ${index + 1}`}
+                fullWidth
+                value={variation.headlineVariations?.[index] || ''}
+                onChange={(e) => {
+                  const newVariations = [...(variation.headlineVariations || Array(5).fill(''))];
+                  newVariations[index] = e.target.value;
+                  handleFieldChange('headlineVariations', newVariations);
+                }}
+                placeholder={`Optional variation ${index + 1}`}
+                sx={{ mb: 1 }}
+              />
+            ))}
+
+            {((variation.primaryTextVariations?.filter(t => t?.trim()).length || 0) > 0 ||
+              (variation.headlineVariations?.filter(h => h?.trim()).length || 0) > 0) && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  <strong>🎯 Auto-Optimization:</strong> Facebook will test {
+                    Math.max(1, (variation.primaryTextVariations?.filter(t => t?.trim()).length || 0) + (variation.primaryText?.trim() ? 1 : 0)) *
+                    Math.max(1, (variation.headlineVariations?.filter(h => h?.trim()).length || 0) + (variation.headline?.trim() ? 1 : 0))
+                  } combinations and automatically show the best performers.
+                </Typography>
+              </Alert>
+            )}
+          </Paper>
 
           <TextField
             label="Description"
@@ -410,76 +474,6 @@ const VariationForm: React.FC<VariationFormProps> = ({
               <MenuItem value="REQUEST_TIME">Request Time</MenuItem>
             </Select>
           </FormControl>
-
-          {/* Dynamic Text Variations for this Variation */}
-          <Paper sx={{ p: 2, mt: 2, backgroundColor: 'rgba(25, 118, 210, 0.04)' }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={variation.dynamicTextEnabled || false}
-                  onChange={(e) => handleFieldChange('dynamicTextEnabled', e.target.checked)}
-                />
-              }
-              label={
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Enable Dynamic Text Variations (Facebook's Multiple Text Options)
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Add up to 5 variations each of primary text and headline. Facebook will automatically test combinations and show the best-performing ones.
-                  </Typography>
-                </Box>
-              }
-            />
-
-            {variation.dynamicTextEnabled && (
-              <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Primary Text Variations (up to 5)
-                </Typography>
-                {[0, 1, 2, 3, 4].map((index) => (
-                  <TextField
-                    key={`primary-${index}`}
-                    label={`Primary Text Variation ${index + 1}`}
-                    multiline
-                    rows={2}
-                    fullWidth
-                    value={variation.primaryTextVariations?.[index] || ''}
-                    onChange={(e) => {
-                      const newVariations = [...(variation.primaryTextVariations || Array(5).fill(''))];
-                      newVariations[index] = e.target.value;
-                      handleFieldChange('primaryTextVariations', newVariations);
-                    }}
-                    placeholder={`Enter primary text variation ${index + 1}`}
-                  />
-                ))}
-
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, mt: 2 }}>
-                  Headline Variations (up to 5)
-                </Typography>
-                {[0, 1, 2, 3, 4].map((index) => (
-                  <TextField
-                    key={`headline-${index}`}
-                    label={`Headline Variation ${index + 1}`}
-                    fullWidth
-                    value={variation.headlineVariations?.[index] || ''}
-                    onChange={(e) => {
-                      const newVariations = [...(variation.headlineVariations || Array(5).fill(''))];
-                      newVariations[index] = e.target.value;
-                      handleFieldChange('headlineVariations', newVariations);
-                    }}
-                    placeholder={`Enter headline variation ${index + 1}`}
-                  />
-                ))}
-
-                <Alert severity="info" sx={{ mt: 1 }}>
-                  <Typography variant="body2">
-                    <strong>How it works:</strong> Facebook will create {(variation.primaryTextVariations?.filter(t => t?.trim()).length || 0) * (variation.headlineVariations?.filter(h => h?.trim()).length || 0)} combinations from your variations and test them automatically to find the best performers.
-                  </Typography>
-                </Alert>
-              </Box>
-            )}
-          </Paper>
         </Box>
       )}
 

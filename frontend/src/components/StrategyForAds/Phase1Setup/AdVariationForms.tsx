@@ -59,8 +59,7 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
         displayLink: originalAdData.displayLink || '',
         callToAction: originalAdData.callToAction,
         useOriginalMedia: true,
-        // Allow dynamic text for each variation (since each creates a new ad)
-        dynamicTextEnabled: false,
+        // Initialize text variation arrays
         primaryTextVariations: [],
         headlineVariations: []
       });
@@ -79,7 +78,6 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
         displayLink: originalAdData.displayLink || '',
         callToAction: originalAdData.callToAction,
         useOriginalMedia: true,
-        dynamicTextEnabled: false,
         primaryTextVariations: [],
         headlineVariations: []
       });

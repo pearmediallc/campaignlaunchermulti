@@ -697,8 +697,9 @@ const AdSection: React.FC = () => {
         </Box>
 
         {/* Dynamic Text Variations */}
+        {/* Text Variations Section - Always Available */}
         <Box sx={{ width: "100%", mt: 2 }}>
-          <Paper sx={{ p: 2, bgcolor: 'info.lighter', border: '1px solid', borderColor: 'info.main' }}>
+          <Paper sx={{ p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
             <FormControlLabel
               control={
                 <Checkbox
@@ -709,10 +710,10 @@ const AdSection: React.FC = () => {
               label={
                 <Box>
                   <Typography variant="subtitle2" fontWeight={600}>
-                    Enable Dynamic Text Variations (Optional)
+                    Enable Text Variations (Recommended)
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Create up to 5 variations for Primary Text and Headlines. Facebook will test combinations to find the best performers.
+                    Add multiple versions of your text and headlines. Facebook automatically finds the best combinations.
                   </Typography>
                 </Box>
               }
@@ -720,21 +721,22 @@ const AdSection: React.FC = () => {
 
             <Collapse in={enableDynamicVariations}>
               <Box sx={{ mt: 2 }}>
-                <Alert severity="info" sx={{ mb: 2 }}>
+                <Alert severity="success" sx={{ mb: 2 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                    💡 How Dynamic Text Variations Work
+                    ✨ Text Variations - No Extra Setup Required!
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    Facebook will automatically test different combinations of your text variations to find the best performers.
+                    Facebook will automatically test different combinations of your text to optimize performance.
                   </Typography>
                   <Box component="ul" sx={{ mt: 1, mb: 1, pl: 3 }}>
-                    <li><Typography variant="body2">✅ Create up to 5 primary text variations</Typography></li>
-                    <li><Typography variant="body2">✅ Create up to 5 headline variations</Typography></li>
-                    <li><Typography variant="body2">✅ Facebook tests all combinations (up to 25 variants per ad)</Typography></li>
-                    <li><Typography variant="body2">✅ Compatible with Ad Variation Configuration - create multiple ads each with different dynamic variations!</Typography></li>
+                    <li><Typography variant="body2">📝 Up to 5 primary text versions</Typography></li>
+                    <li><Typography variant="body2">📰 Up to 5 headline versions</Typography></li>
+                    <li><Typography variant="body2">📊 Up to 5 description versions</Typography></li>
+                    <li><Typography variant="body2">🎯 Facebook finds winning combinations automatically</Typography></li>
+                    <li><Typography variant="body2">💰 No additional cost - same budget, better results</Typography></li>
                   </Box>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    <strong>Example:</strong> Create 3 ads in one ad set, each with 5×5 variations = 75 total combinations being tested!
+                  <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
+                    <strong>Pro tip:</strong> With 3 texts × 3 headlines = 9 combinations tested automatically!
                   </Typography>
                 </Alert>
 
@@ -833,6 +835,70 @@ const AdSection: React.FC = () => {
                 </Stack>
               </Box>
             </Collapse>
+          </Paper>
+        </Box>
+
+        {/* Dynamic Creative Section - For Multiple Media */}
+        <Box sx={{ width: "100%", mt: 2 }}>
+          <Paper sx={{ p: 2, bgcolor: 'warning.lighter', border: '1px solid', borderColor: 'warning.main' }}>
+            <FormControlLabel
+              control={
+                <Controller
+                  name="dynamicCreativeEnabled"
+                  control={control}
+                  defaultValue={false}
+                  render={({ field }) => (
+                    <Checkbox
+                      {...field}
+                      checked={field.value || false}
+                    />
+                  )}
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    Enable Dynamic Creative (Advanced - Multiple Media)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Upload multiple images/videos. Facebook tests all combinations of media × text.
+                  </Typography>
+                </Box>
+              }
+            />
+
+            <Controller
+              name="dynamicCreativeEnabled"
+              control={control}
+              render={({ field }) => (
+                <Collapse in={field.value}>
+                  <Box sx={{ mt: 2 }}>
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                        ⚡ Dynamic Creative - Full Asset Testing
+                      </Typography>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Important:</strong> This feature limits you to 1 ad per ad set but enables powerful testing:
+                      </Typography>
+                      <Box component="ul" sx={{ mt: 1, mb: 1, pl: 3 }}>
+                        <li><Typography variant="body2">🖼️ Up to 10 images</Typography></li>
+                        <li><Typography variant="body2">🎬 Up to 10 videos</Typography></li>
+                        <li><Typography variant="body2">🔄 Mix images and videos together</Typography></li>
+                        <li><Typography variant="body2">🚀 Tests ALL combinations (media × text × headlines)</Typography></li>
+                      </Box>
+                      <Typography variant="body2" sx={{ mt: 1, fontWeight: 600, color: 'warning.main' }}>
+                        Example: 5 images × 3 texts × 3 headlines = 45 combinations tested!
+                      </Typography>
+                    </Alert>
+
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      Multiple media upload will be available here when Dynamic Creative is enabled.
+                      (Implementation pending)
+                    </Typography>
+                  </Box>
+                </Collapse>
+              )}
+            />
           </Paper>
         </Box>
 
