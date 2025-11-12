@@ -605,6 +605,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         ? JSON.parse(req.body.headlineVariations)
         : (req.body.headlineVariations || []),
 
+      // Dynamic Creative (Multiple Media)
+      dynamicCreativeEnabled: req.body.dynamicCreativeEnabled === 'true' || req.body.dynamicCreativeEnabled === true,
+
       // Media specifications
       mediaType: req.body.mediaType,  // Required - user must select
       mediaSpecs: req.body.mediaSpecs,
@@ -666,13 +669,17 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('🟢 Special Ad Categories detail:', JSON.stringify(campaignData.specialAdCategories));
     console.log('🟢 Targeting detail:', JSON.stringify(campaignData.targeting));
     console.log('🎨 Ad Variation Config:', JSON.stringify(campaignData.adVariationConfig, null, 2));
-    console.log('🎨 Dynamic Text Variations:');
-    console.log('  - Enabled:', campaignData.dynamicTextEnabled);
+    console.log('🎨 Dynamic Features:');
+    console.log('  - Dynamic Text Enabled:', campaignData.dynamicTextEnabled);
+    console.log('  - Dynamic Creative Enabled:', campaignData.dynamicCreativeEnabled);
     console.log('  - Primary Text Variations:', campaignData.primaryTextVariations?.length || 0);
     console.log('  - Headline Variations:', campaignData.headlineVariations?.length || 0);
     if (campaignData.dynamicTextEnabled) {
       console.log('  - Primary Texts:', campaignData.primaryTextVariations);
       console.log('  - Headlines:', campaignData.headlineVariations);
+    }
+    if (campaignData.dynamicCreativeEnabled) {
+      console.log('  - Dynamic Creative is ENABLED - will use multiple media');
     }
 
     // DEBUG: Check spending limits data
