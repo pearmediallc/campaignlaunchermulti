@@ -162,16 +162,23 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
-      // UPDATED: Only set is_dynamic_creative when using Dynamic Creative (multiple media)
-      // Text variations alone do NOT require this flag
-      if (adSetData.dynamicCreativeEnabled) {
+      // IMPORTANT: Text variations with asset_feed_spec REQUIRE is_dynamic_creative flag
+      // Even though Facebook's UI doesn't show it as "Dynamic Creative", the API requires this flag
+      // when using asset_feed_spec format (which is needed for text variations)
+      if (adSetData.dynamicCreativeEnabled ||
+          (adSetData.dynamicTextEnabled &&
+           ((adSetData.primaryTextVariations && adSetData.primaryTextVariations.length > 0) ||
+            (adSetData.headlineVariations && adSetData.headlineVariations.length > 0)))) {
         params.is_dynamic_creative = true;
-        console.log('🎨 Dynamic Creative enabled - Setting is_dynamic_creative=true on ad set');
-        console.log('   ℹ️  This allows multiple media assets but limits to 1 ad per ad set');
-      } else if (adSetData.dynamicTextEnabled) {
-        // Text variations work WITHOUT is_dynamic_creative
-        console.log('📝 Text Variations enabled - NOT setting is_dynamic_creative');
-        console.log('   ✅ Text variations work without dynamic creative flag');
+
+        if (adSetData.dynamicCreativeEnabled) {
+          console.log('🎨 Dynamic Creative enabled - Setting is_dynamic_creative=true on ad set');
+          console.log('   ℹ️  This allows multiple media assets but limits to 1 ad per ad set');
+        } else {
+          console.log('📝 Text Variations enabled - Setting is_dynamic_creative=true on ad set');
+          console.log('   ℹ️  Facebook API requires this flag when using asset_feed_spec for text variations');
+          console.log('   ℹ️  This is a Facebook API requirement, not visible in the UI');
+        }
       }
 
       // Only add promoted_object if we have valid data

@@ -112,6 +112,7 @@ export interface StrategyForAdsFormData {
 
   // Dynamic Creative (Multiple Media)
   dynamicCreativeEnabled?: boolean;
+  dynamicMediaFiles?: File[];
 
   // Media fields
   mediaType?: 'single_image' | 'single_video' | 'carousel';

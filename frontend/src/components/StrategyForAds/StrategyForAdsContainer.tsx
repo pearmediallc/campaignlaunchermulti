@@ -431,8 +431,14 @@ const StrategyForAdsContainer: React.FC = () => {
         }
       });
 
-      // Handle media files based on mediaType
-      if (workingCampaignData.mediaType === 'single_image' && workingCampaignData.image instanceof File) {
+      // Handle media files based on mediaType and dynamic creative
+      if (workingCampaignData.dynamicCreativeEnabled && workingCampaignData.dynamicMediaFiles && Array.isArray(workingCampaignData.dynamicMediaFiles)) {
+        // Dynamic Creative with multiple media files
+        workingCampaignData.dynamicMediaFiles.forEach((file: File) => {
+          formData.append('media', file);
+        });
+        console.log(`📸 Including ${workingCampaignData.dynamicMediaFiles.length} media files for Dynamic Creative`);
+      } else if (workingCampaignData.mediaType === 'single_image' && workingCampaignData.image instanceof File) {
         formData.append('media', workingCampaignData.image);
       } else if (workingCampaignData.mediaType === 'single_video' && workingCampaignData.video instanceof File) {
         formData.append('media', workingCampaignData.video);

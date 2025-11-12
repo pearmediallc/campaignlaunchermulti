@@ -29,7 +29,7 @@ import {
   Stack
 } from '@mui/material';
 import { Controller, useFormContext } from 'react-hook-form';
-import { AdsClick, CloudUpload, Delete, Image, VideoLibrary, ViewCarousel } from '@mui/icons-material';
+import { AdsClick, CloudUpload, Delete, Image, VideoLibrary, ViewCarousel, VideoFile } from '@mui/icons-material';
 import { URL_TYPE_OPTIONS } from '../../../types/strategyForAll';
 import { StrategyForAdsFormData } from '../../../types/strategyForAds';
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
@@ -891,10 +891,97 @@ const AdSection: React.FC = () => {
                       </Typography>
                     </Alert>
 
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                      Multiple media upload will be available here when Dynamic Creative is enabled.
-                      (Implementation pending)
-                    </Typography>
+                    {/* Multiple Media Upload Section */}
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                        Upload Multiple Media (Up to 10)
+                      </Typography>
+
+                      <Controller
+                        name="dynamicMediaFiles"
+                        control={control}
+                        render={({ field }) => (
+                          <Box>
+                            <Button
+                              variant="outlined"
+                              component="label"
+                              fullWidth
+                              sx={{
+                                py: 2,
+                                border: '2px dashed',
+                                borderColor: 'primary.main',
+                                '&:hover': {
+                                  borderColor: 'primary.dark',
+                                  bgcolor: 'action.hover'
+                                }
+                              }}
+                              startIcon={<CloudUpload />}
+                            >
+                              {field.value?.length > 0
+                                ? `${field.value.length} file(s) selected - Click to add more`
+                                : 'Click to upload images/videos'}
+                              <input
+                                type="file"
+                                hidden
+                                multiple
+                                accept="image/*,video/*"
+                                onChange={(e) => {
+                                  const files = Array.from(e.target.files || []);
+                                  const currentFiles = field.value || [];
+                                  const newFiles = [...currentFiles, ...files];
+
+                                  // Limit to 10 files
+                                  if (newFiles.length > 10) {
+                                    alert('Maximum 10 files allowed for Dynamic Creative');
+                                    field.onChange(newFiles.slice(0, 10));
+                                  } else {
+                                    field.onChange(newFiles);
+                                  }
+
+                                  // Reset input to allow re-selecting same files
+                                  e.target.value = '';
+                                }}
+                              />
+                            </Button>
+
+                            {/* Display selected files */}
+                            {field.value?.length > 0 && (
+                              <Box sx={{ mt: 2 }}>
+                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                  Selected Media: {field.value.length}/10
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                  {field.value.map((file, index) => (
+                                    <Chip
+                                      key={index}
+                                      label={`${file.name.substring(0, 20)}...`}
+                                      onDelete={() => {
+                                        const newFiles = field.value.filter((_, i) => i !== index);
+                                        field.onChange(newFiles);
+                                      }}
+                                      size="small"
+                                      icon={file.type.startsWith('video/') ? <VideoFile /> : <Image />}
+                                    />
+                                  ))}
+                                </Box>
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  onClick={() => field.onChange([])}
+                                  sx={{ mt: 1 }}
+                                >
+                                  Clear All
+                                </Button>
+                              </Box>
+                            )}
+
+                            <FormHelperText>
+                              Upload up to 10 images and/or videos. Facebook will test all combinations with your text variations.
+                            </FormHelperText>
+                          </Box>
+                        )}
+                      />
+                    </Box>
                   </Box>
                 </Collapse>
               )}
