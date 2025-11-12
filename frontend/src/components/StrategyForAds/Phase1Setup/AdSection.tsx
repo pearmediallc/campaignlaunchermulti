@@ -917,7 +917,7 @@ const AdSection: React.FC = () => {
                               }}
                               startIcon={<CloudUpload />}
                             >
-                              {field.value?.length > 0
+                              {field.value && field.value.length > 0
                                 ? `${field.value.length} file(s) selected - Click to add more`
                                 : 'Click to upload images/videos'}
                               <input
@@ -945,7 +945,7 @@ const AdSection: React.FC = () => {
                             </Button>
 
                             {/* Display selected files */}
-                            {field.value?.length > 0 && (
+                            {field.value && field.value.length > 0 && (
                               <Box sx={{ mt: 2 }}>
                                 <Typography variant="body2" sx={{ mb: 1 }}>
                                   Selected Media: {field.value.length}/10
