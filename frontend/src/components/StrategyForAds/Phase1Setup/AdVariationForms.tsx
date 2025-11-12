@@ -184,8 +184,6 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
                   }
                 }}
                 onChange={(updated) => handleVariationUpdate(index, updated)}
-                allowDynamicText={true} // Allow dynamic text since each variation creates a new ad
-                adSetLabel={`Ad Set ${variation.adSetIndex + 1}`}
               />
             </Box>
           )}
