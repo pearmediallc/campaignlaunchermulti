@@ -110,6 +110,9 @@ export interface StrategyForAdsFormData {
   primaryTextVariations?: string[];
   headlineVariations?: string[];
 
+  // Dynamic Creative (Multiple Media)
+  dynamicCreativeEnabled?: boolean;
+
   // Media fields
   mediaType?: 'single_image' | 'single_video' | 'carousel';
   mediaFiles?: File[];

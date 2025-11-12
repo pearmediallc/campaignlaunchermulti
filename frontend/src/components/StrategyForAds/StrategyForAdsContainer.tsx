@@ -164,6 +164,9 @@ const StrategyForAdsContainer: React.FC = () => {
         primaryTextVariations: data.primaryTextVariations || [],
         headlineVariations: data.headlineVariations || [],
 
+        // Dynamic Creative (Multiple Media)
+        dynamicCreativeEnabled: data.dynamicCreativeEnabled || false,
+
         // Media data
         mediaType: data.mediaType,
         mediaFiles: data.mediaFiles,

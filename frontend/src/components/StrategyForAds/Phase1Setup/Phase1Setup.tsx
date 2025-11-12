@@ -89,6 +89,9 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
     primaryTextVariations: [],
     headlineVariations: [],
 
+    // Dynamic Creative (Multiple Media)
+    dynamicCreativeEnabled: false,
+
     // Enhanced Targeting
     targeting: {
       locations: {
