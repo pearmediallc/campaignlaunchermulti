@@ -166,6 +166,7 @@ const StrategyForAdsContainer: React.FC = () => {
 
         // Dynamic Creative (Multiple Media)
         dynamicCreativeEnabled: data.dynamicCreativeEnabled || false,
+        dynamicMediaFiles: data.dynamicMediaFiles || [], // Add dynamicMediaFiles for Dynamic Creative
 
         // Media data
         mediaType: data.mediaType,
@@ -373,6 +374,10 @@ const StrategyForAdsContainer: React.FC = () => {
       workingCampaignData.dynamicTextEnabled = data.dynamicTextEnabled || false;
       workingCampaignData.primaryTextVariations = data.primaryTextVariations || [];
       workingCampaignData.headlineVariations = data.headlineVariations || [];
+
+      // CRITICAL: Include dynamic creative and media files
+      workingCampaignData.dynamicCreativeEnabled = campaignData.dynamicCreativeEnabled || false;
+      workingCampaignData.dynamicMediaFiles = campaignData.dynamicMediaFiles || [];
 
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {

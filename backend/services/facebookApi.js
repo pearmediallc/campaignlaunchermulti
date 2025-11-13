@@ -930,13 +930,16 @@ class FacebookAPI {
         }
       }
 
-      // CHECK FOR TEXT VARIATIONS (Facebook's Multiple Text Options)
-      // Text variations work WITHOUT requiring dynamic creative flag
+      // CHECK FOR DYNAMIC CREATIVE (Multiple Media) or TEXT VARIATIONS
       const hasTextVariations = (adData.primaryTextVariations && adData.primaryTextVariations.filter(t => t?.trim()).length > 0) ||
                                (adData.headlineVariations && adData.headlineVariations.filter(h => h?.trim()).length > 0);
 
-      if (hasTextVariations) {
-        console.log('📝 Creating ad with Text Variations (Multiple Text Options)');
+      const hasDynamicMedia = (adData.useDynamicCreative || adData.dynamicImages || adData.dynamicVideos);
+
+      if (hasTextVariations || hasDynamicMedia) {
+        console.log('🎨 Creating ad with Dynamic Creative / Text Variations');
+        console.log('  Has text variations:', hasTextVariations);
+        console.log('  Has dynamic media:', hasDynamicMedia);
 
         // Build arrays including main text + variations
         const primaryTexts = [];
@@ -965,13 +968,13 @@ class FacebookAPI {
         console.log(`  📝 Primary Text Options: ${primaryTexts.length} (main + variations)`);
         console.log(`  📰 Headline Options: ${headlines.length} (main + variations)`);
 
-        // Use Facebook's asset_feed_spec for text variations
+        // Use Facebook's asset_feed_spec for dynamic creative / text variations
         creative.asset_feed_spec = {
           bodies: primaryTexts.map(text => ({ text: text })),
           titles: headlines.map(headline => ({ text: headline })),
           link_urls: [{ website_url: adData.url }],
           call_to_action_types: [adData.callToAction || 'LEARN_MORE'],
-          ad_formats: adData.videoId ? ['SINGLE_VIDEO'] : ['SINGLE_IMAGE'] // Required: specify ad format
+          ad_formats: [] // Will be set based on media type
         };
 
         // Add descriptions if provided
@@ -984,11 +987,25 @@ class FacebookAPI {
           creative.asset_feed_spec.link_urls[0].display_url = adData.displayLink;
         }
 
-        // Add images/videos to asset_feed_spec
-        if (adData.imageHash) {
+        // Handle media for asset_feed_spec
+        if (adData.dynamicImages && adData.dynamicImages.length > 0) {
+          // Multiple images for Dynamic Creative
+          creative.asset_feed_spec.images = adData.dynamicImages.map(hash => ({ hash }));
+          creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
+          console.log(`  📸 Added ${adData.dynamicImages.length} images to Dynamic Creative`);
+        } else if (adData.dynamicVideos && adData.dynamicVideos.length > 0) {
+          // Multiple videos for Dynamic Creative
+          creative.asset_feed_spec.videos = adData.dynamicVideos.map(videoId => ({ video_id: videoId }));
+          creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
+          console.log(`  📹 Added ${adData.dynamicVideos.length} videos to Dynamic Creative`);
+        } else if (adData.imageHash) {
+          // Single image
           creative.asset_feed_spec.images = [{ hash: adData.imageHash }];
+          creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
         } else if (adData.videoId) {
+          // Single video
           creative.asset_feed_spec.videos = [{ video_id: adData.videoId }];
+          creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
         }
 
         // Keep minimal object_story_spec with page_id (required for asset_feed_spec)
@@ -1885,6 +1902,49 @@ class FacebookAPI {
         } catch (error) {
           console.log('⚠️ Carousel upload skipped:', error.message);
         }
+      } else if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
+        // Handle Dynamic Creative multiple media uploads
+        console.log('🎨 Processing Dynamic Creative media...');
+        try {
+          const dynamicImages = [];
+          const dynamicVideos = [];
+
+          for (const mediaPath of campaignData.dynamicCreativeMediaPaths) {
+            const extension = mediaPath.toLowerCase().split('.').pop();
+            const isVideo = ['mp4', 'mov', 'avi', 'wmv', 'flv', 'mkv'].includes(extension);
+
+            if (isVideo) {
+              console.log(`  📹 Uploading video: ${mediaPath}`);
+              const videoId = await this.uploadVideo(mediaPath);
+              if (videoId) {
+                dynamicVideos.push(videoId);
+                console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+              }
+            } else {
+              console.log(`  📸 Uploading image: ${mediaPath}`);
+              const imageHash = await this.uploadImage(mediaPath);
+              if (imageHash) {
+                dynamicImages.push(imageHash);
+                console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+              }
+            }
+          }
+
+          // Store all uploaded media for Dynamic Creative
+          if (dynamicImages.length > 0) {
+            mediaAssets.dynamicImages = dynamicImages;
+            console.log(`✅ Dynamic Creative: ${dynamicImages.length} images uploaded`);
+          }
+          if (dynamicVideos.length > 0) {
+            mediaAssets.dynamicVideos = dynamicVideos;
+            console.log(`✅ Dynamic Creative: ${dynamicVideos.length} videos uploaded`);
+          }
+
+          // If we have dynamic media, we should use asset_feed_spec format
+          mediaAssets.useDynamicCreative = true;
+        } catch (error) {
+          console.log('⚠️ Dynamic Creative media upload skipped:', error.message);
+        }
       } else {
         console.log('📷 No media provided, creating ad without media');
       }
@@ -1903,6 +1963,10 @@ class FacebookAPI {
         mediaType: campaignData.mediaType || 'single_image',
         publishDirectly: campaignData.publishDirectly,
         editorName: campaignData.editorName, // Pass editor name for ad naming
+        // Pass dynamic text variations
+        dynamicTextEnabled: campaignData.dynamicTextEnabled,
+        primaryTextVariations: campaignData.primaryTextVariations,
+        headlineVariations: campaignData.headlineVariations,
         ...mediaAssets
       });
 
@@ -2424,20 +2488,36 @@ class FacebookAPI {
           const newAdSetId = newAdSetIds[i];
 
           // Check if this ad set should have variations (Strategy for Ads)
+          console.log(`\n🔍 DEBUG - Checking variations for Ad Set ${i + 1}:`);
+          console.log('  adVariationConfig:', adVariationConfig ? 'EXISTS' : 'NULL');
+          console.log('  selectedAdSetIndices:', adVariationConfig?.selectedAdSetIndices);
+          console.log('  Current index i:', i);
+          console.log('  Is index selected?:', adVariationConfig?.selectedAdSetIndices?.includes(i));
+          console.log('  Number of variations:', adVariationConfig?.variations?.length || 0);
+
           const hasVariations = adVariationConfig &&
                                 adVariationConfig.selectedAdSetIndices &&
                                 adVariationConfig.selectedAdSetIndices.includes(i);
 
-          if (hasVariations && adVariationConfig.variations && adVariationConfig.variations.length > 0) {
-            // Find the variation for this specific ad set
-            // Each variation now has an adSetIndex property that matches the selected index
-            const variationForThisAdSet = adVariationConfig.variations.find(v => v.adSetIndex === i);
+          // Check if we have a specific variation for this ad set
+          const variationForThisAdSet = hasVariations && adVariationConfig.variations ?
+            adVariationConfig.variations.find(v => v.adSetIndex === i) : null;
 
-            if (!variationForThisAdSet) {
-              console.warn(`⚠️ No variation found for ad set index ${i}, using original ad`);
-              // Fall through to else block to use original ad
-            } else {
+          if (variationForThisAdSet) {
+            // We have a variation for this specific ad set
+            console.log(`  🔎 Found variation for ad set index ${i}`);
+            console.log('  Available variations:', adVariationConfig.variations.map(v => ({
+              adSetIndex: v.adSetIndex,
+              hasContent: !!(v.primaryText || v.headline),
+              useOriginal: v.useOriginal
+            })));
               console.log(`🎨 Creating unique ad for AdSet ${i + 1} (${newAdSetId}) with its specific variation...`);
+              console.log('  Variation content:', {
+                primaryText: variationForThisAdSet.primaryText ? 'SET' : 'NOT SET',
+                headline: variationForThisAdSet.headline ? 'SET' : 'NOT SET',
+                useOriginal: variationForThisAdSet.useOriginal,
+                hasMediaUpload: !!(variationForThisAdSet.imageHash || variationForThisAdSet.videoId)
+              });
 
               // Log if this ad set has dynamic creative enabled (important for debugging)
               if (isAdSetDynamicCreative) {
@@ -2455,7 +2535,7 @@ class FacebookAPI {
                                        variation.headlineVariations?.length > 0;
 
                 if (hasDynamicTexts) {
-                  console.log(`  🎨 Variation ${v + 1} has Dynamic Text Variations ENABLED`);
+                  console.log(`  🎨 Variation for Ad Set ${i + 1} has Dynamic Text Variations ENABLED`);
                   console.log(`    📝 Primary Text Variations: ${variation.primaryTextVariations.filter(t => t?.trim()).length}`);
                   console.log(`    📰 Headline Variations: ${variation.headlineVariations.filter(h => h?.trim()).length}`);
                 }
@@ -2465,7 +2545,7 @@ class FacebookAPI {
 
                 // CRITICAL: If ad set is dynamic creative, MUST use asset_feed_spec
                 if (isAdSetDynamicCreative) {
-                  console.log(`  🎨 Ad set is DYNAMIC - building asset_feed_spec for variation ${v + 1}...`);
+                  console.log(`  🎨 Ad set is DYNAMIC - building asset_feed_spec for variation...`);
 
                   // Determine text values to use
                   let primaryTexts, headlines;
@@ -2476,6 +2556,9 @@ class FacebookAPI {
                     headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
                   } else if (variation.primaryText || variation.headline) {
                     // Variation has simple text values - wrap them in arrays
+                    console.log(`  📝 Using variation's simple text values...`);
+                    console.log(`    Primary: "${variation.primaryText || 'FALLBACK TO FORM DATA'}"`);
+                    console.log(`    Headline: "${variation.headline || 'FALLBACK TO FORM DATA'}"`);
                     primaryTexts = variation.primaryText ? [variation.primaryText] : [formData.primaryText];
                     headlines = variation.headline ? [variation.headline] : [formData.headline];
                   } else {
@@ -2517,11 +2600,11 @@ class FacebookAPI {
                     creative.asset_feed_spec.images = [{ hash: formData.imageHash }];
                     console.log(`  ✅ Added image hash from formData to asset_feed_spec: ${formData.imageHash}`);
                   } else {
-                    console.error(`  ❌ No image hash available for variation ${v + 1}`);
+                    console.error(`  ❌ No image hash available for variation for Ad Set ${i + 1}`);
                     throw new Error('No image hash available for dynamic creative ad');
                   }
 
-                  console.log(`  ✅ Dynamic creative variation ${v + 1} configured with asset_feed_spec`);
+                  console.log(`  ✅ Dynamic creative variation for Ad Set ${i + 1} configured with asset_feed_spec`);
                   console.log(`    Bodies: ${creative.asset_feed_spec.bodies.length}, Titles: ${creative.asset_feed_spec.titles.length}`);
                 } else if (hasDynamicTexts) {
                   // Non-dynamic ad set BUT variation has text variations - use asset_feed_spec
@@ -2583,7 +2666,7 @@ class FacebookAPI {
                 // Check if variation has uploaded media, otherwise use original ad media
                 if (variation.videoId || variation.videoHash) {
                   // USER UPLOADED VIDEO - use it
-                  console.log(`  📹 Creating video ad variation ${v + 1} with UPLOADED video`);
+                  console.log(`  📹 Creating video ad variation for Ad Set ${i + 1} with UPLOADED video`);
 
                   // Fetch thumbnail for the uploaded video (required by Facebook)
                   const uploadedVideoId = variation.videoId || variation.videoHash;
@@ -2615,7 +2698,10 @@ class FacebookAPI {
                   console.log(`  ✅ Added video thumbnail to ad variation: ${thumbnailUrl}`);
                 } else if (variation.imageHash) {
                   // USER UPLOADED IMAGE - use it
-                  console.log(`  📸 Creating image ad variation ${v + 1} with UPLOADED image`);
+                  console.log(`  📸 Creating image ad variation for Ad Set ${i + 1} with UPLOADED image`);
+                  console.log(`  📝 Setting link_data text content...`);
+                  console.log(`    Primary: "${variation.primaryText || formData.primaryText}"`);
+                  console.log(`    Headline: "${variation.headline || formData.headline}"`);
                   objectStorySpec.link_data = {
                     message: variation.primaryText || formData.primaryText,
                     name: variation.headline || formData.headline,
@@ -2633,7 +2719,7 @@ class FacebookAPI {
                   }
                 } else if (originalCreativeData?.video_data) {
                   // NO UPLOAD - use ORIGINAL video
-                  console.log(`  📹 Creating video ad variation ${v + 1} with ORIGINAL video_id: ${originalCreativeData.video_data.video_id}`);
+                  console.log(`  📹 Creating video ad variation for Ad Set ${i + 1} with ORIGINAL video_id: ${originalCreativeData.video_data.video_id}`);
 
                   // Note: Facebook doesn't support displayLink (caption) for videos in link_data
                   // Always use video_data for videos, ignoring displayLink field
@@ -2658,7 +2744,10 @@ class FacebookAPI {
                   };
                 } else if (originalCreativeData?.link_data) {
                   // NO UPLOAD - use ORIGINAL image
-                  console.log(`  📸 Creating image ad variation ${v + 1} with ORIGINAL image`);
+                  console.log(`  📸 Creating image ad variation for Ad Set ${i + 1} with ORIGINAL image`);
+                  console.log(`  📝 Setting link_data text content...`);
+                  console.log(`    Primary: "${variation.primaryText || formData.primaryText}"`);
+                  console.log(`    Headline: "${variation.headline || formData.headline}"`);
                   objectStorySpec.link_data = {
                     message: variation.primaryText || formData.primaryText,
                     name: variation.headline || formData.headline,
@@ -2677,6 +2766,9 @@ class FacebookAPI {
                 } else {
                   // Fallback to link_data if no creative data found
                   console.warn(`  ⚠️ No original creative data found, using link_data fallback`);
+                  console.log(`  📝 Setting link_data text content...`);
+                  console.log(`    Primary: "${variation.primaryText || formData.primaryText}"`);
+                  console.log(`    Headline: "${variation.headline || formData.headline}"`);
                   objectStorySpec.link_data = {
                     message: variation.primaryText || formData.primaryText,
                     name: variation.headline || formData.headline,
@@ -2690,7 +2782,7 @@ class FacebookAPI {
 
                   // Build standard creative with object_story_spec
                   creative = {
-                    name: `Ad Variation ${v + 1}`,
+                    name: `Ad Variation for Ad Set ${i + 1}`,
                     object_story_spec: objectStorySpec
                   };
                 } // End of else block for non-dynamic variations
@@ -2711,16 +2803,16 @@ class FacebookAPI {
 
                 let variationAdName;
                 if (variationEditorName) {
-                  variationAdName = `${formData.campaignName} - Ad Set ${i + 1} - Variation ${v + 1} - ${dateStr} - ${variationEditorName.toUpperCase()}`;
-                  console.log(`✅ Variation ${v + 1} AD NAME WITH EDITOR: "${variationAdName}"`);
+                  variationAdName = `${formData.campaignName} - Ad Set ${i + 1} - Variation - ${dateStr} - ${variationEditorName.toUpperCase()}`;
+                  console.log(`✅ Variation AD NAME WITH EDITOR: "${variationAdName}"`);
                 } else {
-                  variationAdName = `${formData.campaignName} - Ad Set ${i + 1} - Variation ${v + 1} - ${dateStr}`;
-                  console.log(`⚠️  Variation ${v + 1} AD NAME WITHOUT EDITOR: "${variationAdName}"`);
+                  variationAdName = `${formData.campaignName} - Ad Set ${i + 1} - Variation - ${dateStr}`;
+                  console.log(`⚠️  Variation AD NAME WITHOUT EDITOR: "${variationAdName}"`);
                 }
                 console.log('================================================\n');
 
                 // Update creative name with date and editor
-                creative.name = `Ad Variation ${v + 1} - ${dateStr}${variationEditorName ? ' - ' + variationEditorName.toUpperCase() : ''}`;
+                creative.name = `Ad Variation - ${dateStr}${variationEditorName ? ' - ' + variationEditorName.toUpperCase() : ''}`;
 
                 // Create ad with variation content
                 const variationAdData = {
@@ -2771,7 +2863,6 @@ class FacebookAPI {
                   }))
                 });
               }
-            }
           } else {
             // Standard duplication: Create single ad
             let adCreated = false;

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
 const { body, validationResult } = require('express-validator');
 const FacebookAPI = require('../services/facebookApi');
 const ResourceHelper = require('../services/ResourceHelper');
@@ -486,10 +487,22 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     });
 
     // Handle media files - uploadSingle uses .any() so files are in req.files array
+    let dynamicCreativeMediaPaths = [];
+
     if (req.files && req.files.length > 0) {
       console.log(`📸 Files detected: ${req.files.length} file(s)`);
 
-      if (req.body.mediaType === 'single_image') {
+      // Check if Dynamic Creative is enabled (multiple media)
+      const isDynamicCreative = req.body.dynamicCreativeEnabled === 'true' || req.body.dynamicCreativeEnabled === true;
+
+      if (isDynamicCreative && req.files.length > 1) {
+        // Dynamic Creative with multiple media files
+        dynamicCreativeMediaPaths = req.files.map(file => file.path);
+        console.log('🎨 Dynamic Creative media detected:', dynamicCreativeMediaPaths.length, 'files');
+        console.log('  Files:', dynamicCreativeMediaPaths.map(p => path.basename(p)).join(', '));
+        // Set the first file as mediaPath for fallback
+        mediaPath = req.files[0].path;
+      } else if (req.body.mediaType === 'single_image') {
         mediaPath = req.files[0].path;
         console.log('✅ Single image detected:', mediaPath);
       } else if (req.body.mediaType === 'carousel') {
@@ -607,12 +620,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
       // Dynamic Creative (Multiple Media)
       dynamicCreativeEnabled: req.body.dynamicCreativeEnabled === 'true' || req.body.dynamicCreativeEnabled === true,
+      dynamicCreativeMediaPaths: dynamicCreativeMediaPaths.length > 0 ? dynamicCreativeMediaPaths : null,
 
       // Media specifications
       mediaType: req.body.mediaType,  // Required - user must select
       mediaSpecs: req.body.mediaSpecs,
-      imagePath: req.body.mediaType === 'single_image' ? mediaPath : null,
-      videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') ? mediaPath : null,
+      imagePath: req.body.mediaType === 'single_image' && !dynamicCreativeMediaPaths.length ? mediaPath : null,
+      videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') && !dynamicCreativeMediaPaths.length ? mediaPath : null,
       imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
       editorName: req.body.editorName,  // Editor name from Creative Library for ad naming
 
