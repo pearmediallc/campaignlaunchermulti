@@ -1862,6 +1862,12 @@ class FacebookAPI {
       let mediaAssets = {};
 
       // PRIORITY 1: Check for Dynamic Creative media FIRST
+      console.log('🔍 DEBUG - Media Upload Check:');
+      console.log('  dynamicCreativeEnabled:', campaignData.dynamicCreativeEnabled);
+      console.log('  dynamicCreativeMediaPaths:', campaignData.dynamicCreativeMediaPaths);
+      console.log('  Has paths:', !!campaignData.dynamicCreativeMediaPaths);
+      console.log('  Path count:', campaignData.dynamicCreativeMediaPaths?.length || 0);
+
       if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
         // Handle Dynamic Creative multiple media uploads
         console.log('🎨 Processing Dynamic Creative media...');

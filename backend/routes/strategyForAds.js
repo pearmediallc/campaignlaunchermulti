@@ -714,6 +714,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Media Type:', campaignData.mediaType);
     console.log('  Has Image:', !!campaignData.imagePath);
     console.log('  Has Video:', !!campaignData.videoPath);
+    console.log('  Has Dynamic Creative Media:', !!campaignData.dynamicCreativeMediaPaths);
+    console.log('  Dynamic Creative Media Paths:', campaignData.dynamicCreativeMediaPaths || 'Not set');
     console.log('  Video Path:', campaignData.videoPath || 'Not set');
     console.log('  Attribution Setting:', campaignData.attributionSetting || 'Not set');
     console.log('  Attribution Window:', JSON.stringify(campaignData.attributionWindow) || 'Not set');
