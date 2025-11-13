@@ -162,14 +162,28 @@ class FacebookAPI {
         access_token: this.accessToken
       };
 
+      // DEBUG: Log exactly what we have in adSetData
+      console.log('\n🔍 DEBUG - Checking dynamic creative conditions:');
+      console.log('  adSetData.dynamicCreativeEnabled:', adSetData.dynamicCreativeEnabled);
+      console.log('  adSetData.dynamicTextEnabled:', adSetData.dynamicTextEnabled);
+      console.log('  adSetData.primaryTextVariations:', adSetData.primaryTextVariations);
+      console.log('  adSetData.headlineVariations:', adSetData.headlineVariations);
+      console.log('  Has primaryTextVariations?', adSetData.primaryTextVariations && adSetData.primaryTextVariations.length > 0);
+      console.log('  Has headlineVariations?', adSetData.headlineVariations && adSetData.headlineVariations.length > 0);
+
       // IMPORTANT: Text variations with asset_feed_spec REQUIRE is_dynamic_creative flag
       // Even though Facebook's UI doesn't show it as "Dynamic Creative", the API requires this flag
       // when using asset_feed_spec format (which is needed for text variations)
-      if (adSetData.dynamicCreativeEnabled ||
+      const shouldEnableDynamicCreative = adSetData.dynamicCreativeEnabled ||
           (adSetData.dynamicTextEnabled &&
            ((adSetData.primaryTextVariations && adSetData.primaryTextVariations.length > 0) ||
-            (adSetData.headlineVariations && adSetData.headlineVariations.length > 0)))) {
+            (adSetData.headlineVariations && adSetData.headlineVariations.length > 0)));
+
+      console.log('  DECISION: shouldEnableDynamicCreative =', shouldEnableDynamicCreative);
+
+      if (shouldEnableDynamicCreative) {
         params.is_dynamic_creative = true;
+        console.log('  ✅ SETTING params.is_dynamic_creative = true');
 
         if (adSetData.dynamicCreativeEnabled) {
           console.log('🎨 Dynamic Creative enabled - Setting is_dynamic_creative=true on ad set');
@@ -179,6 +193,8 @@ class FacebookAPI {
           console.log('   ℹ️  Facebook API requires this flag when using asset_feed_spec for text variations');
           console.log('   ℹ️  This is a Facebook API requirement, not visible in the UI');
         }
+      } else {
+        console.log('  ❌ NOT setting is_dynamic_creative (conditions not met)');
       }
 
       // Only add promoted_object if we have valid data
@@ -557,6 +573,7 @@ class FacebookAPI {
       }
 
       console.log('\n📤 Sending AdSet Creation Request...');
+      console.log('🔍 FINAL CHECK - is_dynamic_creative in params?', params.is_dynamic_creative);
       console.log('📦 Final params being sent:', JSON.stringify({
         ...(params || {}),
         access_token: '[HIDDEN]',
