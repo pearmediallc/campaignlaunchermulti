@@ -1493,6 +1493,11 @@ class FacebookAPI {
         performanceGoal: campaignData.performanceGoal, // Pass performance goal
         bidStrategy: campaignData.bidStrategy, // Pass bid strategy
         attributionSetting: campaignData.attributionSetting, // Pass attribution setting from user
+        // CRITICAL: Pass dynamic creative and text variation flags
+        dynamicTextEnabled: campaignData.dynamicTextEnabled,
+        dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+        primaryTextVariations: campaignData.primaryTextVariations,
+        headlineVariations: campaignData.headlineVariations,
         attributionWindow: campaignData.attributionWindow, // Pass attribution window from user
         schedule: campaignData.schedule,
         targeting: campaignData.targeting,
@@ -1778,6 +1783,11 @@ class FacebookAPI {
         targeting: campaignData.targeting,
         placementType: campaignData.placementType,
         placements: campaignData.placements,
+        // CRITICAL: Pass dynamic creative and text variation flags
+        dynamicTextEnabled: campaignData.dynamicTextEnabled,
+        dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+        primaryTextVariations: campaignData.primaryTextVariations,
+        headlineVariations: campaignData.headlineVariations,
         schedule: campaignData.schedule,
         performanceGoal: campaignData.performanceGoal,
         conversionEvent: campaignData.conversionEvent,
