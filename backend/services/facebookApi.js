@@ -2294,11 +2294,13 @@ class FacebookAPI {
         console.log(`⚠️ Using fallback account ID: ${campaignAccountId}`);
       }
 
-      // Fetch original ad's creative data for variations (needed for video/image assets)
+      // Fetch original ad's creative data for variations AND Dynamic Creative (needed for video/image assets)
       let originalCreativeData = null;
       let originalImageHash = null;
-      if (adVariationConfig && adVariationConfig.selectedAdSetIndices && adVariationConfig.selectedAdSetIndices.length > 0) {
-        console.log('🎨 Fetching original ad creative data for variations...');
+      let originalDynamicMediaAssets = null; // Store all Dynamic Creative media
+
+      // Always fetch creative data - we need it for variations OR Dynamic Creative
+      console.log('🎨 Fetching original ad creative data...');
         try {
           const adsResponse = await axios.get(
             `${this.baseURL}/${originalAdSetId}/ads`,
@@ -2322,7 +2324,27 @@ class FacebookAPI {
               originalImageHash = creativeData.asset_feed_spec.images[0].hash;
             }
 
-            // Also check for videos in asset_feed_spec (for Dynamic Creative)
+            // Check for Dynamic Creative with multiple media assets
+            if (creativeData.asset_feed_spec) {
+              originalDynamicMediaAssets = {
+                images: creativeData.asset_feed_spec.images || [],
+                videos: creativeData.asset_feed_spec.videos || [],
+                bodies: creativeData.asset_feed_spec.bodies || [],
+                titles: creativeData.asset_feed_spec.titles || [],
+                descriptions: creativeData.asset_feed_spec.descriptions || [],
+                link_urls: creativeData.asset_feed_spec.link_urls || [],
+                call_to_action_types: creativeData.asset_feed_spec.call_to_action_types || []
+              };
+
+              console.log('🎨 Found Dynamic Creative assets:', {
+                imageCount: originalDynamicMediaAssets.images.length,
+                videoCount: originalDynamicMediaAssets.videos.length,
+                textVariations: originalDynamicMediaAssets.bodies.length,
+                headlineVariations: originalDynamicMediaAssets.titles.length
+              });
+            }
+
+            // Also check for single video/image (non-Dynamic Creative)
             let originalVideoId = null;
             if (creativeData.video_id) {
               originalVideoId = creativeData.video_id;
@@ -2343,7 +2365,9 @@ class FacebookAPI {
               hasLinkData: !!originalCreativeData?.link_data,
               videoId: originalVideoId || 'N/A',
               imageHash: originalImageHash || 'N/A',
-              hasDynamicVideos: !!creativeData.asset_feed_spec?.videos
+              hasDynamicCreative: !!originalDynamicMediaAssets,
+              dynamicImageCount: originalDynamicMediaAssets?.images?.length || 0,
+              dynamicVideoCount: originalDynamicMediaAssets?.videos?.length || 0
             });
           }
         } catch (error) {
@@ -3028,8 +3052,34 @@ class FacebookAPI {
                 creative.asset_feed_spec.descriptions = [{ text: formData.description }];
               }
 
-              // Add media - check for video first, then image
-              if (originalCreativeData?.video_data?.video_id) {
+              // Add media - check for Dynamic Creative first (multiple media)
+              if (originalDynamicMediaAssets && (originalDynamicMediaAssets.images.length > 0 || originalDynamicMediaAssets.videos.length > 0)) {
+                // Dynamic Creative with multiple media assets
+                console.log(`  🎨 Using Dynamic Creative media assets from original ad`);
+
+                // Add all images
+                if (originalDynamicMediaAssets.images.length > 0) {
+                  creative.asset_feed_spec.images = originalDynamicMediaAssets.images;
+                  console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} images to Dynamic Creative`);
+                }
+
+                // Add all videos
+                if (originalDynamicMediaAssets.videos.length > 0) {
+                  creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos;
+                  console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} videos to Dynamic Creative`);
+                }
+
+                // Dynamic Creative can have mixed media
+                if (originalDynamicMediaAssets.videos.length > 0 && originalDynamicMediaAssets.images.length > 0) {
+                  adFormat = 'AUTOMATIC_FORMAT';
+                } else if (originalDynamicMediaAssets.videos.length > 0) {
+                  adFormat = 'SINGLE_VIDEO';
+                } else {
+                  adFormat = 'SINGLE_IMAGE';
+                }
+                hasMedia = true;
+              } else if (originalCreativeData?.video_data?.video_id) {
+                // Single video
                 creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
                 adFormat = 'SINGLE_VIDEO';
                 hasMedia = true;
