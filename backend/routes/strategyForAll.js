@@ -991,7 +991,8 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       formData,
       count = 49,
       duplicateBudgets = [], // Array of custom budgets for each duplicate
-      adVariationConfig = null // Ad variation config for Strategy for Ads
+      adVariationConfig = null, // Ad variation config for Strategy for Ads
+      editorName = null // Editor name from Creative Library for ad naming
     } = req.body;
 
     if (!campaignId || !originalAdSetId) {
@@ -1042,7 +1043,8 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       count,
       formData,
       userId: req.user.id,
-      adVariationConfig // Pass ad variation config for Strategy for Ads
+      adVariationConfig, // Pass ad variation config for Strategy for Ads
+      editorName // Pass editor name for ad naming convention
     };
 
     // If custom budgets provided, use them; otherwise default to $1 for each

@@ -124,6 +124,8 @@ export interface StrategyForAdsFormData {
   // Creative Library integration
   editorName?: string; // Editor name when files selected from Creative Library
   fromLibrary?: boolean; // Flag to indicate files came from Creative Library
+  dynamicEditorName?: string; // Editor name for Dynamic Creative from Creative Library
+  dynamicFromLibrary?: boolean; // Flag to indicate Dynamic Creative files came from Creative Library
 
   // Media Specifications
   mediaSpecs?: {

@@ -24,8 +24,12 @@ class Strategy150DuplicationService {
 
   /**
    * Duplicate campaign using the exact same pattern as 1-50-1 strategy
+   * @param {string} campaignId - The ID of the campaign to duplicate
+   * @param {string} newName - The name for the new campaign(s)
+   * @param {number} copies - Number of copies to create
+   * @param {string} editorName - Optional editor name for ad naming convention
    */
-  async duplicateCampaign(campaignId, newName, copies = 1) {
+  async duplicateCampaign(campaignId, newName, copies = 1, editorName = null) {
     console.log(`🚀 Starting 1-50-1 based duplication for campaign ${campaignId}`);
     console.log(`📊 Creating ${copies} copies using proven working pattern`);
 
@@ -53,7 +57,7 @@ class Strategy150DuplicationService {
 
         console.log(`🔄 Creating copy ${copyIndex + 1}/${copies}: "${copyName}"`);
 
-        const copyResult = await this.createCampaignCopy(campaignData, copyName, postId);
+        const copyResult = await this.createCampaignCopy(campaignData, copyName, postId, editorName);
 
         // Add original campaign info to result for error reporting
         copyResult.originalCampaignId = campaignId;
@@ -178,7 +182,7 @@ class Strategy150DuplicationService {
   /**
    * Create campaign copy using the exact same structure as 1-50-1
    */
-  async createCampaignCopy(originalCampaign, newName, postId) {
+  async createCampaignCopy(originalCampaign, newName, postId, editorName = null) {
     console.log(`📋 Creating campaign copy using 1-50-1 structure...`);
 
     const errors = [];
@@ -198,14 +202,14 @@ class Strategy150DuplicationService {
       console.log(`📊 Campaign uses CBO: ${usesCBO}`);
 
       // Step 4: Create 50 ad sets using 1-50-1 pattern with original promoted_object
-      const adSetResult = await this.create50AdSets(newCampaign.id, postId, originalAdSetConfig, usesCBO);
+      const adSetResult = await this.create50AdSets(newCampaign.id, postId, originalAdSetConfig, usesCBO, newName);
       adSets = adSetResult.adSets;
       if (adSetResult.errors && adSetResult.errors.length > 0) {
         errors.push(...adSetResult.errors);
       }
 
       // Step 5: Create ads in each ad set using 1-50-1 pattern
-      const adsResult = await this.createAdsInAdSets(adSets, postId);
+      const adsResult = await this.createAdsInAdSets(adSets, postId, newName, editorName);
       ads = adsResult.ads;
       if (adsResult.errors && adsResult.errors.length > 0) {
         errors.push(...adsResult.errors);
@@ -281,7 +285,7 @@ class Strategy150DuplicationService {
   /**
    * Create 50 ad sets using sequential API calls (proven to work)
    */
-  async create50AdSets(campaignId, postId, originalAdSetConfig, usesCBO) {
+  async create50AdSets(campaignId, postId, originalAdSetConfig, usesCBO, campaignName) {
     console.log(`📋 Creating 50 ad sets using sequential API calls...`);
     console.log(`💰 Budget configuration: ${usesCBO ? 'Campaign-level (CBO)' : 'Ad Set-level'}`);
 
@@ -292,7 +296,7 @@ class Strategy150DuplicationService {
     // Create ad sets sequentially with delays to avoid rate limits
     for (let i = 1; i <= 50; i++) {
       const adSetData = {
-        name: `AdSet ${i}`,
+        name: `[Launcher] ${campaignName} - AdSet ${i}`,
         campaign_id: campaignId,
         status: 'ACTIVE',
         billing_event: originalAdSetConfig?.billing_event || 'IMPRESSIONS',
@@ -376,7 +380,7 @@ class Strategy150DuplicationService {
   /**
    * Create ads in ad sets using sequential API calls (proven to work)
    */
-  async createAdsInAdSets(adSets, postId) {
+  async createAdsInAdSets(adSets, postId, campaignName, editorName = null) {
     console.log(`📋 Creating ads using sequential API calls...`);
     console.log(`📍 Using existing post ID: ${postId}`);
 
@@ -384,12 +388,24 @@ class Strategy150DuplicationService {
     const errors = [];
     let failedCount = 0;
 
+    // Generate date string for ad naming
+    const now = new Date();
+    const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
     // Create one ad per ad set sequentially
     for (let i = 0; i < adSets.length; i++) {
       const adSet = adSets[i];
 
+      // Generate ad name with proper naming convention
+      let adName;
+      if (editorName) {
+        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr} - ${editorName.toUpperCase()}`;
+      } else {
+        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr}`;
+      }
+
       const adData = {
-        name: `Ad ${i + 1}`,
+        name: adName,
         adset_id: adSet.id,
         // Use existing post (same as 1-50-1 working pattern)
         creative: JSON.stringify({

@@ -1036,8 +1036,11 @@ class FacebookAPI {
 
         console.log('🏷️ Generating ad name with date:', dateStr);
 
-        if (adData.editorName) {
-          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr} - ${adData.editorName.toUpperCase()}`;
+        // For Dynamic Creative ads, prioritize dynamicEditorName over regular editorName
+        const editorToUse = adData.dynamicEditorName || adData.editorName;
+
+        if (editorToUse) {
+          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr} - ${editorToUse.toUpperCase()}`;
           console.log('✅ Ad name with editor:', adName);
         } else {
           adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr}`;
@@ -1750,6 +1753,7 @@ class FacebookAPI {
           callToAction: campaignData.callToAction || 'LEARN_MORE',
           mediaType: campaignData.mediaType || 'single_image',
           editorName: campaignData.editorName, // Pass editor name for ad naming
+          dynamicEditorName: campaignData.dynamicEditorName, // Pass dynamic creative editor name for ad naming
           // Dynamic Text Variations (Facebook's Multiple Text Options)
           dynamicTextEnabled: campaignData.dynamicTextEnabled,
           primaryTextVariations: campaignData.primaryTextVariations,
@@ -2091,7 +2095,7 @@ class FacebookAPI {
     }
   }
 
-  async duplicateAdSetsWithExistingPost({ campaignId, originalAdSetId, postId, count, formData, userId, progressCallback, adVariationConfig }) {
+  async duplicateAdSetsWithExistingPost({ campaignId, originalAdSetId, postId, count, formData, userId, progressCallback, adVariationConfig, editorName }) {
     const results = {
       adSets: [],
       errors: []
@@ -2822,17 +2826,20 @@ class FacebookAPI {
             let adCreated = false;
             let lastError = null;
 
-            // Generate ad name with date and editor name if from Creative Library
+            // Generate ad name with date and editor name following Strategy for Ads convention
             const now = new Date();
             const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
 
+            // Use editorName parameter OR formData.editorName as fallback
+            const editorToUse = editorName || formData?.editorName;
+
             let adName;
-            if (formData.fromLibrary && formData.editorName) {
-              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr} - ${formData.editorName.toUpperCase()}`;
-              console.log(`✅ Ad Copy ${i + 1} - Adding date (${dateStr}) and editor name: ${formData.editorName.toUpperCase()}`);
+            if (editorToUse) {
+              adName = `[Launcher] ${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr} - ${editorToUse.toUpperCase()}`;
+              console.log(`✅ Ad Copy ${i + 1} - Using [Launcher] prefix with date (${dateStr}) and editor: ${editorToUse.toUpperCase()}`);
             } else {
-              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr}`;
-              console.log(`ℹ️  Ad Copy ${i + 1} - Adding date (${dateStr}) - No editor name (local upload or not from library)`);
+              adName = `[Launcher] ${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr}`;
+              console.log(`ℹ️  Ad Copy ${i + 1} - Using [Launcher] prefix with date (${dateStr}) - No editor name`);
             }
 
             // Check if we need to use asset_feed_spec (for dynamic creative OR text variations)
@@ -4123,8 +4130,12 @@ class FacebookAPI {
    * Duplicate campaign using Strategy 1-50-1 based approach
    * This follows the EXACT same pattern as the working 1-50-1 strategy
    * to ensure consistent and reliable duplication without page_id errors
+   * @param {string} campaignId - The ID of the campaign to duplicate
+   * @param {string} newName - The name for the new campaign(s)
+   * @param {number} numberOfCopies - Number of copies to create
+   * @param {string} editorName - Optional editor name for ad naming convention
    */
-  async duplicateCampaign(campaignId, newName, numberOfCopies = 1) {
+  async duplicateCampaign(campaignId, newName, numberOfCopies = 1, editorName = null) {
     try {
       console.log(`🎯 Starting 1-50-1 based duplication of campaign ${campaignId}`);
       console.log(`📊 Number of copies requested: ${numberOfCopies}`);
@@ -4145,7 +4156,7 @@ class FacebookAPI {
       );
 
       // Use the new service that follows 1-50-1 pattern exactly
-      const results = await strategy150Service.duplicateCampaign(campaignId, newName, numberOfCopies);
+      const results = await strategy150Service.duplicateCampaign(campaignId, newName, numberOfCopies, editorName);
 
       console.log(`✅ 1-50-1 based duplication complete!`);
 

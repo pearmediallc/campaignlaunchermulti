@@ -86,7 +86,9 @@ const AdSection: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [carouselCards, setCarouselCards] = useState<any[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [showDynamicLibraryModal, setShowDynamicLibraryModal] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
+  const [dynamicEditorName, setDynamicEditorName] = useState<string>('');
   const [enableDynamicVariations, setEnableDynamicVariations] = useState(false);
   const [primaryTextVariations, setPrimaryTextVariations] = useState<string[]>(['']);
   const [headlineVariations, setHeadlineVariations] = useState<string[]>(['']);
@@ -228,6 +230,33 @@ const AdSection: React.FC = () => {
       setValue('images', files);
       console.log('🎠 Carousel images set:', files.map(f => f.name).join(', '));
     }
+  };
+
+  const handleDynamicLibrarySelect = (files: File[], editorName: string) => {
+    console.log('🎨 Dynamic Creative files selected from library:', files.length);
+    console.log('📦 File details:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
+    console.log('👤 Editor:', editorName);
+
+    setDynamicEditorName(editorName);
+
+    // Store dynamic creative editor name for backend
+    setValue('dynamicEditorName', editorName);
+    setValue('dynamicFromLibrary', true); // Flag to indicate dynamic files are from library
+    console.log('✅ Dynamic Creative editor name stored:', editorName);
+
+    // Add to dynamic media files
+    const currentDynamicFiles = watch('dynamicMediaFiles') || [];
+    const newFiles = [...currentDynamicFiles, ...files];
+
+    // Limit to 10 files
+    if (newFiles.length > 10) {
+      alert('Maximum 10 files allowed for Dynamic Creative');
+      setValue('dynamicMediaFiles', newFiles.slice(0, 10));
+    } else {
+      setValue('dynamicMediaFiles', newFiles);
+    }
+
+    setShowDynamicLibraryModal(false);
   };
 
   const removeMediaFile = (index: number) => {
@@ -902,47 +931,73 @@ const AdSection: React.FC = () => {
                         control={control}
                         render={({ field }) => (
                           <Box>
-                            <Button
-                              variant="outlined"
-                              component="label"
-                              fullWidth
-                              sx={{
-                                py: 2,
-                                border: '2px dashed',
-                                borderColor: 'primary.main',
-                                '&:hover': {
-                                  borderColor: 'primary.dark',
-                                  bgcolor: 'action.hover'
-                                }
-                              }}
-                              startIcon={<CloudUpload />}
-                            >
-                              {field.value && field.value.length > 0
-                                ? `${field.value.length} file(s) selected - Click to add more`
-                                : 'Click to upload images/videos'}
-                              <input
-                                type="file"
-                                hidden
-                                multiple
-                                accept="image/*,video/*"
-                                onChange={(e) => {
-                                  const files = Array.from(e.target.files || []);
-                                  const currentFiles = field.value || [];
-                                  const newFiles = [...currentFiles, ...files];
-
-                                  // Limit to 10 files
-                                  if (newFiles.length > 10) {
-                                    alert('Maximum 10 files allowed for Dynamic Creative');
-                                    field.onChange(newFiles.slice(0, 10));
-                                  } else {
-                                    field.onChange(newFiles);
+                            {/* Upload Options */}
+                            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                              <Button
+                                variant="outlined"
+                                component="label"
+                                fullWidth
+                                sx={{
+                                  py: 2,
+                                  border: '2px dashed',
+                                  borderColor: 'primary.main',
+                                  '&:hover': {
+                                    borderColor: 'primary.dark',
+                                    bgcolor: 'action.hover'
                                   }
-
-                                  // Reset input to allow re-selecting same files
-                                  e.target.value = '';
                                 }}
-                              />
-                            </Button>
+                                startIcon={<CloudUpload />}
+                              >
+                                Upload from Computer
+                                <input
+                                  type="file"
+                                  hidden
+                                  multiple
+                                  accept="image/*,video/*"
+                                  onChange={(e) => {
+                                    const files = Array.from(e.target.files || []);
+                                    const currentFiles = field.value || [];
+                                    const newFiles = [...currentFiles, ...files];
+
+                                    // Limit to 10 files
+                                    if (newFiles.length > 10) {
+                                      alert('Maximum 10 files allowed for Dynamic Creative');
+                                      field.onChange(newFiles.slice(0, 10));
+                                    } else {
+                                      field.onChange(newFiles);
+                                    }
+
+                                    // Reset input to allow re-selecting same files
+                                    e.target.value = '';
+                                  }}
+                                />
+                              </Button>
+
+                              <Button
+                                variant="outlined"
+                                fullWidth
+                                sx={{
+                                  py: 2,
+                                  border: '2px dashed',
+                                  borderColor: 'secondary.main',
+                                  '&:hover': {
+                                    borderColor: 'secondary.dark',
+                                    bgcolor: 'action.hover'
+                                  }
+                                }}
+                                startIcon={<Image />}
+                                onClick={() => setShowDynamicLibraryModal(true)}
+                              >
+                                Select from Library
+                              </Button>
+                            </Box>
+
+                            {/* Show editor name if files from library */}
+                            {dynamicEditorName && (
+                              <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
+                                Selected from Creative Library: <strong>{dynamicEditorName}</strong>
+                              </Alert>
+                            )}
 
                             {/* Display selected files */}
                             {field.value && field.value.length > 0 && (
@@ -1045,6 +1100,14 @@ const AdSection: React.FC = () => {
         mediaType={mediaType || 'single_image'}
         onSelect={handleLibrarySelect}
         onClose={() => setShowLibraryModal(false)}
+      />
+
+      {/* Dynamic Creative Library Selector Modal */}
+      <LibrarySelector
+        open={showDynamicLibraryModal}
+        mediaType="multiple" // Allow multiple file selection for Dynamic Creative
+        onSelect={handleDynamicLibrarySelect}
+        onClose={() => setShowDynamicLibraryModal(false)}
       />
     </Paper>
   );

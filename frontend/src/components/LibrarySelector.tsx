@@ -25,7 +25,7 @@ import axios from 'axios';
 import { useCreativeLibrary } from '../contexts/CreativeLibraryContext';
 
 interface LibrarySelectorProps {
-  mediaType: 'single_image' | 'single_video' | 'carousel';
+  mediaType: 'single_image' | 'single_video' | 'carousel' | 'multiple';
   onSelect: (files: File[], editorName: string) => void;
   onClose: () => void;
   open: boolean;

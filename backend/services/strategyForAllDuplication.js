@@ -30,7 +30,7 @@ class StrategyForAllDuplicationService {
    * @param {number} adSetCount - Number of ad sets to create (1-49), default 49
    * @param {number} totalBudget - Total budget to distribute across ad sets
    */
-  async duplicateCampaign(campaignId, newName, copies = 1, adSetCount = 49, totalBudget = null) {
+  async duplicateCampaign(campaignId, newName, copies = 1, adSetCount = 49, totalBudget = null, editorName = null) {
     console.log(`🚀 Starting for-all based duplication for campaign ${campaignId}`);
     console.log(`📊 Creating ${copies} copies using proven working pattern`);
     console.log(`📊 Ad sets per campaign: ${adSetCount}`);
@@ -69,7 +69,8 @@ class StrategyForAllDuplicationService {
           copyName,
           postId,
           adSetCount,
-          budgetPerAdSet
+          budgetPerAdSet,
+          editorName
         );
 
         // Add original campaign info to result for error reporting
@@ -199,8 +200,9 @@ class StrategyForAllDuplicationService {
    * @param {string} postId - Post ID to use for ads
    * @param {number} adSetCount - Number of ad sets to create (1-49)
    * @param {number} budgetPerAdSet - Budget per ad set in dollars
+   * @param {string} editorName - Optional editor name for ad naming convention
    */
-  async createCampaignCopy(originalCampaign, newName, postId, adSetCount = 49, budgetPerAdSet = 1) {
+  async createCampaignCopy(originalCampaign, newName, postId, adSetCount = 49, budgetPerAdSet = 1, editorName = null) {
     console.log(`📋 Creating campaign copy using for-all structure...`);
     console.log(`📊 Creating ${adSetCount} ad sets with $${budgetPerAdSet.toFixed(2)} budget each`);
 
@@ -236,7 +238,7 @@ class StrategyForAllDuplicationService {
       }
 
       // Step 5: Create ads in each ad set using for-all pattern
-      const adsResult = await this.createAdsInAdSets(adSets, postId);
+      const adsResult = await this.createAdsInAdSets(adSets, postId, newName, editorName);
       ads = adsResult.ads;
       if (adsResult.errors && adsResult.errors.length > 0) {
         errors.push(...adsResult.errors);
@@ -496,21 +498,38 @@ class StrategyForAllDuplicationService {
 
   /**
    * Create ads in ad sets using sequential API calls with retry logic
+   * @param {array} adSets - Array of ad sets to create ads in
+   * @param {string} postId - Post ID to use for creative
+   * @param {string} campaignName - Campaign name for ad naming convention
+   * @param {string} editorName - Optional editor name for ad naming convention
    */
-  async createAdsInAdSets(adSets, postId) {
+  async createAdsInAdSets(adSets, postId, campaignName, editorName = null) {
     console.log(`📋 Creating ads using sequential API calls...`);
     console.log(`📍 Using existing post ID: ${postId}`);
+    console.log(`📝 Editor name: ${editorName || 'none (local upload)'}`);
 
     const ads = [];
     const errors = [];
     const failedIndices = [];  // Track which ads failed for retry
 
+    // Generate date string for ad naming
+    const now = new Date();
+    const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
+
     // Create one ad per ad set sequentially
     for (let i = 0; i < adSets.length; i++) {
       const adSet = adSets[i];
 
+      // Generate ad name with proper naming convention matching Strategy for Ads
+      let adName;
+      if (editorName) {
+        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr} - ${editorName.toUpperCase()}`;
+      } else {
+        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr}`;
+      }
+
       const adData = {
-        name: `Ad ${i + 1}`,
+        name: adName,
         adset_id: adSet.id,
         // Use existing post (same as for-all working pattern)
         creative: JSON.stringify({

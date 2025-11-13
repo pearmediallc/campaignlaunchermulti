@@ -236,6 +236,13 @@ const validateStrategyForAll = [
     .isLength({ max: 255 })
     .withMessage('Editor name must be 255 characters or less'),
 
+  // Dynamic Creative Library integration - editor name for dynamic creative ads
+  body('dynamicEditorName')
+    .optional()
+    .trim()
+    .isLength({ max: 255 })
+    .withMessage('Dynamic editor name must be 255 characters or less'),
+
   // Duplication settings for dynamic ad set count (0-49)
   // 0 = Create only initial 1-1-1 structure (no duplication)
   // 1-49 = Create 1-1-1 + duplicate ad sets
@@ -629,6 +636,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') && !dynamicCreativeMediaPaths.length ? mediaPath : null,
       imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
       editorName: req.body.editorName,  // Editor name from Creative Library for ad naming
+      dynamicEditorName: req.body.dynamicEditorName,  // Editor name for Dynamic Creative from Creative Library
 
       // Duplication settings - user must provide count and budget
       duplicationSettings: {
