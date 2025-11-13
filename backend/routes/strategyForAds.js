@@ -495,7 +495,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // Check if Dynamic Creative is enabled (multiple media)
       const isDynamicCreative = req.body.dynamicCreativeEnabled === 'true' || req.body.dynamicCreativeEnabled === true;
 
-      if (isDynamicCreative && req.files.length > 1) {
+      if (isDynamicCreative && req.files.length > 0) {
         // Dynamic Creative with multiple media files
         dynamicCreativeMediaPaths = req.files.map(file => file.path);
         console.log('🎨 Dynamic Creative media detected:', dynamicCreativeMediaPaths.length, 'files');
