@@ -2304,7 +2304,7 @@ class FacebookAPI {
             `${this.baseURL}/${originalAdSetId}/ads`,
             {
               params: {
-                fields: 'creative{object_story_spec,effective_object_story_id,asset_feed_spec,image_hash}',
+                fields: 'creative{object_story_spec,effective_object_story_id,asset_feed_spec,image_hash,video_id}',
                 access_token: this.accessToken,
                 limit: 1
               }
@@ -2322,11 +2322,28 @@ class FacebookAPI {
               originalImageHash = creativeData.asset_feed_spec.images[0].hash;
             }
 
+            // Also check for videos in asset_feed_spec (for Dynamic Creative)
+            let originalVideoId = null;
+            if (creativeData.video_id) {
+              originalVideoId = creativeData.video_id;
+            } else if (creativeData.asset_feed_spec?.videos?.[0]?.video_id) {
+              originalVideoId = creativeData.asset_feed_spec.videos[0].video_id;
+            } else if (originalCreativeData?.video_data?.video_id) {
+              originalVideoId = originalCreativeData.video_data.video_id;
+            }
+
+            // Store video ID in originalCreativeData for later use
+            if (originalVideoId && !originalCreativeData?.video_data) {
+              originalCreativeData = originalCreativeData || {};
+              originalCreativeData.video_data = { video_id: originalVideoId };
+            }
+
             console.log('✅ Original creative data fetched:', {
               hasVideoData: !!originalCreativeData?.video_data,
               hasLinkData: !!originalCreativeData?.link_data,
-              videoId: originalCreativeData?.video_data?.video_id || 'N/A',
-              imageHash: originalImageHash || 'N/A'
+              videoId: originalVideoId || 'N/A',
+              imageHash: originalImageHash || 'N/A',
+              hasDynamicVideos: !!creativeData.asset_feed_spec?.videos
             });
           }
         } catch (error) {
@@ -2651,9 +2668,16 @@ class FacebookAPI {
                     // Fallback to formData image hash
                     creative.asset_feed_spec.images = [{ hash: formData.imageHash }];
                     console.log(`  ✅ Added image hash from formData to asset_feed_spec: ${formData.imageHash}`);
+                  } else if (formData.videoId) {
+                    // Fallback to formData video ID
+                    creative.asset_feed_spec.videos = [{ video_id: formData.videoId }];
+                    console.log(`  ✅ Added video ID from formData to asset_feed_spec: ${formData.videoId}`);
                   } else {
-                    console.error(`  ❌ No image hash available for variation for Ad Set ${i + 1}`);
-                    throw new Error('No image hash available for dynamic creative ad');
+                    console.error(`  ❌ No media (image hash or video ID) available for variation for Ad Set ${i + 1}`);
+                    console.error(`    Variation data:`, JSON.stringify(variation, null, 2));
+                    console.error(`    Original creative data:`, JSON.stringify(originalCreativeData, null, 2));
+                    console.error(`    FormData media:`, { imageHash: formData.imageHash, videoId: formData.videoId });
+                    throw new Error('No media (image hash or video ID) available for dynamic creative ad');
                   }
 
                   console.log(`  ✅ Dynamic creative variation for Ad Set ${i + 1} configured with asset_feed_spec`);
@@ -2983,6 +3007,10 @@ class FacebookAPI {
                 headlines.push(formData.headline);
               }
 
+              // Determine ad format based on available media
+              let adFormat = 'SINGLE_IMAGE';
+              let hasMedia = false;
+
               creative = {
                 object_story_spec: {
                   page_id: this.pageId
@@ -2991,8 +3019,7 @@ class FacebookAPI {
                   bodies: primaryTexts.map(text => ({ text })),
                   titles: headlines.map(text => ({ text })),
                   link_urls: [{ website_url: formData.url }],
-                  call_to_action_types: [formData.callToAction || 'LEARN_MORE'],
-                  ad_formats: ['SINGLE_IMAGE']
+                  call_to_action_types: [formData.callToAction || 'LEARN_MORE']
                 }
               };
 
@@ -3001,11 +3028,34 @@ class FacebookAPI {
                 creative.asset_feed_spec.descriptions = [{ text: formData.description }];
               }
 
-              // Add image if we have the hash
-              if (originalImageHash) {
+              // Add media - check for video first, then image
+              if (originalCreativeData?.video_data?.video_id) {
+                creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
+                adFormat = 'SINGLE_VIDEO';
+                hasMedia = true;
+                console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
+              } else if (formData.videoId) {
+                creative.asset_feed_spec.videos = [{ video_id: formData.videoId }];
+                adFormat = 'SINGLE_VIDEO';
+                hasMedia = true;
+                console.log(`  ✅ Added video from formData to asset_feed_spec: ${formData.videoId}`);
+              } else if (originalImageHash) {
                 creative.asset_feed_spec.images = [{ hash: originalImageHash }];
+                adFormat = 'SINGLE_IMAGE';
+                hasMedia = true;
+                console.log(`  ✅ Added original image to asset_feed_spec: ${originalImageHash}`);
               } else if (formData.imageHash) {
                 creative.asset_feed_spec.images = [{ hash: formData.imageHash }];
+                adFormat = 'SINGLE_IMAGE';
+                hasMedia = true;
+                console.log(`  ✅ Added image from formData to asset_feed_spec: ${formData.imageHash}`);
+              }
+
+              // Set ad format
+              creative.asset_feed_spec.ad_formats = [adFormat];
+
+              if (!hasMedia) {
+                console.warn(`  ⚠️ No media available for ad copy ${i + 1} - ad may fail to create`);
               }
 
               console.log(`  📝 Using ${creative.asset_feed_spec.bodies.length} primary text options`);
@@ -5237,14 +5287,27 @@ class FacebookAPI {
           }
         );
 
-        const status = response.data?.status?.processing_phase;
-        console.log(`  Attempt ${i + 1}/${maxRetries}: Status = ${status || 'unknown'}`);
+        // Log the full response to debug structure
+        console.log(`  Response data:`, JSON.stringify(response.data));
+
+        // Facebook v18.0 returns status directly on the video object
+        const status = response.data?.status;
+        console.log(`  Attempt ${i + 1}/${maxRetries}: Status = ${JSON.stringify(status)}`);
+
+        // Check if video is ready - status object exists with processing_phase
+        // or status object doesn't exist (which means ready)
+        const processingPhase = status?.processing_phase;
+        const videoStatus = status?.video_status;
+
+        console.log(`    Processing phase: ${processingPhase || 'none'}`);
+        console.log(`    Video status: ${videoStatus || 'none'}`);
 
         // Facebook video processing phases:
         // - processing: Video is being processed
         // - ready: Video is ready for use
-        if (status === 'ready' || !status) {
-          // No status field usually means video is ready
+        // If no status object or processing_phase is 'ready', video is ready
+        if (!status || processingPhase === 'ready' || videoStatus === 'ready') {
+          console.log(`  ✅ Video is ready for use`);
           return true;
         }
 
