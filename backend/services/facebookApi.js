@@ -1568,17 +1568,36 @@ class FacebookAPI {
 
             if (isVideo) {
               console.log(`  📹 Uploading video: ${mediaPath}`);
-              const videoId = await this.uploadVideo(mediaPath);
-              if (videoId) {
-                dynamicVideos.push(videoId);
-                console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+              try {
+                const videoId = await this.uploadVideo(mediaPath);
+                if (videoId) {
+                  dynamicVideos.push(videoId);
+                  console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+
+                  // Wait for video to be processed
+                  console.log(`  ⏳ Waiting for video ${videoId} to be processed by Facebook...`);
+                  const isReady = await this.waitForVideoProcessing(videoId);
+                  if (!isReady) {
+                    console.warn(`  ⚠️ Video ${videoId} processing timeout - may cause issues`);
+                  } else {
+                    console.log(`  ✅ Video ${videoId} is ready for use`);
+                  }
+                }
+              } catch (videoError) {
+                console.error(`  ❌ Failed to upload video: ${videoError.message}`);
+                // Continue with other media instead of failing completely
               }
             } else {
               console.log(`  📸 Uploading image: ${mediaPath}`);
-              const imageHash = await this.uploadImage(mediaPath);
-              if (imageHash) {
-                dynamicImages.push(imageHash);
-                console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+              try {
+                const imageHash = await this.uploadImage(mediaPath);
+                if (imageHash) {
+                  dynamicImages.push(imageHash);
+                  console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+                }
+              } catch (imageError) {
+                console.error(`  ❌ Failed to upload image: ${imageError.message}`);
+                // Continue with other media instead of failing completely
               }
             }
           }
@@ -1607,6 +1626,15 @@ class FacebookAPI {
           if (videoId) {
             mediaAssets.videoId = videoId;
             console.log('✅ Video uploaded successfully with ID:', videoId);
+
+            // Wait for video to be processed by Facebook
+            console.log('⏳ Waiting for video to be processed by Facebook...');
+            const isReady = await this.waitForVideoProcessing(videoId);
+            if (!isReady) {
+              console.warn('⚠️ Video processing timeout - this may cause issues when creating the ad');
+            } else {
+              console.log('✅ Video is ready for use in ads');
+            }
 
             // Get thumbnail from Facebook with video path for fallback (Strategy150 pattern)
             const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
@@ -1915,6 +1943,15 @@ class FacebookAPI {
           if (videoId) {
             mediaAssets.videoId = videoId;
             console.log('✅ Video uploaded successfully with ID:', videoId);
+
+            // Wait for video to be processed by Facebook
+            console.log('⏳ Waiting for video to be processed by Facebook...');
+            const isReady = await this.waitForVideoProcessing(videoId);
+            if (!isReady) {
+              console.warn('⚠️ Video processing timeout - this may cause issues when creating the ad');
+            } else {
+              console.log('✅ Video is ready for use in ads');
+            }
 
             const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
             if (thumbnailUrl) {
@@ -5176,6 +5213,54 @@ class FacebookAPI {
 
       throw error;
     }
+  }
+
+  /**
+   * Wait for video to be processed by Facebook
+   * @param {string} videoId - The Facebook video ID
+   * @param {number} maxRetries - Maximum number of retries (default 10)
+   * @param {number} retryDelay - Delay between retries in ms (default 3000)
+   * @returns {Promise<boolean>} - True if video is ready, false if timeout
+   */
+  async waitForVideoProcessing(videoId, maxRetries = 10, retryDelay = 3000) {
+    console.log(`⏳ Checking video ${videoId} processing status...`);
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await axios.get(
+          `${this.baseURL}/${videoId}`,
+          {
+            params: {
+              fields: 'status',
+              access_token: this.accessToken
+            }
+          }
+        );
+
+        const status = response.data?.status?.processing_phase;
+        console.log(`  Attempt ${i + 1}/${maxRetries}: Status = ${status || 'unknown'}`);
+
+        // Facebook video processing phases:
+        // - processing: Video is being processed
+        // - ready: Video is ready for use
+        if (status === 'ready' || !status) {
+          // No status field usually means video is ready
+          return true;
+        }
+
+        if (i < maxRetries - 1) {
+          console.log(`  ⏳ Video still processing, waiting ${retryDelay/1000}s before retry...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      } catch (error) {
+        console.warn(`  ⚠️ Error checking video status: ${error.message}`);
+        // If we can't check status, assume it might be ready
+        return true;
+      }
+    }
+
+    console.warn(`  ⚠️ Video ${videoId} processing timeout after ${maxRetries} attempts`);
+    return false;
   }
 }
 

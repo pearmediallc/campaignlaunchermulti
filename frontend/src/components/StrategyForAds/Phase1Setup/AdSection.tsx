@@ -533,7 +533,8 @@ const AdSection: React.FC = () => {
                 • Formats: {MEDIA_SPECS.video.formats.join(', ')}<br />
                 • Duration: {MEDIA_SPECS.video.minDuration} sec - {MEDIA_SPECS.video.maxDuration / 60} minutes<br />
                 • Maximum file size: 4GB<br />
-                • Recommended aspect ratios: 1:1, 4:5, 16:9, 9:16
+                • Recommended aspect ratios: 1:1, 4:5, 16:9, 9:16<br />
+                • <strong>Note:</strong> Facebook needs 5-30 seconds to process videos after upload
               </Box>
             )}
             {mediaType === 'carousel' && (
@@ -925,6 +926,20 @@ const AdSection: React.FC = () => {
                       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
                         Upload Multiple Media (Up to 10)
                       </Typography>
+
+                      {/* Helper text for Dynamic Creative media */}
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Supported Formats:</strong>
+                        </Typography>
+                        <Typography variant="body2" component="div">
+                          • <strong>Images:</strong> JPG, PNG, GIF (not corrupted/mislabeled files)<br />
+                          • <strong>Videos:</strong> MP4, MOV (Facebook needs 5-30 seconds to process)<br />
+                          • <strong>Size Limits:</strong> Images: 30MB, Videos: 4GB<br />
+                          • <strong>Aspect Ratios:</strong> 1:1, 4:5, 16:9, 9:16 recommended<br />
+                          • <strong>Important:</strong> Ensure files are not corrupted and match their extension
+                        </Typography>
+                      </Alert>
 
                       <Controller
                         name="dynamicMediaFiles"
