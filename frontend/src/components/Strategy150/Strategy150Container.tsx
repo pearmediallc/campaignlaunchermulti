@@ -18,6 +18,7 @@ import Phase3Duplication from './Phase3Duplication/Phase3Duplication';
 import CompletionSummary from './CompletionSummary/CompletionSummary';
 import CampaignManagementContainer from './CampaignManagement/CampaignManagementContainer';
 import MultiplyContainer from './MultiplySection/MultiplyContainer';
+import { CreativeLibraryProvider } from '../../contexts/CreativeLibraryContext';
 
 const steps = [
   'Campaign Setup (1-1-1)',
@@ -696,4 +697,13 @@ const Strategy150Container: React.FC = () => {
   );
 };
 
-export default Strategy150Container;
+// Wrap with CreativeLibraryProvider for Creative Library integration
+const Strategy150ContainerWithProvider: React.FC = () => {
+  return (
+    <CreativeLibraryProvider>
+      <Strategy150Container />
+    </CreativeLibraryProvider>
+  );
+};
+
+export default Strategy150ContainerWithProvider;
