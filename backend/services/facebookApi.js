@@ -987,17 +987,28 @@ class FacebookAPI {
           creative.asset_feed_spec.link_urls[0].display_url = adData.displayLink;
         }
 
-        // Handle media for asset_feed_spec
+        // Handle media for asset_feed_spec - can have BOTH images and videos
         if (adData.dynamicImages && adData.dynamicImages.length > 0) {
           // Multiple images for Dynamic Creative
           creative.asset_feed_spec.images = adData.dynamicImages.map(hash => ({ hash }));
-          creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
           console.log(`  📸 Added ${adData.dynamicImages.length} images to Dynamic Creative`);
-        } else if (adData.dynamicVideos && adData.dynamicVideos.length > 0) {
+        }
+
+        if (adData.dynamicVideos && adData.dynamicVideos.length > 0) {
           // Multiple videos for Dynamic Creative
           creative.asset_feed_spec.videos = adData.dynamicVideos.map(videoId => ({ video_id: videoId }));
-          creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
           console.log(`  📹 Added ${adData.dynamicVideos.length} videos to Dynamic Creative`);
+        }
+
+        // Set ad format based on what media we have
+        if (adData.dynamicVideos && adData.dynamicVideos.length > 0 && adData.dynamicImages && adData.dynamicImages.length > 0) {
+          // Mixed media - let Facebook decide format
+          creative.asset_feed_spec.ad_formats.push('AUTOMATIC_FORMAT');
+          console.log(`  🎨 Mixed media (images + videos) - using AUTOMATIC_FORMAT`);
+        } else if (adData.dynamicVideos && adData.dynamicVideos.length > 0) {
+          creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
+        } else if (adData.dynamicImages && adData.dynamicImages.length > 0) {
+          creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
         } else if (adData.imageHash) {
           // Single image
           creative.asset_feed_spec.images = [{ hash: adData.imageHash }];
@@ -2301,19 +2312,19 @@ class FacebookAPI {
 
       // Always fetch creative data - we need it for variations OR Dynamic Creative
       console.log('🎨 Fetching original ad creative data...');
-        try {
-          const adsResponse = await axios.get(
-            `${this.baseURL}/${originalAdSetId}/ads`,
-            {
-              params: {
-                fields: 'creative{object_story_spec,effective_object_story_id,asset_feed_spec,image_hash,video_id}',
-                access_token: this.accessToken,
-                limit: 1
-              }
+      try {
+        const adsResponse = await axios.get(
+          `${this.baseURL}/${originalAdSetId}/ads`,
+          {
+            params: {
+              fields: 'creative{object_story_spec,effective_object_story_id,asset_feed_spec,image_hash,video_id}',
+              access_token: this.accessToken,
+              limit: 1
             }
-          );
+          }
+        );
 
-          if (adsResponse.data?.data?.[0]?.creative) {
+        if (adsResponse.data?.data?.[0]?.creative) {
             const creativeData = adsResponse.data.data[0].creative;
             originalCreativeData = creativeData.object_story_spec;
 
@@ -2369,10 +2380,9 @@ class FacebookAPI {
               dynamicImageCount: originalDynamicMediaAssets?.images?.length || 0,
               dynamicVideoCount: originalDynamicMediaAssets?.videos?.length || 0
             });
-          }
-        } catch (error) {
-          console.error('⚠️ Could not fetch original creative data:', error.message);
         }
+      } catch (error) {
+        console.error('⚠️ Could not fetch original creative data:', error.message);
       }
 
       // Facebook's /copies endpoint for AD SETS - different from campaign copies
