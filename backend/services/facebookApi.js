@@ -1006,6 +1006,10 @@ class FacebookAPI {
           // Single video
           creative.asset_feed_spec.videos = [{ video_id: adData.videoId }];
           creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
+        } else {
+          // No media provided - Dynamic Creative requires media, throw error
+          console.error('  ❌ Dynamic Creative/Text Variations requires media but none provided');
+          throw new Error('Dynamic Creative ads require at least one image or video. Please upload media files.');
         }
 
         // Keep minimal object_story_spec with page_id (required for asset_feed_spec)
@@ -1856,7 +1860,53 @@ class FacebookAPI {
 
       // Handle media if present
       let mediaAssets = {};
-      if (campaignData.imagePath) {
+
+      // PRIORITY 1: Check for Dynamic Creative media FIRST
+      if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
+        // Handle Dynamic Creative multiple media uploads
+        console.log('🎨 Processing Dynamic Creative media...');
+        try {
+          const dynamicImages = [];
+          const dynamicVideos = [];
+
+          for (const mediaPath of campaignData.dynamicCreativeMediaPaths) {
+            const extension = mediaPath.toLowerCase().split('.').pop();
+            const isVideo = ['mp4', 'mov', 'avi', 'wmv', 'flv', 'mkv'].includes(extension);
+
+            if (isVideo) {
+              console.log(`  📹 Uploading video: ${mediaPath}`);
+              const videoId = await this.uploadVideo(mediaPath);
+              if (videoId) {
+                dynamicVideos.push(videoId);
+                console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+              }
+            } else {
+              console.log(`  📸 Uploading image: ${mediaPath}`);
+              const imageHash = await this.uploadImage(mediaPath);
+              if (imageHash) {
+                dynamicImages.push(imageHash);
+                console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+              }
+            }
+          }
+
+          // Store all uploaded media for Dynamic Creative
+          if (dynamicImages.length > 0) {
+            mediaAssets.dynamicImages = dynamicImages;
+            console.log(`✅ Dynamic Creative: ${dynamicImages.length} images uploaded`);
+          }
+          if (dynamicVideos.length > 0) {
+            mediaAssets.dynamicVideos = dynamicVideos;
+            console.log(`✅ Dynamic Creative: ${dynamicVideos.length} videos uploaded`);
+          }
+
+          // If we have dynamic media, we should use asset_feed_spec format
+          mediaAssets.useDynamicCreative = true;
+        } catch (error) {
+          console.log('⚠️ Dynamic Creative media upload failed:', error.message);
+          throw error; // Re-throw to prevent creating ad without media
+        }
+      } else if (campaignData.imagePath) {
         try {
           const imageHash = await this.uploadImage(campaignData.imagePath);
           if (imageHash) {
@@ -1901,49 +1951,6 @@ class FacebookAPI {
           }
         } catch (error) {
           console.log('⚠️ Carousel upload skipped:', error.message);
-        }
-      } else if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
-        // Handle Dynamic Creative multiple media uploads
-        console.log('🎨 Processing Dynamic Creative media...');
-        try {
-          const dynamicImages = [];
-          const dynamicVideos = [];
-
-          for (const mediaPath of campaignData.dynamicCreativeMediaPaths) {
-            const extension = mediaPath.toLowerCase().split('.').pop();
-            const isVideo = ['mp4', 'mov', 'avi', 'wmv', 'flv', 'mkv'].includes(extension);
-
-            if (isVideo) {
-              console.log(`  📹 Uploading video: ${mediaPath}`);
-              const videoId = await this.uploadVideo(mediaPath);
-              if (videoId) {
-                dynamicVideos.push(videoId);
-                console.log(`  ✅ Video uploaded with ID: ${videoId}`);
-              }
-            } else {
-              console.log(`  📸 Uploading image: ${mediaPath}`);
-              const imageHash = await this.uploadImage(mediaPath);
-              if (imageHash) {
-                dynamicImages.push(imageHash);
-                console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
-              }
-            }
-          }
-
-          // Store all uploaded media for Dynamic Creative
-          if (dynamicImages.length > 0) {
-            mediaAssets.dynamicImages = dynamicImages;
-            console.log(`✅ Dynamic Creative: ${dynamicImages.length} images uploaded`);
-          }
-          if (dynamicVideos.length > 0) {
-            mediaAssets.dynamicVideos = dynamicVideos;
-            console.log(`✅ Dynamic Creative: ${dynamicVideos.length} videos uploaded`);
-          }
-
-          // If we have dynamic media, we should use asset_feed_spec format
-          mediaAssets.useDynamicCreative = true;
-        } catch (error) {
-          console.log('⚠️ Dynamic Creative media upload skipped:', error.message);
         }
       } else {
         console.log('📷 No media provided, creating ad without media');
