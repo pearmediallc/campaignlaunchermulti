@@ -152,7 +152,7 @@ class FacebookAPI {
       console.log('  - Optimization Goal:', this.getOptimizationGoal ? 'Will be calculated' : 'Not set');
       console.log('  - Dynamic Creative:', adSetData.dynamicTextEnabled ? 'ENABLED' : 'DISABLED');
 
-      params = {
+      let params = {
         name: `[Launcher] ${adSetData.campaignName} - AdSet`,
         campaign_id: adSetData.campaignId,
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
