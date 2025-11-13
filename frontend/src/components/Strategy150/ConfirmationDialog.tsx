@@ -44,7 +44,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       : (formData.adSetBudget?.dailyBudget || 0)
   );
 
-  const duplicationBudget = 49 * 1; // 49 ad sets @ $1 each
+  // For CBO, the campaign budget covers ALL ad sets - no additional budget needed
+  // For ad set level budgets, we need 49 more ad sets @ $1 each
+  const duplicationBudget = formData.budgetLevel === 'campaign' ? 0 : (49 * 1);
   const totalDailySpend = initialBudget + duplicationBudget;
 
   // Format objective for display
@@ -143,12 +145,30 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
             Strategy 1-50-1 Breakdown:
           </Typography>
-          <Typography variant="body2" sx={{ mb: 0.5 }}>
-            • Phase 1 (Initial): 1 Ad Set @ ${initialBudget}/day
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            • Phase 2 (After Post ID): 49 Ad Sets @ $1/day each
-          </Typography>
+          {formData.budgetLevel === 'campaign' ? (
+            <>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                • Phase 1 (Initial): 1 Ad Set (CBO distributes budget)
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                • Phase 2 (After Post ID): 49 Ad Sets (CBO distributes budget across all 50)
+              </Typography>
+              <Alert severity="info" sx={{ mb: 1 }}>
+                <Typography variant="caption">
+                  With CBO, Facebook automatically distributes your ${initialBudget}/day budget across all 50 ad sets
+                </Typography>
+              </Alert>
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                • Phase 1 (Initial): 1 Ad Set @ ${initialBudget}/day
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                • Phase 2 (After Post ID): 49 Ad Sets @ $1/day each
+              </Typography>
+            </>
+          )}
 
           <Box sx={{ p: 2, bgcolor: 'error.main', color: 'white', borderRadius: 1 }}>
             <Typography variant="h6" fontWeight={700}>

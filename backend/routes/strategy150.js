@@ -292,6 +292,8 @@ const parseFormDataJson = (req, res, next) => {
 
 // Create initial campaign (1-1-1) - supports file uploads
 router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, requirePermission('campaign', 'create'), uploadSingle, parseFormDataJson, validateStrategy150, async (req, res) => {
+  let selectedAdAccountId = null;  // Define at the beginning of the route handler
+
   try {
     console.log('📝 Strategy 1-50-1 creation request received:', {
       body: req.body,
@@ -399,7 +401,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('📋 Getting active resources using ResourceHelper...');
     const activeResources = await ResourceHelper.getActiveResourcesWithFallback(userId);
 
-    let selectedAdAccountId = activeResources.selectedAdAccountId;
+    selectedAdAccountId = activeResources.selectedAdAccountId;  // No 'let' since already declared at top
     let selectedPageId = activeResources.selectedPageId;
     let selectedPixelId = activeResources.selectedPixelId || pixelId;
 

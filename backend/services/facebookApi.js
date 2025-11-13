@@ -1904,6 +1904,63 @@ class FacebookAPI {
         adSet._skippedFields = this.skippedFields;
       }
 
+      // Handle media upload before creating ad
+      let mediaAssets = {};
+
+      if ((campaignData.mediaType === 'video' || campaignData.mediaType === 'single_video') && campaignData.videoPath) {
+        try {
+          console.log('🎬 Starting video upload...');
+          console.log('  Video path:', campaignData.videoPath);
+          const videoId = await this.uploadVideo(campaignData.videoPath);
+          if (videoId) {
+            mediaAssets.videoId = videoId;
+            console.log('✅ Video uploaded successfully with ID:', videoId);
+
+            const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
+            if (thumbnailUrl) {
+              mediaAssets.videoThumbnail = thumbnailUrl;
+              console.log('✅ Video thumbnail ready for ad creation:', thumbnailUrl);
+            } else {
+              console.log('⚠️ No thumbnail available, cannot create video ad');
+              throw new Error('Video thumbnail is required for video ads');
+            }
+          }
+        } catch (error) {
+          console.error('❌ Video upload failed:', error.message);
+          throw new Error(`Video upload failed: ${error.message}`);
+        }
+      } else if (campaignData.mediaType === 'single_image' && campaignData.imagePath) {
+        try {
+          console.log('📸 Uploading image for Strategy 1-50-1...');
+          console.log('  Image path:', campaignData.imagePath);
+          const imageHash = await this.uploadImage(campaignData.imagePath);
+          if (imageHash) {
+            mediaAssets.imageHash = imageHash;
+            console.log('✅ Image uploaded successfully with hash:', imageHash);
+          }
+        } catch (error) {
+          console.error('❌ Image upload failed:', error.message);
+          throw new Error(`Image upload failed: ${error.message}`);
+        }
+      } else if (campaignData.mediaType === 'carousel' && campaignData.imagePaths) {
+        mediaAssets.carouselCards = [];
+        for (let i = 0; i < campaignData.imagePaths.length; i++) {
+          try {
+            const imageHash = await this.uploadImage(campaignData.imagePaths[i]);
+            if (imageHash) {
+              mediaAssets.carouselCards.push({
+                imageHash,
+                headline: campaignData.carouselHeadlines?.[i] || campaignData.headline,
+                description: campaignData.carouselDescriptions?.[i] || campaignData.description,
+                link: campaignData.carouselLinks?.[i] || campaignData.url
+              });
+            }
+          } catch (error) {
+            console.error(`Carousel image ${i + 1} upload error:`, error.message);
+          }
+        }
+      }
+
       // Create initial ad
       console.log('\n🔷 Step 3 of 3: Creating Ad...');
       console.log('📝 Creating ad with editor name:', campaignData.editorName || 'none (local upload)');
