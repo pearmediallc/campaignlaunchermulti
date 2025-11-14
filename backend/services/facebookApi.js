@@ -2630,6 +2630,22 @@ class FacebookAPI {
 
               const variation = variationForThisAdSet;
 
+              // Enhanced logging to debug variation data
+              console.log(`  📋 Full variation data for Ad Set ${i + 1}:`, {
+                variationNumber: variation.variationNumber,
+                adSetIndex: variation.adSetIndex,
+                useOriginalMedia: variation.useOriginalMedia,
+                hasImageHash: !!variation.imageHash,
+                imageHash: variation.imageHash || 'NONE',
+                hasVideoId: !!variation.videoId,
+                videoId: variation.videoId || 'NONE',
+                primaryText: variation.primaryText || 'NONE',
+                headline: variation.headline || 'NONE',
+                primaryTextVariations: variation.primaryTextVariations || [],
+                headlineVariations: variation.headlineVariations || [],
+                description: variation.description || 'NONE'
+              });
+
               try {
                 // Check if this variation has dynamic text variations enabled
                 const isVariationDynamic = variation.dynamicTextEnabled === true;

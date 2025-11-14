@@ -95,10 +95,24 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
       ...updatedVariation,
       variationNumber: index + 1
     };
+
+    console.log(`🔄 AdVariationForms - Updating variation ${index + 1}:`, {
+      updatedVariation,
+      hasImageHash: !!updatedVariation.imageHash,
+      hasVideoId: !!updatedVariation.videoId,
+      useOriginalMedia: updatedVariation.useOriginalMedia,
+      primaryText: updatedVariation.primaryText,
+      headline: updatedVariation.headline,
+      primaryTextVariations: updatedVariation.primaryTextVariations,
+      headlineVariations: updatedVariation.headlineVariations,
+      allVariations: newVariations
+    });
+
     setVariations(newVariations);
 
     // Update form context
     setValue('adVariationConfig.variations', newVariations);
+    console.log(`✅ Form context updated with ${newVariations.length} variations`);
   };
 
   // Don't show if no ad sets selected

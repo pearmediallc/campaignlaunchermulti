@@ -1021,17 +1021,25 @@ const AdSection: React.FC = () => {
                                   Selected Media: {field.value.length}/10
                                 </Typography>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                                  {field.value.map((file, index) => (
-                                    <Chip
-                                      key={index}
-                                      label={`${file.name.substring(0, 20)}...`}
-                                      onDelete={() => {
-                                        const newFiles = field.value?.filter((_, i) => i !== index) || [];
-                                        field.onChange(newFiles);
-                                      }}
-                                      size="small"
-                                      icon={file.type.startsWith('video/') ? <VideoFile /> : <Image />}
-                                    />
+                                  {field.value.map((file, index) => {
+                                    // Handle both file objects and stored media references
+                                    const fileName = file?.name || file?.hash || file?.id || `Media ${index + 1}`;
+                                    const displayName = fileName.length > 20 ? `${fileName.substring(0, 20)}...` : fileName;
+                                    const isVideo = file?.type?.startsWith('video/') || file?.video_id || false;
+
+                                    return (
+                                      <Chip
+                                        key={index}
+                                        label={displayName}
+                                        onDelete={() => {
+                                          const newFiles = field.value?.filter((_, i) => i !== index) || [];
+                                          field.onChange(newFiles);
+                                        }}
+                                        size="small"
+                                        icon={isVideo ? <VideoFile /> : <Image />}
+                                      />
+                                    );
+                                  }
                                   ))}
                                 </Box>
                                 <Button

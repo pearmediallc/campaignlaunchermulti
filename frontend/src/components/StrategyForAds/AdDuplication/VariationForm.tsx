@@ -33,9 +33,25 @@ const VariationForm: React.FC<VariationFormProps> = ({
   originalAdData,
   onChange
 }) => {
-  const [mediaUploadMode, setMediaUploadMode] = useState<'original' | 'new' | 'library'>('original');
+  // Initialize media mode based on variation data
+  const getInitialMediaMode = (): 'original' | 'new' | 'library' => {
+    if (variation.imageHash || variation.videoId || variation.videoHash) {
+      return 'new'; // User has uploaded media
+    }
+    if (variation.editorName) {
+      return 'library'; // User selected from library
+    }
+    return 'original'; // Default to original
+  };
+
+  const [mediaUploadMode, setMediaUploadMode] = useState<'original' | 'new' | 'library'>(getInitialMediaMode());
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [uploadedFileName, setUploadedFileName] = useState<string>(() => {
+    // Initialize filename if media was already uploaded
+    if (variation.imageHash) return `Image: ${variation.imageHash.substring(0, 10)}...`;
+    if (variation.videoId || variation.videoHash) return `Video: ${(variation.videoId || variation.videoHash || '').substring(0, 10)}...`;
+    return '';
+  });
   const [uploadError, setUploadError] = useState<string>('');
   const [showLibrarySelector, setShowLibrarySelector] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
@@ -85,11 +101,25 @@ const VariationForm: React.FC<VariationFormProps> = ({
   };
 
   const handleFieldChange = (field: string, value: any) => {
-    onChange({
+    const updatedVariation = {
       ...variation,
       [field]: value,
       useOriginal: false // Automatically switch to custom when editing
+    };
+
+    // Log the field change for debugging
+    console.log(`📝 Variation ${variation.variationNumber} field change:`, {
+      field,
+      newValue: value,
+      fullVariation: updatedVariation,
+      useOriginalMedia: updatedVariation.useOriginalMedia,
+      hasImageHash: !!updatedVariation.imageHash,
+      hasVideoId: !!updatedVariation.videoId,
+      primaryTextVariations: updatedVariation.primaryTextVariations,
+      headlineVariations: updatedVariation.headlineVariations
     });
+
+    onChange(updatedVariation);
   };
 
   const handleMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,6 +150,9 @@ const VariationForm: React.FC<VariationFormProps> = ({
         console.log('✅ Media uploaded successfully:', result.data);
         setUploadedFileName(file.name);
 
+        // Ensure we're in 'new' mode after upload
+        setMediaUploadMode('new');
+
         // Update variation with uploaded media IDs
         const updatedVariation: any = {
           ...variation,
@@ -133,6 +166,18 @@ const VariationForm: React.FC<VariationFormProps> = ({
           updatedVariation.imageHash = result.data.imageHash;
           console.log('  💾 Saved imageHash to variation:', result.data.imageHash);
         }
+
+        console.log(`📊 Complete variation ${variation.variationNumber} after media upload:`, {
+          variationNumber: updatedVariation.variationNumber,
+          adSetIndex: updatedVariation.adSetIndex,
+          useOriginalMedia: updatedVariation.useOriginalMedia,
+          imageHash: updatedVariation.imageHash,
+          videoId: updatedVariation.videoId,
+          primaryText: updatedVariation.primaryText,
+          headline: updatedVariation.headline,
+          primaryTextVariations: updatedVariation.primaryTextVariations,
+          headlineVariations: updatedVariation.headlineVariations
+        });
 
         onChange(updatedVariation);
       } else {
@@ -178,6 +223,9 @@ const VariationForm: React.FC<VariationFormProps> = ({
         console.log('✅ Creative Library media uploaded successfully:', result.data);
         setUploadedFileName(`${file.name} (${editorName})`);
 
+        // Ensure we're in 'library' mode after selection
+        setMediaUploadMode('library');
+
         // Update variation with uploaded media IDs and editor name
         const updatedVariation: any = {
           ...variation,
@@ -192,6 +240,11 @@ const VariationForm: React.FC<VariationFormProps> = ({
           updatedVariation.imageHash = result.data.imageHash;
           console.log('  💾 Saved imageHash to variation:', result.data.imageHash);
         }
+
+        console.log(`📚 Creative Library media selected for variation ${variation.variationNumber}:`, {
+          editorName,
+          updatedVariation
+        });
 
         onChange(updatedVariation);
         setShowLibrarySelector(false);
@@ -246,13 +299,23 @@ const VariationForm: React.FC<VariationFormProps> = ({
 
                 // When switching to original mode, set useOriginalMedia to true
                 if (newMode === 'original') {
-                  onChange({
+                  const updatedVariation = {
                     ...variation,
                     useOriginalMedia: true,
                     imageHash: undefined,
                     videoId: undefined,
                     videoHash: undefined
+                  };
+
+                  console.log(`🔄 Switching to original media for variation ${variation.variationNumber}:`, {
+                    updatedVariation,
+                    preservedText: updatedVariation.primaryText,
+                    preservedHeadline: updatedVariation.headline,
+                    preservedTextVariations: updatedVariation.primaryTextVariations,
+                    preservedHeadlineVariations: updatedVariation.headlineVariations
                   });
+
+                  onChange(updatedVariation);
                   setUploadedFileName('');
                 }
               }}
