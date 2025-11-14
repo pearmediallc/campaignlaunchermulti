@@ -1021,7 +1021,7 @@ const AdSection: React.FC = () => {
                                   Selected Media: {field.value.length}/10
                                 </Typography>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                                  {field.value.map((file, index) => {
+                                  {field.value.map((file: any, index) => {
                                     // Handle both file objects and stored media references
                                     const fileName = file?.name || file?.hash || file?.id || `Media ${index + 1}`;
                                     const displayName = fileName.length > 20 ? `${fileName.substring(0, 20)}...` : fileName;

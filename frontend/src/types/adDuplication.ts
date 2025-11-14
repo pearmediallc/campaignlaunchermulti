@@ -13,6 +13,7 @@ export interface AdVariation {
   mediaType?: 'image' | 'video' | 'carousel';
   imageUrl?: string;
   videoId?: string;
+  videoHash?: string; // Some video uploads return as videoHash
   imageHash?: string;
   carouselCards?: any[];
 

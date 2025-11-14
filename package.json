@@ -6,7 +6,9 @@
     "build": "./build.sh",
     "start": "cd backend && NODE_ENV=production node server.js",
     "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm start\"",
-    "install-all": "cd frontend && npm install && cd ../backend && npm install"
+    "install-all": "cd frontend && npm install && cd ../backend && npm install",
+    "typecheck": "cd frontend && npx tsc --noEmit",
+    "pre-push": "cd frontend && npx tsc --noEmit && echo '✅ TypeScript check passed!'"
   },
   "engines": {
     "node": ">=18.0.0",

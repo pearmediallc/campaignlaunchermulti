@@ -12,27 +12,50 @@ class ImageConverter {
       const outputDir = path.dirname(inputPath);
       const baseName = path.basename(inputPath, path.extname(inputPath));
       const outputPath = path.join(outputDir, `${baseName}-fb.jpg`);
-      
-      // Convert to JPEG with proper settings for Facebook
-      // Using 1080x1080 for better compatibility (1:1 ratio)
-      await sharp(inputPath)
-        .rotate() // Auto-rotate based on EXIF data
-        .resize(1080, 1080, {
-          fit: 'cover',
-          position: 'center'
-        })
-        .jpeg({
-          quality: 90, // Higher quality
-          progressive: false,
-          mozjpeg: true // Better compression
-        })
-        .toFile(outputPath);
-      
-      console.log(`Image converted: ${outputPath}`);
+
+      // Build sharp pipeline with error handling for each step
+      let pipeline = sharp(inputPath, {
+        failOnError: false, // Don't fail on minor issues
+        limitInputPixels: false // Allow large images
+      });
+
+      // Try to auto-rotate based on EXIF
+      try {
+        pipeline = pipeline.rotate();
+      } catch (rotateError) {
+        console.log('Could not auto-rotate, continuing without rotation');
+      }
+
+      // Resize to Facebook's recommended size
+      pipeline = pipeline.resize(1080, 1080, {
+        fit: 'cover',
+        position: 'center',
+        withoutEnlargement: true // Don't upscale small images
+      });
+
+      // Convert to JPEG
+      pipeline = pipeline.jpeg({
+        quality: 90,
+        progressive: false,
+        mozjpeg: true
+      });
+
+      // Save the converted image
+      await pipeline.toFile(outputPath);
+
+      console.log(`✅ Image converted successfully: ${outputPath}`);
       return outputPath;
     } catch (error) {
-      console.error('Image conversion error:', error);
-      return inputPath; // Return original if conversion fails
+      console.error('Image conversion error:', error.message);
+
+      // As a last resort, try a simple copy if it's already a JPEG
+      const ext = path.extname(inputPath).toLowerCase();
+      if (ext === '.jpg' || ext === '.jpeg') {
+        console.log('Returning original JPEG without conversion');
+        return inputPath;
+      }
+
+      return null; // Conversion failed
     }
   }
   
@@ -41,20 +64,51 @@ class ImageConverter {
    */
   static async prepareForFacebook(imagePath) {
     try {
+      // First check if file exists
+      if (!fs.existsSync(imagePath)) {
+        console.error(`Image file not found: ${imagePath}`);
+        return null;
+      }
+
       const stats = fs.statSync(imagePath);
       const fileSizeInMB = stats.size / (1024 * 1024);
-      
-      // Get image metadata
-      const metadata = await sharp(imagePath).metadata();
-      
-      // Always convert to ensure compatibility
-      // Facebook is very strict about image formats
+
+      // Check file size
+      if (fileSizeInMB === 0) {
+        console.error(`Image file is empty: ${imagePath}`);
+        return null;
+      }
+
       console.log(`Processing image: ${path.basename(imagePath)}`);
-      console.log(`Original format: ${metadata.format}, Size: ${fileSizeInMB.toFixed(2)}MB`);
-      
-      // Always convert to JPEG for maximum compatibility
+      console.log(`File size: ${fileSizeInMB.toFixed(2)}MB`);
+
+      // Try to get image metadata with better error handling
+      let metadata;
+      try {
+        metadata = await sharp(imagePath).metadata();
+        console.log(`Original format detected: ${metadata.format}`);
+      } catch (metadataError) {
+        console.error(`Failed to read image metadata: ${metadataError.message}`);
+
+        // Try to identify format from file extension
+        const ext = path.extname(imagePath).toLowerCase();
+        console.log(`File extension: ${ext}`);
+
+        // If it's a common image format, try to convert it anyway
+        if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'].includes(ext)) {
+          console.log('Attempting to convert based on file extension...');
+          return await this.convertToFacebookFormat(imagePath);
+        }
+
+        // If not a recognized format, fail
+        console.error(`Unsupported image format: ${ext}`);
+        return null;
+      }
+
+      // Always convert to ensure compatibility
+      console.log(`Converting to JPEG for Facebook compatibility...`);
       return await this.convertToFacebookFormat(imagePath);
-      
+
     } catch (error) {
       console.error('Image preparation error:', error);
       return null;
