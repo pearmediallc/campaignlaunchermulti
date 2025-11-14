@@ -1039,8 +1039,7 @@ const AdSection: React.FC = () => {
                                         icon={isVideo ? <VideoFile /> : <Image />}
                                       />
                                     );
-                                  }
-                                  ))}
+                                  })}
                                 </Box>
                                 <Button
                                   size="small"
