@@ -193,11 +193,15 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
 
   // Template management handlers
   const handleLoadTemplate = (templateData: TemplateData) => {
-    // Load template data into form
+    // Load template data into form - only set fields that exist in StrategyForAllFormData
     Object.keys(templateData).forEach((key) => {
       const value = templateData[key as keyof TemplateData];
       if (value !== undefined && value !== null) {
-        methods.setValue(key as keyof StrategyForAllFormData, value);
+        // Check if this key exists in StrategyForAllFormData before setting
+        const formFields = methods.getValues();
+        if (key in formFields) {
+          methods.setValue(key as keyof StrategyForAllFormData, value as any);
+        }
       }
     });
   };
