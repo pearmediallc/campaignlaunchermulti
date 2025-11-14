@@ -240,7 +240,22 @@ const VariationForm: React.FC<VariationFormProps> = ({
             </Typography>
             <RadioGroup
               value={mediaUploadMode}
-              onChange={(e) => setMediaUploadMode(e.target.value as 'original' | 'new' | 'library')}
+              onChange={(e) => {
+                const newMode = e.target.value as 'original' | 'new' | 'library';
+                setMediaUploadMode(newMode);
+
+                // When switching to original mode, set useOriginalMedia to true
+                if (newMode === 'original') {
+                  onChange({
+                    ...variation,
+                    useOriginalMedia: true,
+                    imageHash: undefined,
+                    videoId: undefined,
+                    videoHash: undefined
+                  });
+                  setUploadedFileName('');
+                }
+              }}
               sx={{ mb: 2 }}
             >
               <FormControlLabel

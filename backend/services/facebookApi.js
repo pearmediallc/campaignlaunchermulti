@@ -2687,10 +2687,35 @@ class FacebookAPI {
                   if (variation.videoId || variation.videoHash) {
                     const videoId = variation.videoId || variation.videoHash;
                     creative.asset_feed_spec.videos = [{ video_id: videoId }];
-                    console.log(`  ✅ Added video to asset_feed_spec: ${videoId}`);
+                    console.log(`  ✅ Added uploaded video to asset_feed_spec: ${videoId}`);
                   } else if (variation.imageHash) {
                     creative.asset_feed_spec.images = [{ hash: variation.imageHash }];
-                    console.log(`  ✅ Added image hash to asset_feed_spec: ${variation.imageHash}`);
+                    console.log(`  ✅ Added uploaded image hash to asset_feed_spec: ${variation.imageHash}`);
+                  } else if (variation.useOriginalMedia && originalDynamicMediaAssets) {
+                    // When using original media from a Dynamic Creative ad, copy ALL assets
+                    console.log(`  📋 Using original Dynamic Creative media assets...`);
+
+                    // Add all original images
+                    if (originalDynamicMediaAssets.images && originalDynamicMediaAssets.images.length > 0) {
+                      creative.asset_feed_spec.images = originalDynamicMediaAssets.images;
+                      console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} original images to asset_feed_spec`);
+                    }
+
+                    // Add all original videos
+                    if (originalDynamicMediaAssets.videos && originalDynamicMediaAssets.videos.length > 0) {
+                      creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos;
+                      console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} original videos to asset_feed_spec`);
+                    }
+
+                    // Set appropriate ad format based on media types
+                    if (originalDynamicMediaAssets.videos?.length > 0 && originalDynamicMediaAssets.images?.length > 0) {
+                      creative.asset_feed_spec.ad_formats = ['AUTOMATIC_FORMAT'];
+                      console.log(`  🎨 Mixed media (images + videos) - using AUTOMATIC_FORMAT`);
+                    } else if (originalDynamicMediaAssets.videos?.length > 0) {
+                      creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
+                    } else if (originalDynamicMediaAssets.images?.length > 0) {
+                      creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
+                    }
                   } else if (originalCreativeData?.video_data?.video_id) {
                     creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
                     console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
@@ -2749,10 +2774,35 @@ class FacebookAPI {
                   if (variation.videoId || variation.videoHash) {
                     const videoId = variation.videoId || variation.videoHash;
                     creative.asset_feed_spec.videos = [{ video_id: videoId }];
-                    console.log(`  ✅ Added video to asset_feed_spec: ${videoId}`);
+                    console.log(`  ✅ Added uploaded video to asset_feed_spec: ${videoId}`);
                   } else if (variation.imageHash) {
                     creative.asset_feed_spec.images = [{ hash: variation.imageHash }];
-                    console.log(`  ✅ Added image hash to asset_feed_spec: ${variation.imageHash}`);
+                    console.log(`  ✅ Added uploaded image hash to asset_feed_spec: ${variation.imageHash}`);
+                  } else if (variation.useOriginalMedia && originalDynamicMediaAssets) {
+                    // When using original media from a Dynamic Creative ad, copy ALL assets
+                    console.log(`  📋 Using original Dynamic Creative media assets...`);
+
+                    // Add all original images
+                    if (originalDynamicMediaAssets.images && originalDynamicMediaAssets.images.length > 0) {
+                      creative.asset_feed_spec.images = originalDynamicMediaAssets.images;
+                      console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} original images to asset_feed_spec`);
+                    }
+
+                    // Add all original videos
+                    if (originalDynamicMediaAssets.videos && originalDynamicMediaAssets.videos.length > 0) {
+                      creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos;
+                      console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} original videos to asset_feed_spec`);
+                    }
+
+                    // Set appropriate ad format based on media types
+                    if (originalDynamicMediaAssets.videos?.length > 0 && originalDynamicMediaAssets.images?.length > 0) {
+                      creative.asset_feed_spec.ad_formats = ['AUTOMATIC_FORMAT'];
+                      console.log(`  🎨 Mixed media (images + videos) - using AUTOMATIC_FORMAT`);
+                    } else if (originalDynamicMediaAssets.videos?.length > 0) {
+                      creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
+                    } else if (originalDynamicMediaAssets.images?.length > 0) {
+                      creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
+                    }
                   } else if (originalCreativeData?.video_data?.video_id) {
                     creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
                     console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
