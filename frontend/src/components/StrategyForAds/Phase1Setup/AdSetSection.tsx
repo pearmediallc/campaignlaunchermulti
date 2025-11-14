@@ -1267,11 +1267,11 @@ const AdSetSection: React.FC = () => {
           <Controller
             name="duplicationSettings.adSetCount"
             control={control}
-            defaultValue={49}
+            defaultValue={50}
             rules={{
               required: 'Number of ad sets is required',
               min: { value: 0, message: 'Minimum 0 ad sets' },
-              max: { value: 49, message: 'Maximum 49 ad sets' }
+              max: { value: 50, message: 'Maximum 50 ad sets' }
             }}
             render={({ field, fieldState: { error } }) => (
               <TextField
@@ -1279,10 +1279,10 @@ const AdSetSection: React.FC = () => {
                 fullWidth
                 type="number"
                 label="Number of Ad Sets to Duplicate"
-                inputProps={{ min: 0, max: 49, step: 1 }}
+                inputProps={{ min: 0, max: 50, step: 1 }}
                 helperText={
                   error?.message ||
-                  "Enter 0 to create only 1-1-1 structure (1 campaign, 1 ad set, 1 ad). Enter 1-49 to duplicate ad sets."
+                  "Enter 0 to create only 1-1-1 structure (1 campaign, 1 ad set, 1 ad). Enter 1-50 to duplicate ad sets."
                 }
                 error={!!error}
               />
