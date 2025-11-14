@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 
 interface CreativeLibraryUser {
@@ -35,6 +35,32 @@ export const CreativeLibraryProvider: React.FC<CreativeLibraryProviderProps> = (
   const [user, setUser] = useState<CreativeLibraryUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Check for saved auth on mount
+  useEffect(() => {
+    const savedAuth = localStorage.getItem('creative-library-auth');
+    if (savedAuth) {
+      try {
+        const { token: savedToken, user: savedUser, timestamp } = JSON.parse(savedAuth);
+
+        // Check if token is less than 7 days old
+        const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+        if (Date.now() - timestamp < sevenDaysInMs && savedToken && savedUser) {
+          console.log('🔐 Restored Creative Library session from localStorage');
+          setToken(savedToken);
+          setUser(savedUser);
+          setIsAuthenticated(true);
+        } else {
+          // Token too old, remove it
+          localStorage.removeItem('creative-library-auth');
+          console.log('🔐 Creative Library session expired, cleared localStorage');
+        }
+      } catch (error) {
+        console.error('Failed to restore Creative Library session:', error);
+        localStorage.removeItem('creative-library-auth');
+      }
+    }
+  }, []);
 
   const authenticate = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     console.log('\n🔐 ========== CREATIVE LIBRARY AUTHENTICATION START ==========');
@@ -136,7 +162,14 @@ export const CreativeLibraryProvider: React.FC<CreativeLibraryProviderProps> = (
         console.log('💾 Step 38: Setting isAuthenticated to true...');
         setIsAuthenticated(true);
 
-        console.log('✅ Step 39: All state updated successfully!');
+        console.log('💾 Step 39: Saving to localStorage for session persistence...');
+        localStorage.setItem('creative-library-auth', JSON.stringify({
+          token: newToken,
+          user: userData,
+          timestamp: Date.now()
+        }));
+
+        console.log('✅ Step 40: All state updated and saved successfully!');
         console.log('========== CREATIVE LIBRARY AUTHENTICATION SUCCESS ==========\n');
 
         return { success: true };
@@ -181,6 +214,8 @@ export const CreativeLibraryProvider: React.FC<CreativeLibraryProviderProps> = (
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
+    localStorage.removeItem('creative-library-auth');
+    console.log('🗑️ Cleared Creative Library session from localStorage');
   };
 
   const value: CreativeLibraryContextType = {

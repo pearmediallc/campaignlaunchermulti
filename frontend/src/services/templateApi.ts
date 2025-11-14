@@ -98,6 +98,33 @@ export interface TemplateData {
   displayLink?: string;
   mediaType?: 'single_image' | 'single_video' | 'carousel';
 
+  // Dynamic Creative and Text Variations
+  dynamicCreativeEnabled?: boolean;
+  dynamicTextEnabled?: boolean;
+  primaryTextVariations?: string[];
+  headlineVariations?: string[];
+  descriptionVariations?: string[];
+
+  // Ad Variation Configurations (for Strategy for Ads)
+  adVariationConfig?: {
+    selectedAdSetIndices: number[];
+    adsPerAdSet: number;
+    variations: Array<{
+      variationNumber: number;
+      adSetIndex: number;
+      useOriginal: boolean;
+      primaryText?: string;
+      headline?: string;
+      description?: string;
+      websiteUrl?: string;
+      displayLink?: string;
+      callToAction?: string;
+      useOriginalMedia?: boolean;
+      primaryTextVariations?: string[];
+      headlineVariations?: string[];
+    }>;
+  };
+
   // Duplication Settings
   duplicationSettings?: {
     adSetCount?: number;
