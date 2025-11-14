@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -11,9 +11,15 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Chip
+  Chip,
+  FormControlLabel,
+  Checkbox,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel
 } from '@mui/material';
-import { WarningAmber, CheckCircle } from '@mui/icons-material';
+import { WarningAmber, CheckCircle, ContentCopy } from '@mui/icons-material';
 import { StrategyForAllFormData } from '../../types/strategyForAll';
 
 interface ConfirmationDialogProps {
@@ -22,7 +28,7 @@ interface ConfirmationDialogProps {
   selectedAdAccount?: { id: string; name: string } | null;
   selectedPage?: { id: string; name: string } | null;
   selectedPixel?: { id: string; name: string } | null;
-  onConfirm: () => void;
+  onConfirm: (numberOfCampaigns?: number) => void;
   onCancel: () => void;
 }
 
@@ -35,38 +41,30 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   onConfirm,
   onCancel
 }) => {
+  const [createMultiple, setCreateMultiple] = useState(false);
+  const [numberOfCampaigns, setNumberOfCampaigns] = useState(1);
+
   if (!formData) return null;
 
-  // Calculate budget details based on budget level
-  const isCBO = formData.budgetLevel === 'campaign';
-  const adSetCount = Number(formData.duplicationSettings?.adSetCount) || 49; // Read from form data, fallback to 49
+  // Reset when dialog opens/closes
+  React.useEffect(() => {
+    if (!open) {
+      setCreateMultiple(false);
+      setNumberOfCampaigns(1);
+    }
+  }, [open]);
 
-  let totalDailySpend: number;
-  let breakdownText: string[];
+  // Calculate budget details
+  const initialBudget = Number(
+    formData.budgetLevel === 'campaign'
+      ? (formData.campaignBudget?.dailyBudget || 0)
+      : (formData.adSetBudget?.dailyBudget || 0)
+  );
 
-  if (isCBO) {
-    // CBO: Campaign budget is THE total, distributed automatically by Facebook
-    const campaignBudget = Number(formData.campaignBudget?.dailyBudget) || 0;
-    totalDailySpend = campaignBudget; // CBO uses campaign budget only, NOT per-ad-set budgets
-    breakdownText = [
-      `• Phase 1 (Initial): 1 Ad Set (CBO manages budget)`,
-      `• Phase 2 (After Post ID): ${adSetCount - 1} Ad Sets (CBO manages budget)`,
-      `• Total: ${adSetCount} ad sets sharing $${campaignBudget.toFixed(2)}/day`
-    ];
-  } else {
-    // Ad Set Budget: Each ad set has individual budget
-    const initialAdSetBudget = Number(formData.adSetBudget?.dailyBudget) || 0;
-    const duplicationTotalBudget = Number(formData.duplicationSettings?.totalBudget) || ((adSetCount - 1) * 1); // Use totalBudget or fallback
-
-    totalDailySpend = initialAdSetBudget + duplicationTotalBudget;
-    const budgetPerDuplicatedAdSet = duplicationTotalBudget / (adSetCount - 1);
-
-    breakdownText = [
-      `• Phase 1 (Initial): 1 Ad Set @ $${initialAdSetBudget.toFixed(2)}/day`,
-      `• Phase 2 (After Post ID): ${adSetCount - 1} Ad Sets @ $${budgetPerDuplicatedAdSet.toFixed(2)}/day each`,
-      `• Total: ${adSetCount} ad sets`
-    ];
-  }
+  // For CBO, the campaign budget covers ALL ad sets - no additional budget needed
+  // For ad set level budgets, we need 49 more ad sets @ $1 each
+  const duplicationBudget = formData.budgetLevel === 'campaign' ? 0 : (49 * 1);
+  const totalDailySpend = initialBudget + duplicationBudget;
 
   // Format objective for display
   const formatObjective = (obj: string) => {
@@ -88,6 +86,61 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       </DialogTitle>
 
       <DialogContent>
+        {/* Multiple Campaign Option */}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={createMultiple}
+                  onChange={(e) => setCreateMultiple(e.target.checked)}
+                  icon={<ContentCopy />}
+                  checkedIcon={<ContentCopy color="primary" />}
+                />
+              }
+              label={
+                <Typography variant="body2" fontWeight={600}>
+                  Create multiple identical campaigns
+                </Typography>
+              }
+            />
+            {createMultiple && (
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>Count</InputLabel>
+                <Select
+                  value={numberOfCampaigns}
+                  onChange={(e) => setNumberOfCampaigns(Number(e.target.value))}
+                  label="Count"
+                >
+                  <MenuItem value={1}>1 Campaign</MenuItem>
+                  <MenuItem value={2}>2 Campaigns</MenuItem>
+                  <MenuItem value={3}>3 Campaigns</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+          </Box>
+
+          {createMultiple && numberOfCampaigns > 1 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                Campaign names to be created:
+              </Typography>
+              <Box sx={{ mt: 1 }}>
+                {Array.from({ length: numberOfCampaigns }, (_, i) => (
+                  <Typography key={i} variant="body2" sx={{ pl: 2 }}>
+                    • {i === 0 ? formData.campaignName : `${formData.campaignName} - Copy ${i + 1}`}
+                  </Typography>
+                ))}
+              </Box>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="caption">
+                  Each campaign will be created with identical settings. A 10-second delay will be added between campaigns to avoid rate limits.
+                </Typography>
+              </Alert>
+            </Box>
+          )}
+        </Paper>
+
         {/* Campaign Details */}
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
           <Typography variant="subtitle2" color="primary" gutterBottom fontWeight={600}>
@@ -162,14 +215,32 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           <Divider sx={{ my: 1 }} />
 
           <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-            Strategy for All Breakdown:
+            Strategy 1-50-1 Breakdown:
           </Typography>
-          {breakdownText.map((line, idx) => (
-            <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
-              {line}
-            </Typography>
-          ))}
-          <Box sx={{ mb: 1 }} />
+          {formData.budgetLevel === 'campaign' ? (
+            <>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                • Phase 1 (Initial): 1 Ad Set (CBO distributes budget)
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                • Phase 2 (After Post ID): 49 Ad Sets (CBO distributes budget across all 50)
+              </Typography>
+              <Alert severity="info" sx={{ mb: 1 }}>
+                <Typography variant="caption">
+                  With CBO, Facebook automatically distributes your ${initialBudget}/day budget across all 50 ad sets
+                </Typography>
+              </Alert>
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                • Phase 1 (Initial): 1 Ad Set @ ${initialBudget}/day
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                • Phase 2 (After Post ID): 49 Ad Sets @ $1/day each
+              </Typography>
+            </>
+          )}
 
           <Box sx={{ p: 2, bgcolor: 'error.main', color: 'white', borderRadius: 1 }}>
             <Typography variant="h6" fontWeight={700}>
@@ -237,13 +308,13 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           Cancel - Let Me Review
         </Button>
         <Button
-          onClick={onConfirm}
+          onClick={() => onConfirm(createMultiple && numberOfCampaigns > 1 ? numberOfCampaigns : undefined)}
           variant="contained"
           size="large"
           color="primary"
           startIcon={<CheckCircle />}
         >
-          I Confirm - Create Campaign
+          I Confirm - Create {numberOfCampaigns > 1 ? `${numberOfCampaigns} Campaigns` : 'Campaign'}
         </Button>
       </DialogActions>
     </Dialog>

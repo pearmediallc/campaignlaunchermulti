@@ -96,6 +96,12 @@ const StrategyForAllContainer: React.FC = () => {
   };
 
   const handlePhase1Submit = async (data: StrategyForAllFormData) => {
+    // Check if multiple campaigns requested
+    const numberOfCampaigns = (data as any)._multipleCampaigns || 1;
+    if (numberOfCampaigns > 1) {
+      console.log(`📢 Creating ${numberOfCampaigns} identical campaigns`);
+    }
+
     console.log('\n🎯 ========== STRATEGY FOR ALL CLIENT START ==========');
     console.log('📄 Form Data Received:', data);
     console.log('📊 Key Parameters:');
@@ -369,8 +375,26 @@ const StrategyForAllContainer: React.FC = () => {
       console.log('  - attributionSetting:', workingCampaignData.attributionSetting);
       console.log('  - attributionWindow:', workingCampaignData.attributionWindow);
 
-      // Create FormData to handle file uploads properly
-      const formData = new FormData();
+      // Loop for multiple campaigns
+      const createdCampaigns = [];
+      let lastSuccessfulResult = null;
+
+      for (let i = 0; i < numberOfCampaigns; i++) {
+        // Update campaign name for copies
+        const currentCampaignName = i === 0 ? data.campaignName : `${data.campaignName} - Copy ${i + 1}`;
+        if (i > 0) {
+          console.log(`\n📢 Creating campaign ${i + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
+
+          // Add 10-second delay between campaigns to avoid rate limits
+          console.log('⏳ Waiting 10 seconds to avoid rate limits...');
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+
+        // Update the campaign name in workingCampaignData
+        workingCampaignData.campaignName = currentCampaignName;
+
+        // Create FormData to handle file uploads properly
+        const formData = new FormData();
 
       // Add all non-file fields to FormData
       Object.keys(workingCampaignData).forEach(key => {
@@ -446,71 +470,106 @@ const StrategyForAllContainer: React.FC = () => {
         formData.set('adSetBudget', JSON.stringify(adSetBudget));
       }
 
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/campaigns/strategy-for-all/create`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          // Don't set Content-Type, let the browser set it with boundary for multipart
-        },
-        body: formData
-      });
+        try {
+          const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5002/api'}/campaigns/strategy-for-all/create`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              // Don't set Content-Type, let the browser set it with boundary for multipart
+            },
+            body: formData
+          });
 
-      const result = await response.json();
+          const result = await response.json();
 
-      console.log('📥 Response from working endpoint:', result);
+          console.log('📥 Response from working endpoint:', result);
 
-      // Enhanced error logging (CampaignResponse only has 'error' field, not 'errors')
-      if (result.error) {
-        console.error('❌ Campaign creation error:', result.error);
+          // Enhanced error logging (CampaignResponse only has 'error' field, not 'errors')
+          if (result.error) {
+            console.error('❌ Campaign creation error:', result.error);
+            // If first campaign fails, stop all
+            if (i === 0) {
+              throw new Error(result.error || 'Failed to create campaign');
+            }
+            // Otherwise continue with remaining campaigns
+            console.log(`⚠️ Campaign ${i + 1} failed, continuing with remaining campaigns...`);
+            continue;
+          }
+
+          if (result.success) {
+            createdCampaigns.push(result);
+            lastSuccessfulResult = result;
+
+            // Get resource details for display
+            const accountName = result.data?.adAccount?.name || 'Unknown Account';
+            const pageName = result.data?.page?.name || data.facebookPage || 'Unknown Page';
+            const pixelId = data.pixel || 'No Pixel';
+
+            console.log(`✅ Campaign ${i + 1} created successfully!`);
+          }
+        } catch (loopError: any) {
+          if (i === 0) {
+            throw loopError; // First campaign must succeed
+          }
+          console.error(`❌ Error creating campaign ${i + 1}:`, loopError.message);
+          continue;
+        }
+      } // End of loop
+
+      // Process results after all campaigns are created
+      if (!lastSuccessfulResult || createdCampaigns.length === 0) {
+        throw new Error('Failed to create any campaigns');
       }
 
-      if (result.success) {
-        // Get resource details for display
-        const accountName = result.data?.adAccount?.name || 'Unknown Account';
-        const pageName = result.data?.page?.name || data.facebookPage || 'Unknown Page';
-        const pixelId = data.pixel || 'No Pixel';
+      // Use the first successful campaign for the main flow
+      const primaryResult = createdCampaigns[0];
 
-        // Enhanced message with creation details
-        const enhancedMessage = `✅ Campaign created successfully!\n
-📊 Account: ${accountName}
-📱 Page: ${pageName}
-🎯 Pixel: ${pixelId}`;
+      // Get resource details for display
+      const accountName = primaryResult.data?.adAccount?.name || 'Unknown Account';
+      const pageName = primaryResult.data?.page?.name || data.facebookPage || 'Unknown Page';
+      const pixelId = data.pixel || 'No Pixel';
 
-        // Transform CampaignResponse to StrategyForAllResponse format
-        const strategyForAllResult: StrategyForAllResponse = {
-          success: true,
-          message: enhancedMessage,
-          data: {
-            phase: 'waiting', // Set to waiting since we'll capture Post ID next
-            campaign: result.data?.campaign || {
-              id: 'unknown',
-              name: data.campaignName
-            },
-            adSet: result.data?.adSet || {
-              id: 'unknown',
-              name: `${data.campaignName} - Ad Set 1`
-            },
-            ads: result.data?.ads || [{
-              id: 'unknown',
-              name: `${data.campaignName} - Ad 1`
-            }]
-          }
-        };
+      // Enhanced message with creation details
+      const campaignCount = createdCampaigns.length;
+      const enhancedMessage = campaignCount > 1
+        ? `✅ ${campaignCount} campaigns created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`
+        : `✅ Campaign created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
 
-        console.log('📝 Transformed response:', strategyForAllResult);
-        setCampaignResult(strategyForAllResult);
-
-        // Check if fallback was used (fields were skipped)
-        if (result.data?.adSet?._skippedFields) {
-          setSkippedFields(result.data.adSet._skippedFields);
-          setFallbackUsed(true);
-          console.log('📢 Some fields were skipped for successful creation:', result.data.adSet._skippedFields);
+      // Transform CampaignResponse to StrategyForAllResponse format
+      const strategyForAllResult: StrategyForAllResponse = {
+        success: true,
+        message: enhancedMessage,
+        data: {
+          phase: 'waiting', // Set to waiting since we'll capture Post ID next
+          campaign: primaryResult.data?.campaign || {
+            id: 'unknown',
+            name: data.campaignName
+          },
+          adSet: primaryResult.data?.adSet || {
+            id: 'unknown',
+            name: `${data.campaignName} - Ad Set 1`
+          },
+          ads: primaryResult.data?.ads || [{
+            id: 'unknown',
+            name: `${data.campaignName} - Ad 1`
+          }]
         }
+      };
 
-        setPhase('waiting');
+      console.log('📝 Transformed response:', strategyForAllResult);
+      setCampaignResult(strategyForAllResult);
 
-        // Extract ad ID from the first ad for Post ID capture
-        const adId = result.data?.ads?.[0]?.id;
+      // Check if fallback was used (fields were skipped)
+      if (primaryResult.data?.adSet?._skippedFields) {
+        setSkippedFields(primaryResult.data.adSet._skippedFields);
+        setFallbackUsed(true);
+        console.log('📢 Some fields were skipped for successful creation:', primaryResult.data.adSet?._skippedFields);
+      }
+
+      setPhase('waiting');
+
+      // Extract ad ID from the first ad for Post ID capture
+      const adId = primaryResult.data?.ads?.[0]?.id;
         console.log('🎯 Extracted ad ID for Post ID capture:', adId);
 
         if (adId) {
@@ -519,13 +578,9 @@ const StrategyForAllContainer: React.FC = () => {
             console.log('⏰ Starting Post ID capture for ad:', adId);
             handleAutoPostCapture(adId);
           }, 30000); // Wait 30 seconds before trying to fetch post ID
-        } else {
-          console.warn('⚠️ No ad ID found in response, switching to manual input');
-          setPhase('manual');
-        }
       } else {
-        // Handle errors (CampaignResponse only has 'error' field)
-        throw new Error(result.error || 'Failed to create campaign');
+        console.warn('⚠️ No ad ID found in response, switching to manual input');
+        setPhase('manual');
       }
     } catch (error: any) {
       console.error('\n❌ ========== STRATEGY FOR ALL FAILED ==========');

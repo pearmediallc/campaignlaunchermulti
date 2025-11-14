@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -11,9 +11,15 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Chip
+  Chip,
+  FormControlLabel,
+  Checkbox,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel
 } from '@mui/material';
-import { WarningAmber, CheckCircle } from '@mui/icons-material';
+import { WarningAmber, CheckCircle, ContentCopy } from '@mui/icons-material';
 import { Strategy150FormData } from '../../types/strategy150';
 
 interface ConfirmationDialogProps {
@@ -22,7 +28,7 @@ interface ConfirmationDialogProps {
   selectedAdAccount?: { id: string; name: string } | null;
   selectedPage?: { id: string; name: string } | null;
   selectedPixel?: { id: string; name: string } | null;
-  onConfirm: () => void;
+  onConfirm: (numberOfCampaigns?: number) => void;
   onCancel: () => void;
 }
 
@@ -35,7 +41,18 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   onConfirm,
   onCancel
 }) => {
+  const [createMultiple, setCreateMultiple] = useState(false);
+  const [numberOfCampaigns, setNumberOfCampaigns] = useState(1);
+
   if (!formData) return null;
+
+  // Reset when dialog opens/closes
+  React.useEffect(() => {
+    if (!open) {
+      setCreateMultiple(false);
+      setNumberOfCampaigns(1);
+    }
+  }, [open]);
 
   // Calculate budget details
   const initialBudget = Number(
@@ -69,6 +86,61 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       </DialogTitle>
 
       <DialogContent>
+        {/* Multiple Campaign Option */}
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={createMultiple}
+                  onChange={(e) => setCreateMultiple(e.target.checked)}
+                  icon={<ContentCopy />}
+                  checkedIcon={<ContentCopy color="primary" />}
+                />
+              }
+              label={
+                <Typography variant="body2" fontWeight={600}>
+                  Create multiple identical campaigns
+                </Typography>
+              }
+            />
+            {createMultiple && (
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <InputLabel>Count</InputLabel>
+                <Select
+                  value={numberOfCampaigns}
+                  onChange={(e) => setNumberOfCampaigns(Number(e.target.value))}
+                  label="Count"
+                >
+                  <MenuItem value={1}>1 Campaign</MenuItem>
+                  <MenuItem value={2}>2 Campaigns</MenuItem>
+                  <MenuItem value={3}>3 Campaigns</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+          </Box>
+
+          {createMultiple && numberOfCampaigns > 1 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                Campaign names to be created:
+              </Typography>
+              <Box sx={{ mt: 1 }}>
+                {Array.from({ length: numberOfCampaigns }, (_, i) => (
+                  <Typography key={i} variant="body2" sx={{ pl: 2 }}>
+                    • {i === 0 ? formData.campaignName : `${formData.campaignName} - Copy ${i + 1}`}
+                  </Typography>
+                ))}
+              </Box>
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="caption">
+                  Each campaign will be created with identical settings. A 10-second delay will be added between campaigns to avoid rate limits.
+                </Typography>
+              </Alert>
+            </Box>
+          )}
+        </Paper>
+
         {/* Campaign Details */}
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
           <Typography variant="subtitle2" color="primary" gutterBottom fontWeight={600}>
@@ -236,13 +308,13 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           Cancel - Let Me Review
         </Button>
         <Button
-          onClick={onConfirm}
+          onClick={() => onConfirm(createMultiple && numberOfCampaigns > 1 ? numberOfCampaigns : undefined)}
           variant="contained"
           size="large"
           color="primary"
           startIcon={<CheckCircle />}
         >
-          I Confirm - Create Campaign
+          I Confirm - Create {numberOfCampaigns > 1 ? `${numberOfCampaigns} Campaigns` : 'Campaign'}
         </Button>
       </DialogActions>
     </Dialog>

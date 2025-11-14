@@ -177,11 +177,21 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
     setConfirmDialogOpen(true);
   });
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = (numberOfCampaigns?: number) => {
     // User confirmed - proceed with campaign creation
     setConfirmDialogOpen(false);
     if (pendingFormData) {
-      onSubmit(pendingFormData);
+      // If multiple campaigns requested, handle them
+      if (numberOfCampaigns && numberOfCampaigns > 1) {
+        // Pass the number of campaigns along with the form data
+        const dataWithMultiple = {
+          ...pendingFormData,
+          _multipleCampaigns: numberOfCampaigns
+        };
+        onSubmit(dataWithMultiple as StrategyForAllFormData);
+      } else {
+        onSubmit(pendingFormData);
+      }
     }
   };
 
