@@ -89,9 +89,22 @@ const AdSection: React.FC = () => {
   const [showDynamicLibraryModal, setShowDynamicLibraryModal] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
   const [dynamicEditorName, setDynamicEditorName] = useState<string>('');
-  const [enableDynamicVariations, setEnableDynamicVariations] = useState(false);
-  const [primaryTextVariations, setPrimaryTextVariations] = useState<string[]>(['']);
-  const [headlineVariations, setHeadlineVariations] = useState<string[]>(['']);
+
+  // Watch form values for text variations
+  const formPrimaryVariations = watch('primaryTextVariations');
+  const formHeadlineVariations = watch('headlineVariations');
+  const formDynamicTextEnabled = watch('dynamicTextEnabled');
+
+  // Initialize local state from form context (for template loading)
+  const [enableDynamicVariations, setEnableDynamicVariations] = useState(() => {
+    return formDynamicTextEnabled || false;
+  });
+  const [primaryTextVariations, setPrimaryTextVariations] = useState<string[]>(() => {
+    return formPrimaryVariations && formPrimaryVariations.length > 0 ? formPrimaryVariations : [''];
+  });
+  const [headlineVariations, setHeadlineVariations] = useState<string[]>(() => {
+    return formHeadlineVariations && formHeadlineVariations.length > 0 ? formHeadlineVariations : [''];
+  });
 
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
@@ -124,6 +137,27 @@ const AdSection: React.FC = () => {
       setValue('headlineVariations', undefined);
     }
   }, [enableDynamicVariations, primaryTextVariations, headlineVariations, setValue]);
+
+  // Watch for template loading - sync form data to local state
+  useEffect(() => {
+    // Only update if form has values and local state doesn't match
+    if (formDynamicTextEnabled && !enableDynamicVariations) {
+      console.log('📋 Template loaded with dynamic text enabled, syncing local state');
+      setEnableDynamicVariations(true);
+    }
+
+    if (formPrimaryVariations && formPrimaryVariations.length > 0 &&
+        JSON.stringify(formPrimaryVariations) !== JSON.stringify(primaryTextVariations)) {
+      console.log('📋 Template loaded with primary text variations:', formPrimaryVariations);
+      setPrimaryTextVariations(formPrimaryVariations);
+    }
+
+    if (formHeadlineVariations && formHeadlineVariations.length > 0 &&
+        JSON.stringify(formHeadlineVariations) !== JSON.stringify(headlineVariations)) {
+      console.log('📋 Template loaded with headline variations:', formHeadlineVariations);
+      setHeadlineVariations(formHeadlineVariations);
+    }
+  }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]); // Don't include local state to avoid infinite loop
 
   // Auto-select saved page or first available page
   useEffect(() => {

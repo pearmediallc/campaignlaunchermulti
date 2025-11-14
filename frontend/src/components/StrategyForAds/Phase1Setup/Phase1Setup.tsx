@@ -210,17 +210,24 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
 
   // Template management handlers
   const handleLoadTemplate = (templateData: TemplateData) => {
-    // Load template data into form - only set fields that exist in StrategyForAdsFormData
+    console.log('📋 Loading template with data:', templateData);
+
+    // Load template data into form
     Object.keys(templateData).forEach((key) => {
       const value = templateData[key as keyof TemplateData];
       if (value !== undefined && value !== null) {
-        // Check if this key exists in StrategyForAdsFormData before setting
-        const formFields = methods.getValues();
-        if (key in formFields) {
-          methods.setValue(key as keyof StrategyForAdsFormData, value as any);
-        }
+        // Set value directly without checking if field exists
+        // This ensures new fields like primaryTextVariations are loaded
+        methods.setValue(key as keyof StrategyForAdsFormData, value as any, {
+          shouldValidate: false,
+          shouldDirty: true
+        });
+
+        console.log(`  ✅ Set field '${key}' with value:`, value);
       }
     });
+
+    console.log('📋 Template loading complete');
   };
 
   const handleClearForm = () => {

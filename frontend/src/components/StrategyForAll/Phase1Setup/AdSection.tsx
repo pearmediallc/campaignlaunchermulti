@@ -89,6 +89,8 @@ const AdSection: React.FC = () => {
   const [carouselCards, setCarouselCards] = useState<any[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
+
+  // StrategyForAll doesn't support text variations in templates - only local state
   const [enableDynamicVariations, setEnableDynamicVariations] = useState(false);
   const [primaryTextVariations, setPrimaryTextVariations] = useState<string[]>(['']);
   const [headlineVariations, setHeadlineVariations] = useState<string[]>(['']);

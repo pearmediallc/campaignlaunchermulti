@@ -42,8 +42,19 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
   // Get selected ad set indices from form context
   const selectedAdSetIndices = watch('adVariationConfig.selectedAdSetIndices') || [];
 
+  // Watch for existing variations from loaded template
+  const existingVariations = watch('adVariationConfig.variations');
+
   // Initialize variations - one per selected ad set
   useEffect(() => {
+    // Check if variations already exist (from loaded template)
+    if (existingVariations && existingVariations.length > 0) {
+      console.log('📋 Found existing variations from template:', existingVariations);
+      setVariations(existingVariations);
+      return; // Don't reinitialize - use template data
+    }
+
+    // Only create new variations if none exist
     const initialVariations = [];
 
     // Create one variation for each selected ad set
@@ -85,9 +96,11 @@ const AdVariationForms: React.FC<AdVariationFormsProps> = ({
 
     setVariations(initialVariations);
 
-    // Update form context
-    setValue('adVariationConfig.variations', initialVariations);
-  }, [selectedAdSetIndices, adsPerAdSet, originalAdData, setValue]);
+    // Update form context only if creating new variations
+    if (initialVariations.length > 0) {
+      setValue('adVariationConfig.variations', initialVariations);
+    }
+  }, [selectedAdSetIndices, adsPerAdSet, originalAdData, setValue]); // Removed existingVariations from dependencies to avoid loops
 
   const handleVariationUpdate = (index: number, updatedVariation: any) => {
     const newVariations = [...variations];
