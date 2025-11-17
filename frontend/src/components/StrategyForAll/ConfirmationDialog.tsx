@@ -44,8 +44,6 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   const [createMultiple, setCreateMultiple] = useState(false);
   const [numberOfCampaigns, setNumberOfCampaigns] = useState(1);
 
-  if (!formData) return null;
-
   // Reset when dialog opens/closes
   React.useEffect(() => {
     if (!open) {
@@ -53,6 +51,8 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       setNumberOfCampaigns(1);
     }
   }, [open]);
+
+  if (!formData) return null;
 
   // Calculate budget details
   const initialBudget = Number(
