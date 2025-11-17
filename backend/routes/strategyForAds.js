@@ -541,6 +541,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       return isNaN(parsed) ? undefined : parsed;
     };
 
+    // Check if we need to create multiple identical campaigns
+    const numberOfCampaigns = req.body.numberOfCampaigns ? parseInt(req.body.numberOfCampaigns) : 1;
+    console.log(`📊 Number of campaigns to create: ${numberOfCampaigns}`);
+
     // Prepare campaign data with all Meta-compliant Strategy For All fields
     // NOTE: NO DEFAULT VALUES - All fields must be provided by user or validation will fail
     const campaignData = {
@@ -731,38 +735,81 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Conversion Event:', campaignData.conversionEvent);
     console.log('  Ad Set Count:', campaignData.duplicationSettings?.adSetCount || 'Not set');
 
-    // Create initial 1-1-1 campaign structure
-    // Ad variations will be applied during Phase 3 duplication
-    let result;
-    try {
-      console.log('📝 Creating initial 1-1-1 campaign structure');
-      console.log('🎨 Ad variation config will be used during duplication phase');
-      result = await userFacebookApi.createCampaignStructure(campaignData);
-    } catch (error) {
-      console.error('❌ Strategy for Ads Campaign Creation Error:');
-      console.error('Error message:', error.message);
-      console.error('Error code:', error.fbError?.code || error.status || 'Unknown');
-      if (error.fbError) {
-        console.error('Facebook Error Details:', JSON.stringify(error.fbError, null, 2));
+    // Create multiple campaigns if requested
+    const createdCampaigns = [];
+    let mediaHashes = null; // Store media hashes from first campaign to reuse
+
+    for (let campaignIndex = 0; campaignIndex < numberOfCampaigns; campaignIndex++) {
+      // Modify campaign name for multiple campaigns
+      const currentCampaignName = numberOfCampaigns > 1
+        ? `${campaignData.campaignName} - Copy ${campaignIndex + 1}`
+        : campaignData.campaignName;
+
+      // Update campaign data with current name
+      const currentCampaignData = {
+        ...campaignData,
+        campaignName: currentCampaignName
+      };
+
+      // Reuse media hashes from first campaign for subsequent campaigns
+      if (campaignIndex > 0 && mediaHashes) {
+        currentCampaignData.reusedMediaHashes = mediaHashes;
+        currentCampaignData.skipMediaUpload = true;
+        console.log(`♻️ Campaign ${campaignIndex + 1}: Reusing media from first campaign`);
       }
-      throw error;
-    }
 
-    await AuditService.logRequest(req, 'strategyForAll.create', 'campaign', result.campaign?.id, 'success', null, {
-      campaignId: result.campaign?.id,
-      campaignName: campaignData.campaignName,
-      adAccountId: selectedAdAccountId,
-      strategyType: 'for-all',
-      objective: campaignData.objective,
-      budget: campaignData.dailyBudget || campaignData.lifetimeBudget,
-      adSetsCreated: 1
-    });
+      // Add delay between campaign creations to avoid rate limits
+      if (campaignIndex > 0) {
+        console.log(`⏱️ Waiting 5 seconds before creating campaign ${campaignIndex + 1}...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
 
-    // Check if we need to duplicate ad sets based on duplicationSettings
-    const targetAdSetCount = campaignData.duplicationSettings?.adSetCount || 1;
-    let finalAdSetCount = 1; // Start with the initial ad set created
+      // Create initial 1-1-1 campaign structure
+      // Ad variations will be applied during Phase 3 duplication
+      let result;
+      try {
+        console.log(`\n📝 Creating campaign ${campaignIndex + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
+        console.log('🎨 Ad variation config will be used during duplication phase');
+        result = await userFacebookApi.createCampaignStructure(currentCampaignData);
 
-    if (targetAdSetCount > 1) {
+        // Store media hashes from first campaign
+        if (campaignIndex === 0 && result.mediaHashes) {
+          mediaHashes = result.mediaHashes;
+          console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+        }
+      } catch (error) {
+        console.error(`❌ Strategy for Ads Campaign ${campaignIndex + 1} Creation Error:`);
+        console.error('Error message:', error.message);
+        console.error('Error code:', error.fbError?.code || error.status || 'Unknown');
+        if (error.fbError) {
+          console.error('Facebook Error Details:', JSON.stringify(error.fbError, null, 2));
+        }
+
+        // If we've created some campaigns successfully, return those
+        if (createdCampaigns.length > 0) {
+          console.log(`⚠️ Created ${createdCampaigns.length} of ${numberOfCampaigns} campaigns before error`);
+          break;
+        }
+        throw error;
+      }
+
+      await AuditService.logRequest(req, 'strategyForAll.create', 'campaign', result.campaign?.id, 'success', null, {
+        campaignId: result.campaign?.id,
+        campaignName: currentCampaignName,
+        adAccountId: selectedAdAccountId,
+        strategyType: 'for-all',
+        objective: campaignData.objective,
+        budget: campaignData.dailyBudget || campaignData.lifetimeBudget,
+        adSetsCreated: 1,
+        campaignNumber: campaignIndex + 1,
+        totalCampaigns: numberOfCampaigns
+      });
+
+      // Check if we need to duplicate ad sets based on duplicationSettings
+      const targetAdSetCount = currentCampaignData.duplicationSettings?.adSetCount || 1;
+      let finalAdSetCount = 1; // Start with the initial ad set created
+
+      if (targetAdSetCount > 1) {
       console.log(`📋 Duplicating ad sets to reach target count: ${targetAdSetCount}`);
 
       try {
@@ -866,24 +913,36 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       }
     }
 
-    // Store campaign in tracking table for management with correct ad set count
-    try {
-      const { CampaignTracking } = require('../models');
-      await CampaignTracking.create({
-        campaign_id: result.campaign.id,
-        campaign_name: campaignData.campaignName,
-        user_id: userId,
-        ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
-        strategy_type: 'for-all',
-        post_id: result.postId || null,
-        ad_set_count: finalAdSetCount, // Use the actual final count
-        status: 'ACTIVE'
+      // Store campaign in tracking table for management with correct ad set count
+      try {
+        const { CampaignTracking } = require('../models');
+        await CampaignTracking.create({
+          campaign_id: result.campaign.id,
+          campaign_name: currentCampaignName,
+          user_id: userId,
+          ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
+          strategy_type: 'for-all',
+          post_id: result.postId || null,
+          ad_set_count: finalAdSetCount, // Use the actual final count
+          status: 'ACTIVE'
+        });
+        console.log(`📊 Campaign ${result.campaign.id} added to tracking with ${finalAdSetCount} ad sets`);
+      } catch (trackingError) {
+        console.error('Warning: Could not add campaign to tracking:', trackingError.message);
+        // Don't fail the request if tracking fails
+      }
+
+      // Add campaign to results array
+      createdCampaigns.push({
+        campaign: result.campaign,
+        adSet: result.adSet,
+        ads: result.ads,
+        postId: result.postId,
+        duplicatedAdSets: result.duplicatedAdSets || [],
+        adSetCount: finalAdSetCount,
+        campaignNumber: campaignIndex + 1
       });
-      console.log(`📊 Campaign ${result.campaign.id} added to tracking with ${finalAdSetCount} ad sets`);
-    } catch (trackingError) {
-      console.error('Warning: Could not add campaign to tracking:', trackingError.message);
-      // Don't fail the request if tracking fails
-    }
+    } // End of campaign creation loop
 
     // Build Facebook payload summary for user verification
     const facebookPayload = {
@@ -927,22 +986,48 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       }
     };
 
-    res.json({
-      success: true,
-      message: 'Strategy for-all initial campaign created successfully',
-      data: {
-        phase: 'initial',
-        campaign: result.campaign,
-        adSet: result.adSet,
-        ads: result.ads,
-        adAccount: facebookAuth.selectedAdAccount, // Add ad account info
-        page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
-        pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
-        postId: result.postId, // Include postId from result
-        duplicationSettings: campaignData.duplicationSettings, // Include duplication settings for frontend
-        facebookPayload // NEW: Include what was sent to Facebook for verification
-      }
-    });
+    // Prepare response based on number of campaigns created
+    const responseMessage = numberOfCampaigns > 1
+      ? `Successfully created ${createdCampaigns.length} identical campaigns`
+      : 'Strategy for-all initial campaign created successfully';
+
+    // For single campaign, return the same format as before for backward compatibility
+    if (numberOfCampaigns === 1 && createdCampaigns.length === 1) {
+      const singleResult = createdCampaigns[0];
+      res.json({
+        success: true,
+        message: responseMessage,
+        data: {
+          phase: 'initial',
+          campaign: singleResult.campaign,
+          adSet: singleResult.adSet,
+          ads: singleResult.ads,
+          adAccount: facebookAuth.selectedAdAccount, // Add ad account info
+          page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
+          pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
+          postId: singleResult.postId, // Include postId from result
+          duplicationSettings: campaignData.duplicationSettings, // Include duplication settings for frontend
+          facebookPayload // Include what was sent to Facebook for verification
+        }
+      });
+    } else {
+      // For multiple campaigns, return an array
+      res.json({
+        success: true,
+        message: responseMessage,
+        data: {
+          phase: 'initial',
+          campaigns: createdCampaigns, // Array of all created campaigns
+          totalRequested: numberOfCampaigns,
+          totalCreated: createdCampaigns.length,
+          adAccount: facebookAuth.selectedAdAccount, // Add ad account info
+          page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
+          pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
+          duplicationSettings: campaignData.duplicationSettings, // Include duplication settings for frontend
+          facebookPayload // Include what was sent to Facebook for verification
+        }
+      });
+    }
   } catch (error) {
     console.error('Strategy for-all creation error:', error);
     await AuditService.logRequest(req, 'strategyForAll.create', null, null, 'failure', error.message, {

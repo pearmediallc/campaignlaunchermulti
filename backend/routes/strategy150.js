@@ -488,6 +488,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       return isNaN(parsed) ? undefined : parsed;
     };
 
+    // Check if we need to create multiple identical campaigns
+    const numberOfCampaigns = req.body.numberOfCampaigns ? parseInt(req.body.numberOfCampaigns) : 1;
+    console.log(`📊 Number of campaigns to create: ${numberOfCampaigns}`);
+
     // Prepare campaign data with all Meta-compliant Strategy 150 fields
     const campaignData = {
       // Campaign level fields
@@ -634,23 +638,67 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Media Type:', campaignData.mediaType);
     console.log('  Has Image:', !!campaignData.imagePath);
 
-    // Create the initial 1-1-1 campaign structure
-    let result;
-    try {
-      result = await userFacebookApi.createStrategy150Campaign(campaignData);
-    } catch (error) {
-      console.error('❌ Strategy 1-50-1 Campaign Creation Error:');
-      console.error('Error message:', error.message);
-      console.error('Error code:', error.fbError?.code || error.status || 'Unknown');
-      if (error.fbError) {
-        console.error('Facebook Error Details:', JSON.stringify(error.fbError, null, 2));
-      }
-      throw error;
-    }
+    // Create multiple campaigns if requested
+    const createdCampaigns = [];
+    let mediaHashes = null; // Store media hashes from first campaign to reuse
 
-    await AuditService.logRequest(req, 'strategy150.create', 'campaign', result.campaign?.id, 'success', null, {
-      campaignId: result.campaign?.id,
-      campaignName: campaignData.campaignName,
+    for (let campaignIndex = 0; campaignIndex < numberOfCampaigns; campaignIndex++) {
+      // Modify campaign name for multiple campaigns
+      const currentCampaignName = numberOfCampaigns > 1
+        ? `${campaignData.campaignName} - Copy ${campaignIndex + 1}`
+        : campaignData.campaignName;
+
+      // Update campaign data with current name
+      const currentCampaignData = {
+        ...campaignData,
+        campaignName: currentCampaignName
+      };
+
+      // Reuse media hashes from first campaign for subsequent campaigns
+      if (campaignIndex > 0 && mediaHashes) {
+        currentCampaignData.reusedMediaHashes = mediaHashes;
+        currentCampaignData.skipMediaUpload = true;
+        console.log(`♻️ Campaign ${campaignIndex + 1}: Reusing media from first campaign`);
+      }
+
+      // Add delay between campaign creations to avoid rate limits
+      if (campaignIndex > 0) {
+        console.log(`⏱️ Waiting 5 seconds before creating campaign ${campaignIndex + 1}...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+
+      // Create the initial 1-1-1 campaign structure
+      let result;
+      try {
+        console.log(`\n📝 Creating campaign ${campaignIndex + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
+        result = await userFacebookApi.createStrategy150Campaign(currentCampaignData);
+
+        // Store media hashes from first campaign
+        if (campaignIndex === 0 && result.mediaHashes) {
+          mediaHashes = result.mediaHashes;
+          console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+        }
+      } catch (error) {
+        console.error(`❌ Strategy 1-50-1 Campaign ${campaignIndex + 1} Creation Error:`);
+        console.error('Error message:', error.message);
+        console.error('Error code:', error.fbError?.code || error.status || 'Unknown');
+        if (error.fbError) {
+          console.error('Facebook Error Details:', JSON.stringify(error.fbError, null, 2));
+        }
+
+        // If we've created some campaigns successfully, return those
+        if (createdCampaigns.length > 0) {
+          console.log(`⚠️ Created ${createdCampaigns.length} of ${numberOfCampaigns} campaigns before error`);
+          break;
+        }
+        throw error;
+      }
+
+      await AuditService.logRequest(req, 'strategy150.create', 'campaign', result.campaign?.id, 'success', null, {
+        campaignId: result.campaign?.id,
+        campaignName: currentCampaignName,
+        campaignNumber: campaignIndex + 1,
+        totalCampaigns: numberOfCampaigns,
       adAccountId: selectedAdAccountId,
       strategyType: '1-50-1',
       objective: campaignData.objective,
@@ -658,39 +706,73 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       adSetsCreated: 1
     });
 
-    // Store campaign in tracking table for management
-    try {
-      const { CampaignTracking } = require('../models');
-      await CampaignTracking.create({
-        campaign_id: result.campaign.id,
-        campaign_name: campaignData.campaignName,
-        user_id: userId,
-        ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
-        strategy_type: '1-50-1',
-        post_id: result.postId || null,
-        ad_set_count: 1, // Initial creation, will be 50 after duplication
-        status: 'ACTIVE'
-      });
-      console.log(`📊 Campaign ${result.campaign.id} added to tracking for management`);
-    } catch (trackingError) {
-      console.error('Warning: Could not add campaign to tracking:', trackingError.message);
-      // Don't fail the request if tracking fails
-    }
+      // Store campaign in tracking table for management
+      try {
+        const { CampaignTracking } = require('../models');
+        await CampaignTracking.create({
+          campaign_id: result.campaign.id,
+          campaign_name: currentCampaignName,
+          user_id: userId,
+          ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
+          strategy_type: '1-50-1',
+          post_id: result.postId || null,
+          ad_set_count: 1, // Initial creation, will be 50 after duplication
+          status: 'ACTIVE'
+        });
+        console.log(`📊 Campaign ${result.campaign.id} added to tracking for management`);
+      } catch (trackingError) {
+        console.error('Warning: Could not add campaign to tracking:', trackingError.message);
+        // Don't fail the request if tracking fails
+      }
 
-    res.json({
-      success: true,
-      message: 'Strategy 1-50-1 initial campaign created successfully',
-      data: {
-        phase: 'initial',
+      // Add campaign to results array
+      createdCampaigns.push({
         campaign: result.campaign,
         adSet: result.adSet,
         ads: result.ads,
-        adAccount: facebookAuth.selectedAdAccount, // Add ad account info
-        page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
-        pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
-        postId: result.postId // Include postId from result
-      }
-    });
+        postId: result.postId,
+        campaignNumber: campaignIndex + 1
+      });
+    } // End of campaign creation loop
+
+    // Prepare response based on number of campaigns created
+    const responseMessage = numberOfCampaigns > 1
+      ? `Successfully created ${createdCampaigns.length} identical Strategy 1-50-1 campaigns`
+      : 'Strategy 1-50-1 initial campaign created successfully';
+
+    // For single campaign, return the same format as before for backward compatibility
+    if (numberOfCampaigns === 1 && createdCampaigns.length === 1) {
+      const singleResult = createdCampaigns[0];
+      res.json({
+        success: true,
+        message: responseMessage,
+        data: {
+          phase: 'initial',
+          campaign: singleResult.campaign,
+          adSet: singleResult.adSet,
+          ads: singleResult.ads,
+          adAccount: facebookAuth.selectedAdAccount, // Add ad account info
+          page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
+          pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
+          postId: singleResult.postId // Include postId from result
+        }
+      });
+    } else {
+      // For multiple campaigns, return an array
+      res.json({
+        success: true,
+        message: responseMessage,
+        data: {
+          phase: 'initial',
+          campaigns: createdCampaigns, // Array of all created campaigns
+          totalRequested: numberOfCampaigns,
+          totalCreated: createdCampaigns.length,
+          adAccount: facebookAuth.selectedAdAccount, // Add ad account info
+          page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
+          pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null // Add pixel info if used
+        }
+      });
+    }
   } catch (error) {
     console.error('Strategy 1-50-1 creation error:', error);
     await AuditService.logRequest(req, 'strategy150.create', null, null, 'failure', error.message, {

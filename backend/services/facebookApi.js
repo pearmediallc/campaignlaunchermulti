@@ -1509,7 +1509,9 @@ class FacebookAPI {
         imagePath: campaignData.imagePath,
         mediaType: campaignData.mediaType,
         hasVideo: !!campaignData.videoPath,
-        hasCarousel: !!campaignData.imagePaths
+        hasCarousel: !!campaignData.imagePaths,
+        reusingMedia: !!campaignData.reusedMediaHashes,
+        skipUpload: !!campaignData.skipMediaUpload
       });
       
       // For CBO (budgetLevel === 'campaign'), set campaign budget
@@ -1565,8 +1567,13 @@ class FacebookAPI {
       // Handle media upload based on type
       let mediaAssets = {};
 
+      // Check if we should reuse media from a previous campaign
+      if (campaignData.skipMediaUpload && campaignData.reusedMediaHashes) {
+        console.log('♻️ Reusing media hashes from previous campaign');
+        mediaAssets = campaignData.reusedMediaHashes;
+      }
       // PRIORITY 1: Check for Dynamic Creative media FIRST
-      if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
+      else if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
         // Handle Dynamic Creative multiple media uploads
         console.log('🎨 Processing Dynamic Creative media...');
         try {
@@ -1807,7 +1814,8 @@ class FacebookAPI {
       return {
         campaign,
         adSet,
-        ads
+        ads,
+        mediaHashes: mediaAssets // Return media hashes for reuse
       };
     } catch (error) {
       this.handleError(error);
@@ -1946,7 +1954,12 @@ class FacebookAPI {
       // Handle media upload before creating ad
       let mediaAssets = {};
 
-      if ((campaignData.mediaType === 'video' || campaignData.mediaType === 'single_video') && campaignData.videoPath) {
+      // Check if we should reuse media from a previous campaign
+      if (campaignData.skipMediaUpload && campaignData.reusedMediaHashes) {
+        console.log('♻️ Reusing media hashes from previous campaign');
+        mediaAssets = campaignData.reusedMediaHashes;
+      }
+      else if ((campaignData.mediaType === 'video' || campaignData.mediaType === 'single_video') && campaignData.videoPath) {
         try {
           console.log('🎬 Starting video upload...');
           console.log('  Video path:', campaignData.videoPath);
@@ -2093,7 +2106,8 @@ class FacebookAPI {
         campaign,
         adSet,
         ads: [ad],
-        postId: ad?.postId || null // Explicitly include postId in return
+        postId: ad?.postId || null, // Explicitly include postId in return
+        mediaHashes: mediaAssets // Return media hashes for reuse
       };
     } catch (error) {
       console.error('\n❌ STRATEGY 1-50-1 FAILED');
