@@ -1606,15 +1606,25 @@ class FacebookAPI {
                 // Continue with other media instead of failing completely
               }
             } else {
-              console.log(`  📸 Uploading image: ${mediaPath}`);
+              console.log(`  📸 Processing image: ${mediaPath}`);
               try {
-                const imageHash = await this.uploadImage(mediaPath);
-                if (imageHash) {
-                  dynamicImages.push(imageHash);
-                  console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+                // Check if image meets minimum dimensions for Dynamic Creative (600x600)
+                const dimensions = await ImageConverter.checkImageDimensions(mediaPath, 600, 600);
+
+                if (!dimensions) {
+                  console.log(`  ⚠️ Skipping image - could not read dimensions: ${mediaPath}`);
+                } else if (!dimensions.valid) {
+                  console.log(`  ⚠️ Skipping image - dimensions (${dimensions.width}x${dimensions.height}) below minimum (600x600): ${mediaPath}`);
+                } else {
+                  console.log(`  ✅ Image dimensions OK (${dimensions.width}x${dimensions.height}), uploading...`);
+                  const imageHash = await this.uploadImage(mediaPath);
+                  if (imageHash) {
+                    dynamicImages.push(imageHash);
+                    console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+                  }
                 }
               } catch (imageError) {
-                console.error(`  ❌ Failed to upload image: ${imageError.message}`);
+                console.error(`  ❌ Failed to process image: ${imageError.message}`);
                 // Continue with other media instead of failing completely
               }
             }
@@ -1635,8 +1645,16 @@ class FacebookAPI {
               }
             }
 
-            mediaAssets.dynamicImages = uniqueImages;
-            console.log(`✅ Dynamic Creative: ${uniqueImages.length} unique images (${dynamicImages.length - uniqueImages.length} duplicates removed)`);
+            if (uniqueImages.length > 0) {
+              mediaAssets.dynamicImages = uniqueImages;
+              console.log(`✅ Dynamic Creative: ${uniqueImages.length} unique images (${dynamicImages.length - uniqueImages.length} duplicates removed)`);
+            } else {
+              console.log('❌ No valid images for Dynamic Creative after filtering');
+              throw new Error('No images meet the minimum 600x600 dimension requirement for Dynamic Creative. Please use larger images.');
+            }
+          } else {
+            console.log('❌ No valid images uploaded for Dynamic Creative');
+            throw new Error('No images could be uploaded for Dynamic Creative. Please check your images meet the 600x600 minimum dimension requirement.');
           }
           if (dynamicVideos.length > 0) {
             // Remove duplicate video IDs as well

@@ -60,6 +60,37 @@ class ImageConverter {
   }
   
   /**
+   * Check if image meets minimum dimension requirements
+   * @param {string} imagePath - Path to the image file
+   * @param {number} minWidth - Minimum width in pixels (default 600)
+   * @param {number} minHeight - Minimum height in pixels (default 600)
+   * @returns {Object|null} - Returns {width, height, valid} or null if error
+   */
+  static async checkImageDimensions(imagePath, minWidth = 600, minHeight = 600) {
+    try {
+      if (!fs.existsSync(imagePath)) {
+        console.error(`Image file not found: ${imagePath}`);
+        return null;
+      }
+
+      const metadata = await sharp(imagePath).metadata();
+      const width = metadata.width || 0;
+      const height = metadata.height || 0;
+
+      const valid = width >= minWidth && height >= minHeight;
+
+      if (!valid) {
+        console.log(`⚠️ Image ${path.basename(imagePath)} dimensions (${width}x${height}) don't meet minimum requirements (${minWidth}x${minHeight})`);
+      }
+
+      return { width, height, valid };
+    } catch (error) {
+      console.error(`Failed to check dimensions for ${imagePath}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Validate and prepare image for Facebook upload
    */
   static async prepareForFacebook(imagePath) {
