@@ -33,8 +33,6 @@ class StrategyForAllDuplicationService {
   async duplicateCampaign(campaignId, newName, copies = 1, adSetCount = 49, totalBudget = null, editorName = null) {
     console.log(`🚀 Starting for-all based duplication for campaign ${campaignId}`);
     console.log(`📊 Creating ${copies} copies using proven working pattern`);
-    console.log(`📊 Ad sets per campaign: ${adSetCount}`);
-    console.log(`💵 Total budget: ${totalBudget ? `$${totalBudget}` : 'Original budget'}`);
 
     const results = [];
     let campaignData = null;
@@ -43,7 +41,19 @@ class StrategyForAllDuplicationService {
       // Step 1: Get campaign data using the same approach as for-all
       campaignData = await this.getCampaignData(campaignId);
 
-      // Step 2: Get the post ID from the campaign using for-all pattern
+      // Step 2: Detect the ACTUAL structure of the original campaign
+      const actualStructure = await this.detectCampaignStructure(campaignId);
+      console.log(`📊 Detected original campaign structure:`);
+      console.log(`  - Ad Sets: ${actualStructure.adSetCount}`);
+      console.log(`  - Total Ads: ${actualStructure.totalAds}`);
+      console.log(`  - Has Dynamic Creative: ${actualStructure.hasDynamicCreative}`);
+
+      // Use actual ad set count if not explicitly overridden
+      const finalAdSetCount = adSetCount === 49 ? actualStructure.adSetCount : adSetCount;
+      console.log(`📊 Will create ${finalAdSetCount} ad sets per campaign`);
+      console.log(`💵 Total budget: ${totalBudget ? `$${totalBudget}` : 'Original budget'}`);
+
+      // Step 3: Get the post ID from the campaign using for-all pattern
       const postId = await this.getPostIdFromCampaign(campaignId);
 
       if (!postId) {
@@ -53,10 +63,10 @@ class StrategyForAllDuplicationService {
       console.log(`✅ Found post ID: ${postId}`);
 
       // Calculate budget per ad set
-      const budgetPerAdSet = totalBudget ? (totalBudget / adSetCount) : 1;
+      const budgetPerAdSet = totalBudget ? (totalBudget / finalAdSetCount) : 1;
       console.log(`💵 Budget per ad set: $${budgetPerAdSet.toFixed(2)}`);
 
-      // Step 3: Create copies using the exact for-all pattern
+      // Step 4: Create copies using the exact for-all pattern
       for (let copyIndex = 0; copyIndex < copies; copyIndex++) {
         const copyName = copies > 1
           ? `${newName} - Copy ${copyIndex + 1}`
@@ -68,7 +78,7 @@ class StrategyForAllDuplicationService {
           campaignData,
           copyName,
           postId,
-          adSetCount,
+          finalAdSetCount,
           budgetPerAdSet,
           editorName
         );
@@ -108,6 +118,70 @@ class StrategyForAllDuplicationService {
         success: false,
         partialSuccess: false
       }];
+    }
+  }
+
+  /**
+   * Detect the actual structure of the campaign
+   * @param {string} campaignId - Campaign ID to analyze
+   * @returns {object} Structure info including ad set count, total ads, and dynamic creative status
+   */
+  async detectCampaignStructure(campaignId) {
+    console.log(`🔍 Detecting actual campaign structure...`);
+
+    try {
+      // Get all ad sets in the campaign
+      const adSetsResponse = await axios.get(
+        `${this.baseURL}/${campaignId}/adsets`,
+        {
+          params: {
+            fields: 'id,name,is_dynamic_creative',
+            access_token: this.accessToken,
+            limit: 100
+          }
+        }
+      );
+
+      const adSets = adSetsResponse.data?.data || [];
+      console.log(`  Found ${adSets.length} ad sets`);
+
+      // Check if any ad sets have dynamic creative
+      const hasDynamicCreative = adSets.some(adSet => adSet.is_dynamic_creative);
+
+      // Get total ad count
+      let totalAds = 0;
+      for (const adSet of adSets) {
+        const adsResponse = await axios.get(
+          `${this.baseURL}/${adSet.id}/ads`,
+          {
+            params: {
+              fields: 'id',
+              access_token: this.accessToken,
+              limit: 100
+            }
+          }
+        );
+        const adCount = adsResponse.data?.data?.length || 0;
+        totalAds += adCount;
+        console.log(`  Ad Set ${adSet.name}: ${adCount} ads`);
+      }
+
+      return {
+        adSetCount: adSets.length,
+        totalAds: totalAds,
+        hasDynamicCreative: hasDynamicCreative,
+        adSets: adSets
+      };
+
+    } catch (error) {
+      console.error('Failed to detect campaign structure:', error.message);
+      // Default to single ad set if detection fails
+      return {
+        adSetCount: 1,
+        totalAds: 1,
+        hasDynamicCreative: false,
+        adSets: []
+      };
     }
   }
 
