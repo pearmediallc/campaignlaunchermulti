@@ -4876,45 +4876,74 @@ class FacebookAPI {
     try {
       console.log(`  📦 Using async batch API for large campaign duplication...`);
 
-      // Create batch request
+      // Build the parameters for the copy request
+      const copyParams = {
+        deep_copy: 'true',
+        status_option: 'PAUSED',
+        rename_options: JSON.stringify({
+          rename_suffix: ' - Copy',
+          rename_strategy: 'DEEP_RENAME'
+        })
+      };
+
+      if (newName) {
+        copyParams.name = newName;
+      }
+
+      // Create batch request with proper formatting
       const batchRequest = {
         method: 'POST',
         relative_url: `${campaignId}/copies`,
-        body: new URLSearchParams({
-          deep_copy: 'true',
-          status_option: 'PAUSED',
-          name: newName || '',
-          rename_options: JSON.stringify({
-            rename_suffix: ' - Copy',
-            rename_strategy: 'DEEP_RENAME'
-          })
-        }).toString()
+        body: new URLSearchParams(copyParams).toString()
       };
 
-      // Send as batch request
+      console.log(`  📝 Batch request prepared for campaign ${campaignId}`);
+
+      // Send as batch request using form-data format
+      const formData = new URLSearchParams();
+      formData.append('batch', JSON.stringify([batchRequest]));
+      formData.append('access_token', this.accessToken);
+
       const batchResponse = await axios.post(
         `${this.baseURL}`,
+        formData.toString(),
         {
-          batch: JSON.stringify([batchRequest]),
-          access_token: this.accessToken
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
         }
       );
 
       // Parse batch response
-      const batchResult = batchResponse.data[0];
-      if (batchResult && batchResult.code === 200) {
-        const responseData = JSON.parse(batchResult.body);
-        const newCampaignId = responseData.copied_campaign_id || responseData.id;
-        console.log(`  ✅ Campaign duplicated via async batch. New ID: ${newCampaignId}`);
-        return newCampaignId;
-      } else {
-        // If batch also fails, try manual copy as last resort
-        console.log(`  ⚠️ Batch API also limited, trying manual copy...`);
-        return await this.manualCampaignCopy(campaignId, newName);
+      if (batchResponse.data && Array.isArray(batchResponse.data) && batchResponse.data.length > 0) {
+        const batchResult = batchResponse.data[0];
+
+        if (batchResult && batchResult.code === 200) {
+          const responseData = JSON.parse(batchResult.body);
+          const newCampaignId = responseData.copied_campaign_id || responseData.id;
+          console.log(`  ✅ Campaign duplicated via async batch. New ID: ${newCampaignId}`);
+          return newCampaignId;
+        } else if (batchResult && batchResult.body) {
+          // Log the error details from batch response
+          const errorData = JSON.parse(batchResult.body);
+          console.error(`  ⚠️ Batch API returned error:`, errorData.error || errorData);
+
+          // If it's still a size limit issue, try manual copy
+          if (errorData.error?.error_subcode === 1885194) {
+            console.log(`  📋 Still too large for batch API, trying manual copy...`);
+            return await this.manualCampaignCopy(campaignId, newName);
+          }
+        }
       }
+
+      // If batch fails for any other reason, try manual copy
+      console.log(`  ⚠️ Batch API failed, trying manual copy...`);
+      return await this.manualCampaignCopy(campaignId, newName);
+
     } catch (error) {
-      console.error(`  ❌ Async batch duplication failed:`, error.message);
+      console.error(`  ❌ Async batch duplication failed:`, error.response?.data || error.message);
       // Try manual copy as last resort
+      console.log(`  🔧 Falling back to manual copy...`);
       return await this.manualCampaignCopy(campaignId, newName);
     }
   }
@@ -4927,35 +4956,72 @@ class FacebookAPI {
     try {
       console.log(`  🔧 Using manual copy method (last resort)...`);
 
-      // Step 1: Get original campaign details
-      const originalCampaign = await this.getCampaignFullDetails(campaignId);
+      // Step 1: Get original campaign details with more fields
+      const campaignResponse = await axios.get(
+        `${this.baseURL}/${campaignId}`,
+        {
+          params: {
+            fields: 'name,objective,status,special_ad_categories,daily_budget,lifetime_budget,bid_strategy,account_id',
+            access_token: this.accessToken
+          }
+        }
+      );
 
-      // Step 2: Create new campaign
+      const originalCampaign = campaignResponse.data;
+
+      // Extract account ID properly
+      let accountId = this.adAccountId;
+      if (originalCampaign.account_id) {
+        accountId = originalCampaign.account_id.replace('act_', '');
+      }
+
+      console.log(`  📊 Using account ID: ${accountId}`);
+
+      // Step 2: Create new campaign with proper data structure
       const newCampaignData = {
         name: newName || `${originalCampaign.name} - Copy`,
         objective: originalCampaign.objective,
         status: 'PAUSED',
-        special_ad_categories: originalCampaign.special_ad_categories || [],
-        daily_budget: originalCampaign.daily_budget,
-        lifetime_budget: originalCampaign.lifetime_budget,
-        bid_strategy: originalCampaign.bid_strategy
+        access_token: this.accessToken
       };
 
+      // Only add special_ad_categories if they exist and are not empty
+      if (originalCampaign.special_ad_categories && originalCampaign.special_ad_categories.length > 0) {
+        newCampaignData.special_ad_categories = JSON.stringify(originalCampaign.special_ad_categories);
+      }
+
+      // Only add budget fields if they exist
+      if (originalCampaign.daily_budget) {
+        newCampaignData.daily_budget = originalCampaign.daily_budget;
+      }
+      if (originalCampaign.lifetime_budget) {
+        newCampaignData.lifetime_budget = originalCampaign.lifetime_budget;
+      }
+      if (originalCampaign.bid_strategy) {
+        newCampaignData.bid_strategy = originalCampaign.bid_strategy;
+      }
+
+      console.log(`  📝 Creating new campaign with data:`, {
+        name: newCampaignData.name,
+        objective: newCampaignData.objective,
+        hasBudget: !!(newCampaignData.daily_budget || newCampaignData.lifetime_budget)
+      });
+
       const newCampaignResponse = await axios.post(
-        `${this.baseURL}/act_${this.adAccountId}/campaigns`,
+        `${this.baseURL}/act_${accountId}/campaigns`,
         null,
-        { params: { ...newCampaignData, access_token: this.accessToken } }
+        { params: newCampaignData }
       );
 
       const newCampaignId = newCampaignResponse.data.id;
       console.log(`  ✅ New campaign created: ${newCampaignId}`);
 
-      // Step 3: Copy ad sets (limit to first 3 if too many)
+      // Step 3: Copy ad sets with better error handling
       const adSetsResponse = await axios.get(
         `${this.baseURL}/${campaignId}/adsets`,
         {
           params: {
-            fields: 'name,targeting,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,is_dynamic_creative,promoted_object',
+            fields: 'name,targeting,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,is_dynamic_creative,promoted_object,attribution_spec',
             limit: 3, // Limit to 3 ad sets to avoid issues
             access_token: this.accessToken
           }
@@ -4966,40 +5032,82 @@ class FacebookAPI {
       console.log(`  📋 Copying ${Math.min(adSets.length, 3)} ad sets...`);
 
       for (let i = 0; i < Math.min(adSets.length, 3); i++) {
-        const adSet = adSets[i];
-        const newAdSetData = {
-          name: `${adSet.name} - Copy`,
-          campaign_id: newCampaignId,
-          targeting: JSON.stringify(adSet.targeting),
-          optimization_goal: adSet.optimization_goal,
-          billing_event: adSet.billing_event,
-          bid_amount: adSet.bid_amount,
-          daily_budget: adSet.daily_budget,
-          lifetime_budget: adSet.lifetime_budget,
-          is_dynamic_creative: adSet.is_dynamic_creative,
-          promoted_object: JSON.stringify(adSet.promoted_object),
-          status: 'PAUSED'
-        };
+        try {
+          const adSet = adSets[i];
+          const newAdSetData = {
+            name: `${adSet.name} - Copy`,
+            campaign_id: newCampaignId,
+            optimization_goal: adSet.optimization_goal,
+            billing_event: adSet.billing_event,
+            status: 'PAUSED',
+            access_token: this.accessToken
+          };
 
-        // Remove undefined values
-        Object.keys(newAdSetData).forEach(key => {
-          if (newAdSetData[key] === undefined) {
-            delete newAdSetData[key];
+          // Add targeting if it exists
+          if (adSet.targeting) {
+            newAdSetData.targeting = typeof adSet.targeting === 'string'
+              ? adSet.targeting
+              : JSON.stringify(adSet.targeting);
           }
-        });
 
-        await axios.post(
-          `${this.baseURL}/act_${this.adAccountId}/adsets`,
-          null,
-          { params: { ...newAdSetData, access_token: this.accessToken } }
-        );
+          // Add promoted object if it exists
+          if (adSet.promoted_object) {
+            newAdSetData.promoted_object = typeof adSet.promoted_object === 'string'
+              ? adSet.promoted_object
+              : JSON.stringify(adSet.promoted_object);
+          }
+
+          // Add attribution spec if it exists
+          if (adSet.attribution_spec) {
+            newAdSetData.attribution_spec = typeof adSet.attribution_spec === 'string'
+              ? adSet.attribution_spec
+              : JSON.stringify(adSet.attribution_spec);
+          }
+
+          // Add budget fields only if they exist
+          if (adSet.bid_amount) {
+            newAdSetData.bid_amount = adSet.bid_amount;
+          }
+          if (adSet.daily_budget) {
+            newAdSetData.daily_budget = adSet.daily_budget;
+          }
+          if (adSet.lifetime_budget) {
+            newAdSetData.lifetime_budget = adSet.lifetime_budget;
+          }
+          if (adSet.is_dynamic_creative) {
+            newAdSetData.is_dynamic_creative = adSet.is_dynamic_creative;
+          }
+
+          console.log(`    📝 Creating ad set ${i + 1} with optimization goal: ${adSet.optimization_goal}`);
+
+          await axios.post(
+            `${this.baseURL}/act_${accountId}/adsets`,
+            null,
+            { params: newAdSetData }
+          );
+
+          console.log(`    ✅ Ad set ${i + 1} created successfully`);
+        } catch (adSetError) {
+          console.error(`    ❌ Failed to create ad set ${i + 1}:`, adSetError.response?.data?.error || adSetError.message);
+          // Continue with next ad set instead of failing completely
+        }
       }
 
       console.log(`  ✅ Manual copy completed. New campaign ID: ${newCampaignId}`);
       return newCampaignId;
 
     } catch (error) {
-      console.error(`  ❌ Manual copy failed:`, error.message);
+      console.error(`  ❌ Manual copy failed:`, error.response?.data?.error || error.message);
+      if (error.response?.data?.error) {
+        const fbError = error.response.data.error;
+        console.error(`  📛 Facebook error details:`, {
+          message: fbError.message,
+          type: fbError.type,
+          code: fbError.code,
+          error_subcode: fbError.error_subcode,
+          error_user_msg: fbError.error_user_msg
+        });
+      }
       throw error;
     }
   }
