@@ -4571,6 +4571,54 @@ class FacebookAPI {
   }
 
   /**
+   * Get campaign structure (number of ad sets and ads)
+   */
+  async getCampaignStructure(campaignId) {
+    try {
+      // Get ad sets count
+      const adSetsResponse = await axios.get(
+        `${this.baseURL}/${campaignId}/adsets`,
+        {
+          params: {
+            fields: 'id',
+            limit: 100,
+            access_token: this.accessToken
+          }
+        }
+      );
+
+      const adSetCount = adSetsResponse.data?.data?.length || 0;
+
+      // Get total ads count by checking first ad set (all should have same structure)
+      let totalAds = 0;
+      if (adSetCount > 0) {
+        const firstAdSetId = adSetsResponse.data.data[0].id;
+        const adsResponse = await axios.get(
+          `${this.baseURL}/${firstAdSetId}/ads`,
+          {
+            params: {
+              fields: 'id',
+              limit: 100,
+              access_token: this.accessToken
+            }
+          }
+        );
+        const adsPerAdSet = adsResponse.data?.data?.length || 0;
+        totalAds = adSetCount * adsPerAdSet;
+      }
+
+      return {
+        adSetCount: adSetCount,
+        totalAds: totalAds,
+        totalObjects: 1 + adSetCount + totalAds // 1 campaign + ad sets + ads
+      };
+    } catch (error) {
+      console.error('Failed to get campaign structure:', error.message);
+      return { adSetCount: 0, totalAds: 0, totalObjects: 0 };
+    }
+  }
+
+  /**
    * Enhanced deep copy method that handles both small and large campaigns
    * Uses async batch API for campaigns with more than 3 total objects
    */
@@ -4982,13 +5030,10 @@ class FacebookAPI {
         name: newName || `${originalCampaign.name} - Copy`,
         objective: originalCampaign.objective,
         status: 'PAUSED',
-        access_token: this.accessToken
+        access_token: this.accessToken,
+        // CRITICAL FIX: special_ad_categories is ALWAYS required by Facebook, even if empty
+        special_ad_categories: JSON.stringify(originalCampaign.special_ad_categories || [])
       };
-
-      // Only add special_ad_categories if they exist and are not empty
-      if (originalCampaign.special_ad_categories && originalCampaign.special_ad_categories.length > 0) {
-        newCampaignData.special_ad_categories = JSON.stringify(originalCampaign.special_ad_categories);
-      }
 
       // Only add budget fields if they exist
       if (originalCampaign.daily_budget) {

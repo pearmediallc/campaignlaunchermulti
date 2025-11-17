@@ -775,39 +775,59 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
         for (let i = 0; i < adSetsToCreate; i++) {
           try {
-            // Create a new ad set by copying the original
-            const newAdSetData = {
-              name: `${result.adSet.name} - Copy ${i + 2}`,
-              campaign_id: result.campaign.id,
-              // Copy other parameters from the original ad set
-              ...result.adSet,
-              id: undefined, // Remove the ID so it creates a new one
-              status: 'ACTIVE'
-            };
-
-            // Create the ad set using the Facebook API
-            const newAdSet = await userFacebookApi.createAdSet({
+            // Prepare ad set parameters based on budget level
+            const adSetParams = {
               ...campaignData,
               campaignId: result.campaign.id,
-              adSetName: newAdSetData.name,
-              existingAdSetId: result.adSet.id // Reference to copy settings from
-            });
+              adSetName: `${result.adSet.name} - Copy ${i + 2}`,
+            };
+
+            // CRITICAL FIX: Only set ad set budget if NOT using Campaign Budget Optimization
+            if (campaignData.budgetLevel === 'adset') {
+              // ABO: Set budget at ad set level
+              adSetParams.dailyBudget = campaignData.dailyBudget;
+              adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
+            } else {
+              // CBO: Do NOT set budget at ad set level, it's already set at campaign level
+              delete adSetParams.dailyBudget;
+              delete adSetParams.lifetimeBudget;
+              delete adSetParams.adSetBudget;
+              console.log(`  📊 Using CBO - no ad set budget needed for ad set ${i + 2}`);
+            }
+
+            // Create the ad set
+            const newAdSet = await userFacebookApi.createAdSet(adSetParams);
 
             if (newAdSet) {
-              // Create ads for this ad set using the same creative
-              const newAd = await userFacebookApi.createAd({
+              // CRITICAL FIX: Ensure displayLink is explicitly passed for ad creation
+              const adParams = {
                 ...campaignData,
                 adSetId: newAdSet.id,
                 adName: `${campaignData.campaignName} - Ad ${i + 2}`,
-                postId: result.postId
-              });
+                postId: result.postId,
+                // Explicitly ensure these creative fields are passed
+                displayLink: campaignData.displayLink,
+                url: campaignData.url,
+                headline: campaignData.headline,
+                primaryText: campaignData.primaryText,
+                description: campaignData.description,
+                callToAction: campaignData.callToAction
+              };
+
+              console.log(`  🔗 Creating ad with display link: ${adParams.displayLink}`);
+
+              // Create ads for this ad set using the same creative
+              const newAd = await userFacebookApi.createAd(adParams);
 
               duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
-              console.log(`  ✅ Created ad set ${i + 2} of ${targetAdSetCount}`);
+              console.log(`  ✅ Created ad set ${i + 2} of ${targetAdSetCount} with display link`);
             }
 
           } catch (adSetError) {
             console.error(`  ❌ Failed to create ad set ${i + 2}:`, adSetError.message);
+            if (adSetError.response?.data?.error) {
+              console.error(`  📛 Facebook error:`, adSetError.response.data.error);
+            }
             // Continue with next ad set
           }
         }
