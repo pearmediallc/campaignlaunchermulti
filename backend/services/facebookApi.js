@@ -5071,6 +5071,11 @@ class FacebookAPI {
 
       for (let i = 0; i < Math.min(adSets.length, 3); i++) {
         try {
+          // Add a small delay between ad set creations to avoid rate limits
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+          }
+
           const adSet = adSets[i];
           const newAdSetData = {
             name: `${adSet.name} - Copy`,
@@ -5135,7 +5140,7 @@ class FacebookAPI {
               `${this.baseURL}/${adSet.id}/ads`,
               {
                 params: {
-                  fields: 'id,name,creative{id,object_story_spec,object_story_id},status,tracking_specs',
+                  fields: 'id,name,creative{id,object_story_spec,object_story_id,link_url,effective_object_story_id},status,tracking_specs,adset{promoted_object}',
                   limit: 5, // Limit ads per ad set to avoid API limits
                   access_token: this.accessToken
                 }
@@ -5147,6 +5152,11 @@ class FacebookAPI {
 
             for (let j = 0; j < Math.min(ads.length, 5); j++) {
               try {
+                // Add a small delay between ad creations to avoid rate limits
+                if (j > 0) {
+                  await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+                }
+
                 const ad = ads[j];
                 console.log(`      📝 Copying ad ${j + 1}: ${ad.name}`);
 
@@ -5158,25 +5168,79 @@ class FacebookAPI {
                   access_token: this.accessToken
                 };
 
-                // If the ad has a creative with object_story_id, reuse it (quick duplicate)
+                // Strategy: Prioritize reusing existing creative to avoid link errors
+                // 1. First try object_story_id (safest - reuses existing post)
+                // 2. Then try creative_id (reuses creative without new post)
+                // 3. Finally try object_story_spec (creates new post - most error prone)
+
                 if (ad.creative?.object_story_id) {
-                  // Create a creative that references the existing post
+                  // BEST: Reuse existing post - no link issues
                   newAdData.creative = JSON.stringify({
                     object_story_id: ad.creative.object_story_id
                   });
                   console.log(`      ♻️ Reusing existing post (object_story_id: ${ad.creative.object_story_id})`);
-                } else if (ad.creative?.object_story_spec) {
-                  // Clone the object_story_spec for a new post
-                  newAdData.creative = JSON.stringify({
-                    object_story_spec: ad.creative.object_story_spec
-                  });
-                  console.log(`      🆕 Creating new post from object_story_spec`);
                 } else if (ad.creative?.id) {
-                  // Fallback: reference the creative ID directly
+                  // GOOD: Reference the creative ID directly - avoids link issues
                   newAdData.creative = JSON.stringify({
                     creative_id: ad.creative.id
                   });
                   console.log(`      📎 Using existing creative ID: ${ad.creative.id}`);
+                } else if (ad.creative?.object_story_spec) {
+                  // FALLBACK: Clone object_story_spec - prone to link errors
+                  // Deep clone to avoid modifying original
+                  const storySpec = JSON.parse(JSON.stringify(ad.creative.object_story_spec));
+
+                  // Try to ensure link is present for link_data ads
+                  if (storySpec.link_data) {
+                    // If link is missing, try to get it from promoted_object
+                    if (!storySpec.link_data.link && adSet.promoted_object?.object_store_url) {
+                      storySpec.link_data.link = adSet.promoted_object.object_store_url;
+                      console.log(`      🔗 Added link from promoted_object: ${adSet.promoted_object.object_store_url}`);
+                    }
+
+                    // Last resort: use a placeholder that will need to be fixed manually
+                    if (!storySpec.link_data.link) {
+                      console.log(`      ⚠️ Warning: No link found for ad, skipping object_story_spec method`);
+                      // Fall back to trying to use creative_id if available
+                      if (ad.creative?.id) {
+                        newAdData.creative = JSON.stringify({
+                          creative_id: ad.creative.id
+                        });
+                        console.log(`      📎 Falling back to creative ID: ${ad.creative.id}`);
+                      } else {
+                        console.log(`      ❌ Cannot copy ad - no valid creative method available`);
+                        continue; // Skip this ad
+                      }
+                    } else {
+                      newAdData.creative = JSON.stringify({
+                        object_story_spec: storySpec
+                      });
+                      console.log(`      🆕 Creating new post from object_story_spec`);
+                    }
+                  } else if (storySpec.video_data) {
+                    // For video ads, ensure CTA has a link
+                    if (!storySpec.video_data.call_to_action?.value?.link && adSet.promoted_object?.object_store_url) {
+                      if (!storySpec.video_data.call_to_action) {
+                        storySpec.video_data.call_to_action = { type: 'LEARN_MORE', value: {} };
+                      }
+                      if (!storySpec.video_data.call_to_action.value) {
+                        storySpec.video_data.call_to_action.value = {};
+                      }
+                      storySpec.video_data.call_to_action.value.link = adSet.promoted_object.object_store_url;
+                      console.log(`      🔗 Added video CTA link from promoted_object`);
+                    }
+
+                    newAdData.creative = JSON.stringify({
+                      object_story_spec: storySpec
+                    });
+                    console.log(`      🎥 Creating new video post from object_story_spec`);
+                  } else {
+                    // Other story spec types
+                    newAdData.creative = JSON.stringify({
+                      object_story_spec: storySpec
+                    });
+                    console.log(`      🆕 Creating new post from object_story_spec`);
+                  }
                 }
 
                 // Add tracking specs if they exist
@@ -5223,6 +5287,15 @@ class FacebookAPI {
           error_subcode: fbError.error_subcode,
           error_user_msg: fbError.error_user_msg
         });
+
+        // Handle rate limiting
+        if (fbError.code === 17 || fbError.error_subcode === 2446079) {
+          console.log(`  ⏱️ Rate limit hit. Waiting 60 seconds before retry...`);
+          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 60 seconds
+          console.log(`  🔄 Retrying after rate limit delay...`);
+          // Retry the operation once
+          return this.manualCampaignCopy(campaignId, newName);
+        }
       }
       throw error;
     }

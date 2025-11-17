@@ -605,6 +605,12 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
 
     const newCampaigns = [];
     for (let i = 0; i < numberOfCopies; i++) {
+      // Add delay between campaign duplications to avoid rate limits
+      if (i > 0) {
+        console.log(`  ⏱️ Waiting 5 seconds before next duplication to avoid rate limits...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+      }
+
       const copyName = numberOfCopies > 1
         ? `${new_name} - Copy ${i + 1}`
         : new_name;
@@ -620,6 +626,27 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
         });
       } catch (error) {
         console.error(`Failed to create copy ${i + 1}:`, error.message);
+
+        // Check if it's a rate limit error and add longer delay
+        if (error.response?.data?.error?.code === 17 || error.response?.data?.error?.error_subcode === 2446079) {
+          console.log(`  ⚠️ Rate limit hit. Waiting 60 seconds before continuing...`);
+          await new Promise(resolve => setTimeout(resolve, 60000)); // 60 second delay
+          // Retry this copy
+          try {
+            const newCampaignId = await facebookApi.duplicateCampaignDeepCopy(campaignId, copyName);
+            console.log(`✅ Successfully duplicated campaign with ID: ${newCampaignId} (after retry)`);
+            newCampaigns.push({
+              id: newCampaignId,
+              name: copyName,
+              copyNumber: i + 1,
+              success: true
+            });
+            continue;
+          } catch (retryError) {
+            console.error(`Failed to create copy ${i + 1} even after retry:`, retryError.message);
+          }
+        }
+
         newCampaigns.push({
           success: false,
           error: error.message,
