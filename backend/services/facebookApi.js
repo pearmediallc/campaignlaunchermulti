@@ -4571,10 +4571,12 @@ class FacebookAPI {
   }
 
   /**
-   * Original deep copy method for small campaigns
+   * Enhanced deep copy method that handles both small and large campaigns
+   * Uses async batch API for campaigns with more than 3 total objects
    */
   async duplicateCampaignDeepCopy(campaignId, newName) {
     try {
+      // First, try regular deep copy
       const url = `${this.baseURL}/${campaignId}/copies`;
       const params = {
         access_token: this.accessToken,
@@ -4602,6 +4604,11 @@ class FacebookAPI {
 
       return newCampaignId;
     } catch (error) {
+      // Check if error is due to too many objects
+      if (error.response?.data?.error?.error_subcode === 1885194) {
+        console.log(`  ⚠️ Campaign has too many objects for regular deep copy, using async batch API...`);
+        return await this.duplicateCampaignAsyncBatch(campaignId, newName);
+      }
       console.error(`  ❌ Deep copy failed:`, error.response?.data || error.message);
       throw error;
     }
@@ -4857,6 +4864,142 @@ class FacebookAPI {
 
     } catch (error) {
       console.error(`  ❌ Sequential copy failed:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Duplicate campaign using async batch API for large campaigns
+   * This method handles campaigns with more than 3 total objects
+   */
+  async duplicateCampaignAsyncBatch(campaignId, newName) {
+    try {
+      console.log(`  📦 Using async batch API for large campaign duplication...`);
+
+      // Create batch request
+      const batchRequest = {
+        method: 'POST',
+        relative_url: `${campaignId}/copies`,
+        body: new URLSearchParams({
+          deep_copy: 'true',
+          status_option: 'PAUSED',
+          name: newName || '',
+          rename_options: JSON.stringify({
+            rename_suffix: ' - Copy',
+            rename_strategy: 'DEEP_RENAME'
+          })
+        }).toString()
+      };
+
+      // Send as batch request
+      const batchResponse = await axios.post(
+        `${this.baseURL}`,
+        {
+          batch: JSON.stringify([batchRequest]),
+          access_token: this.accessToken
+        }
+      );
+
+      // Parse batch response
+      const batchResult = batchResponse.data[0];
+      if (batchResult && batchResult.code === 200) {
+        const responseData = JSON.parse(batchResult.body);
+        const newCampaignId = responseData.copied_campaign_id || responseData.id;
+        console.log(`  ✅ Campaign duplicated via async batch. New ID: ${newCampaignId}`);
+        return newCampaignId;
+      } else {
+        // If batch also fails, try manual copy as last resort
+        console.log(`  ⚠️ Batch API also limited, trying manual copy...`);
+        return await this.manualCampaignCopy(campaignId, newName);
+      }
+    } catch (error) {
+      console.error(`  ❌ Async batch duplication failed:`, error.message);
+      // Try manual copy as last resort
+      return await this.manualCampaignCopy(campaignId, newName);
+    }
+  }
+
+  /**
+   * Manual campaign copy - creates campaign structure piece by piece
+   * This is the last resort for very large campaigns
+   */
+  async manualCampaignCopy(campaignId, newName) {
+    try {
+      console.log(`  🔧 Using manual copy method (last resort)...`);
+
+      // Step 1: Get original campaign details
+      const originalCampaign = await this.getCampaignFullDetails(campaignId);
+
+      // Step 2: Create new campaign
+      const newCampaignData = {
+        name: newName || `${originalCampaign.name} - Copy`,
+        objective: originalCampaign.objective,
+        status: 'PAUSED',
+        special_ad_categories: originalCampaign.special_ad_categories || [],
+        daily_budget: originalCampaign.daily_budget,
+        lifetime_budget: originalCampaign.lifetime_budget,
+        bid_strategy: originalCampaign.bid_strategy
+      };
+
+      const newCampaignResponse = await axios.post(
+        `${this.baseURL}/act_${this.adAccountId}/campaigns`,
+        null,
+        { params: { ...newCampaignData, access_token: this.accessToken } }
+      );
+
+      const newCampaignId = newCampaignResponse.data.id;
+      console.log(`  ✅ New campaign created: ${newCampaignId}`);
+
+      // Step 3: Copy ad sets (limit to first 3 if too many)
+      const adSetsResponse = await axios.get(
+        `${this.baseURL}/${campaignId}/adsets`,
+        {
+          params: {
+            fields: 'name,targeting,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,is_dynamic_creative,promoted_object',
+            limit: 3, // Limit to 3 ad sets to avoid issues
+            access_token: this.accessToken
+          }
+        }
+      );
+
+      const adSets = adSetsResponse.data.data || [];
+      console.log(`  📋 Copying ${Math.min(adSets.length, 3)} ad sets...`);
+
+      for (let i = 0; i < Math.min(adSets.length, 3); i++) {
+        const adSet = adSets[i];
+        const newAdSetData = {
+          name: `${adSet.name} - Copy`,
+          campaign_id: newCampaignId,
+          targeting: JSON.stringify(adSet.targeting),
+          optimization_goal: adSet.optimization_goal,
+          billing_event: adSet.billing_event,
+          bid_amount: adSet.bid_amount,
+          daily_budget: adSet.daily_budget,
+          lifetime_budget: adSet.lifetime_budget,
+          is_dynamic_creative: adSet.is_dynamic_creative,
+          promoted_object: JSON.stringify(adSet.promoted_object),
+          status: 'PAUSED'
+        };
+
+        // Remove undefined values
+        Object.keys(newAdSetData).forEach(key => {
+          if (newAdSetData[key] === undefined) {
+            delete newAdSetData[key];
+          }
+        });
+
+        await axios.post(
+          `${this.baseURL}/act_${this.adAccountId}/adsets`,
+          null,
+          { params: { ...newAdSetData, access_token: this.accessToken } }
+        );
+      }
+
+      console.log(`  ✅ Manual copy completed. New campaign ID: ${newCampaignId}`);
+      return newCampaignId;
+
+    } catch (error) {
+      console.error(`  ❌ Manual copy failed:`, error.message);
       throw error;
     }
   }
