@@ -1620,14 +1620,33 @@ class FacebookAPI {
             }
           }
 
-          // Store all uploaded media for Dynamic Creative
+          // Store all uploaded media for Dynamic Creative (remove duplicates)
           if (dynamicImages.length > 0) {
-            mediaAssets.dynamicImages = dynamicImages;
-            console.log(`✅ Dynamic Creative: ${dynamicImages.length} images uploaded`);
+            // Remove duplicate image hashes - Facebook doesn't allow duplicates in Dynamic Creative
+            const uniqueImages = [];
+            const seenHashes = new Set();
+
+            for (const hash of dynamicImages) {
+              if (!seenHashes.has(hash)) {
+                uniqueImages.push(hash);
+                seenHashes.add(hash);
+              } else {
+                console.log(`  ⚠️ Skipping duplicate image hash: ${hash}`);
+              }
+            }
+
+            mediaAssets.dynamicImages = uniqueImages;
+            console.log(`✅ Dynamic Creative: ${uniqueImages.length} unique images (${dynamicImages.length - uniqueImages.length} duplicates removed)`);
           }
           if (dynamicVideos.length > 0) {
-            mediaAssets.dynamicVideos = dynamicVideos;
-            console.log(`✅ Dynamic Creative: ${dynamicVideos.length} videos uploaded`);
+            // Remove duplicate video IDs as well
+            const uniqueVideos = [...new Set(dynamicVideos)];
+            mediaAssets.dynamicVideos = uniqueVideos;
+            if (uniqueVideos.length < dynamicVideos.length) {
+              console.log(`✅ Dynamic Creative: ${uniqueVideos.length} unique videos (${dynamicVideos.length - uniqueVideos.length} duplicates removed)`);
+            } else {
+              console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos uploaded`);
+            }
           }
 
           // If we have dynamic media, we should use asset_feed_spec format
