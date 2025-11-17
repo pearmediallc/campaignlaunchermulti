@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const path = require('path');
+const axios = require('axios');
 const { body, validationResult } = require('express-validator');
 const FacebookAPI = require('../services/facebookApi');
 const ResourceHelper = require('../services/ResourceHelper');
@@ -1620,16 +1621,41 @@ async function processMultiplicationAsync(jobId, campaignStructure, multiplyCoun
             });
           };
 
-          // Use original method as fallback
-          const multipliedCampaign = await userFacebookApi.multiplyStrategyForAllCampaign({
-            sourceCampaignId: campaignStructure.campaignId,
-            sourceAdSetIds: campaignStructure.adSetIds,
-          postId: campaignStructure.postId,
-          campaignDetails: campaignStructure.campaignDetails,
-          copyNumber: i + 1,
-          timestamp: Date.now(),
-          updateProgress
-        });
+          // Use original method as fallback - for StrategyForAds, we use manual duplication
+          const duplicatedCampaignId = await userFacebookApi.duplicateCampaignDeepCopy(
+            campaignStructure.campaignId,
+            `Copy ${i + 1} - ${new Date().toISOString().split('T')[0]}`
+          );
+
+          // Fetch the duplicated campaign details
+          const duplicatedCampaign = await userFacebookApi.getCampaignFullDetails(duplicatedCampaignId);
+
+          // Count ad sets and ads
+          const adSets = await userFacebookApi.getAdSetsForCampaign(duplicatedCampaignId);
+          let totalAds = 0;
+          for (const adSet of adSets) {
+            try {
+              const adsResponse = await axios.get(
+                `${userFacebookApi.baseURL}/${adSet.id}/ads`,
+                {
+                  params: {
+                    fields: 'id',
+                    limit: 100,
+                    access_token: userFacebookApi.accessToken
+                  }
+                }
+              );
+              totalAds += (adsResponse.data.data || []).length;
+            } catch (e) {
+              console.log(`Warning: Could not count ads for ad set ${adSet.id}`);
+            }
+          }
+
+          const multipliedCampaign = {
+            campaign: duplicatedCampaign,
+            adSetsCreated: adSets.length,
+            adsCreated: totalAds
+          };
 
         results.push({
           copyNumber: i + 1,

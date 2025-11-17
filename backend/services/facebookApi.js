@@ -4588,28 +4588,44 @@ class FacebookAPI {
       );
 
       const adSetCount = adSetsResponse.data?.data?.length || 0;
+      const adSets = adSetsResponse.data?.data || [];
 
-      // Get total ads count by checking first ad set (all should have same structure)
+      // Get total ads count by checking all ad sets (more accurate)
       let totalAds = 0;
-      if (adSetCount > 0) {
-        const firstAdSetId = adSetsResponse.data.data[0].id;
-        const adsResponse = await axios.get(
-          `${this.baseURL}/${firstAdSetId}/ads`,
-          {
-            params: {
-              fields: 'id',
-              limit: 100,
-              access_token: this.accessToken
+      let adsPerAdSet = [];
+
+      // Sample up to 3 ad sets to avoid too many API calls
+      const samplesToCheck = Math.min(3, adSetCount);
+      for (let i = 0; i < samplesToCheck; i++) {
+        try {
+          const adsResponse = await axios.get(
+            `${this.baseURL}/${adSets[i].id}/ads`,
+            {
+              params: {
+                fields: 'id',
+                limit: 100,
+                access_token: this.accessToken
+              }
             }
-          }
-        );
-        const adsPerAdSet = adsResponse.data?.data?.length || 0;
-        totalAds = adSetCount * adsPerAdSet;
+          );
+          const adsCount = adsResponse.data?.data?.length || 0;
+          adsPerAdSet.push(adsCount);
+          totalAds += adsCount;
+        } catch (error) {
+          console.log(`Warning: Could not fetch ads for ad set ${adSets[i].id}`);
+        }
+      }
+
+      // If we only sampled some ad sets, estimate total based on average
+      if (samplesToCheck < adSetCount && adsPerAdSet.length > 0) {
+        const avgAdsPerAdSet = adsPerAdSet.reduce((a, b) => a + b, 0) / adsPerAdSet.length;
+        totalAds = Math.round(avgAdsPerAdSet * adSetCount);
       }
 
       return {
         adSetCount: adSetCount,
         totalAds: totalAds,
+        adsPerAdSet: adsPerAdSet.length > 0 ? Math.round(totalAds / adSetCount) : 0,
         totalObjects: 1 + adSetCount + totalAds // 1 campaign + ad sets + ads
       };
     } catch (error) {
@@ -5102,13 +5118,91 @@ class FacebookAPI {
 
           console.log(`    📝 Creating ad set ${i + 1} with optimization goal: ${adSet.optimization_goal}`);
 
-          await axios.post(
+          const newAdSetResponse = await axios.post(
             `${this.baseURL}/act_${accountId}/adsets`,
             null,
             { params: newAdSetData }
           );
 
-          console.log(`    ✅ Ad set ${i + 1} created successfully`);
+          const newAdSetId = newAdSetResponse.data.id;
+          console.log(`    ✅ Ad set ${i + 1} created successfully: ${newAdSetId}`);
+
+          // Step 4: Copy ads from the original ad set to the new ad set
+          try {
+            console.log(`    📋 Fetching ads from original ad set ${adSet.id}...`);
+
+            const adsResponse = await axios.get(
+              `${this.baseURL}/${adSet.id}/ads`,
+              {
+                params: {
+                  fields: 'id,name,creative{id,object_story_spec,object_story_id},status,tracking_specs',
+                  limit: 5, // Limit ads per ad set to avoid API limits
+                  access_token: this.accessToken
+                }
+              }
+            );
+
+            const ads = adsResponse.data.data || [];
+            console.log(`    📊 Found ${ads.length} ads in original ad set`);
+
+            for (let j = 0; j < Math.min(ads.length, 5); j++) {
+              try {
+                const ad = ads[j];
+                console.log(`      📝 Copying ad ${j + 1}: ${ad.name}`);
+
+                // Create ad data for the new ad
+                const newAdData = {
+                  name: `${ad.name} - Copy`,
+                  adset_id: newAdSetId,
+                  status: 'PAUSED',
+                  access_token: this.accessToken
+                };
+
+                // If the ad has a creative with object_story_id, reuse it (quick duplicate)
+                if (ad.creative?.object_story_id) {
+                  // Create a creative that references the existing post
+                  newAdData.creative = JSON.stringify({
+                    object_story_id: ad.creative.object_story_id
+                  });
+                  console.log(`      ♻️ Reusing existing post (object_story_id: ${ad.creative.object_story_id})`);
+                } else if (ad.creative?.object_story_spec) {
+                  // Clone the object_story_spec for a new post
+                  newAdData.creative = JSON.stringify({
+                    object_story_spec: ad.creative.object_story_spec
+                  });
+                  console.log(`      🆕 Creating new post from object_story_spec`);
+                } else if (ad.creative?.id) {
+                  // Fallback: reference the creative ID directly
+                  newAdData.creative = JSON.stringify({
+                    creative_id: ad.creative.id
+                  });
+                  console.log(`      📎 Using existing creative ID: ${ad.creative.id}`);
+                }
+
+                // Add tracking specs if they exist
+                if (ad.tracking_specs) {
+                  newAdData.tracking_specs = typeof ad.tracking_specs === 'string'
+                    ? ad.tracking_specs
+                    : JSON.stringify(ad.tracking_specs);
+                }
+
+                // Create the ad
+                const newAdResponse = await axios.post(
+                  `${this.baseURL}/act_${accountId}/ads`,
+                  null,
+                  { params: newAdData }
+                );
+
+                console.log(`      ✅ Ad ${j + 1} created successfully: ${newAdResponse.data.id}`);
+              } catch (adError) {
+                console.error(`      ❌ Failed to create ad ${j + 1}:`, adError.response?.data?.error || adError.message);
+                // Continue with next ad instead of failing completely
+              }
+            }
+          } catch (adsError) {
+            console.error(`    ⚠️ Failed to copy ads for ad set ${i + 1}:`, adsError.response?.data?.error || adsError.message);
+            // Continue - ad set was created even if ads failed
+          }
         } catch (adSetError) {
           console.error(`    ❌ Failed to create ad set ${i + 1}:`, adSetError.response?.data?.error || adSetError.message);
           // Continue with next ad set instead of failing completely
