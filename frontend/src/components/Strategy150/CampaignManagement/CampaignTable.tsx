@@ -27,6 +27,7 @@ import {
   Remove
 } from '@mui/icons-material';
 import { CampaignListItem } from '../../../types/campaignManagement';
+import DuplicateCampaignModal from '../../CampaignManagement/modals/DuplicateCampaignModal';
 
 interface CampaignTableProps {
   campaigns: CampaignListItem[];
@@ -53,6 +54,8 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
   const [sortField, setSortField] = useState<SortField>('createdDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; campaignId: string } | null>(null);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [selectedCampaignForDuplicate, setSelectedCampaignForDuplicate] = useState<CampaignListItem | null>(null);
 
   const handleSort = (field: SortField) => {
     const isAsc = sortField === field && sortDirection === 'asc';
@@ -107,6 +110,24 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
 
   const handleMenuClose = () => {
     setMenuAnchor(null);
+  };
+
+  const handleDuplicateClick = () => {
+    if (menuAnchor) {
+      const campaign = campaigns.find(c => c.id === menuAnchor.campaignId);
+      if (campaign) {
+        setSelectedCampaignForDuplicate(campaign);
+        setDuplicateModalOpen(true);
+      }
+    }
+    handleMenuClose();
+  };
+
+  const handleDuplicateSuccess = () => {
+    // Refresh the campaign list or show success message
+    // This would typically trigger a refetch of campaigns
+    setDuplicateModalOpen(false);
+    setSelectedCampaignForDuplicate(null);
   };
 
   const getTrendIcon = (value: number, benchmark: number) => {
@@ -433,9 +454,21 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
       >
         <MenuItem onClick={handleMenuClose}>View Details</MenuItem>
         <MenuItem onClick={handleMenuClose}>Edit Budget</MenuItem>
-        <MenuItem onClick={handleMenuClose}>Duplicate Campaign</MenuItem>
+        <MenuItem onClick={handleDuplicateClick}>Duplicate Campaign</MenuItem>
         <MenuItem onClick={handleMenuClose}>Archive</MenuItem>
       </Menu>
+
+      {selectedCampaignForDuplicate && (
+        <DuplicateCampaignModal
+          open={duplicateModalOpen}
+          onClose={() => {
+            setDuplicateModalOpen(false);
+            setSelectedCampaignForDuplicate(null);
+          }}
+          campaign={selectedCampaignForDuplicate}
+          onSuccess={handleDuplicateSuccess}
+        />
+      )}
     </Box>
   );
 };

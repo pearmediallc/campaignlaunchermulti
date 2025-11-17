@@ -27,6 +27,7 @@ import {
   Remove
 } from '@mui/icons-material';
 import { CampaignListItem } from '../../../types/campaignManagement';
+import DuplicateCampaignModal from '../../CampaignManagement/modals/DuplicateCampaignModal';
 
 interface CampaignTableProps {
   campaigns: CampaignListItem[];
@@ -53,6 +54,8 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
   const [sortField, setSortField] = useState<SortField>('createdDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [menuAnchor, setMenuAnchor] = useState<{ element: HTMLElement; campaignId: string } | null>(null);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [selectedCampaignForDuplicate, setSelectedCampaignForDuplicate] = useState<CampaignListItem | null>(null);
 
   const handleSort = (field: SortField) => {
     const isAsc = sortField === field && sortDirection === 'asc';
@@ -80,14 +83,6 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
     switch (status) {
       case 'ACTIVE': return 'success';
       case 'PAUSED': return 'warning';
-      case 'PENDING_REVIEW': return 'info';
-      case 'IN_PROCESS': return 'info';
-      case 'WITH_ISSUES': return 'error';
-      case 'DISAPPROVED': return 'error';
-      case 'PREAPPROVED': return 'info';
-      case 'PENDING_BILLING_INFO': return 'warning';
-      case 'CAMPAIGN_PAUSED': return 'warning';
-      case 'ADSET_PAUSED': return 'warning';
       case 'ARCHIVED': return 'default';
       case 'DRAFT': return 'info';
       default: return 'default';
@@ -117,6 +112,24 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
     setMenuAnchor(null);
   };
 
+  const handleDuplicateClick = () => {
+    if (menuAnchor) {
+      const campaign = campaigns.find(c => c.id === menuAnchor.campaignId);
+      if (campaign) {
+        setSelectedCampaignForDuplicate(campaign);
+        setDuplicateModalOpen(true);
+      }
+    }
+    handleMenuClose();
+  };
+
+  const handleDuplicateSuccess = () => {
+    // Refresh the campaign list or show success message
+    // This would typically trigger a refetch of campaigns
+    setDuplicateModalOpen(false);
+    setSelectedCampaignForDuplicate(null);
+  };
+
   const getTrendIcon = (value: number, benchmark: number) => {
     if (value > benchmark) return <TrendingUp color="success" fontSize="small" />;
     if (value < benchmark) return <TrendingDown color="error" fontSize="small" />;
@@ -141,7 +154,7 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
           No campaigns found
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Create your first Strategy for All campaign to see it here.
+          Create your first Strategy 1-50-1 campaign to see it here.
         </Typography>
       </Box>
     );
@@ -291,8 +304,8 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={(campaign as any).effective_status || campaign.status}
-                    color={getStatusColor((campaign as any).effective_status || campaign.status) as any}
+                    label={campaign.status}
+                    color={getStatusColor(campaign.status) as any}
                     size="small"
                   />
                 </TableCell>
@@ -441,9 +454,21 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
       >
         <MenuItem onClick={handleMenuClose}>View Details</MenuItem>
         <MenuItem onClick={handleMenuClose}>Edit Budget</MenuItem>
-        <MenuItem onClick={handleMenuClose}>Duplicate Campaign</MenuItem>
+        <MenuItem onClick={handleDuplicateClick}>Duplicate Campaign</MenuItem>
         <MenuItem onClick={handleMenuClose}>Archive</MenuItem>
       </Menu>
+
+      {selectedCampaignForDuplicate && (
+        <DuplicateCampaignModal
+          open={duplicateModalOpen}
+          onClose={() => {
+            setDuplicateModalOpen(false);
+            setSelectedCampaignForDuplicate(null);
+          }}
+          campaign={selectedCampaignForDuplicate}
+          onSuccess={handleDuplicateSuccess}
+        />
+      )}
     </Box>
   );
 };

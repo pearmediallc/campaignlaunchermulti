@@ -592,6 +592,17 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
     // This preserves original structure, attribution, and all settings
     console.log(`📋 Using native Facebook deep copy for ${numberOfCopies} campaign(s)`);
 
+    // First, detect the original campaign structure for logging
+    try {
+      const structure = await facebookApi.getCampaignStructure(campaignId);
+      console.log(`📊 Original campaign structure detected:`);
+      console.log(`  - Ad Sets: ${structure.adSetCount}`);
+      console.log(`  - Total Ads: ${structure.totalAds}`);
+      console.log(`  ℹ️ Facebook's deep_copy will preserve this exact structure`);
+    } catch (err) {
+      console.log(`⚠️ Could not detect structure, but deep_copy will still work`);
+    }
+
     const newCampaigns = [];
     for (let i = 0; i < numberOfCopies; i++) {
       const copyName = numberOfCopies > 1
@@ -600,6 +611,7 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
 
       try {
         const newCampaignId = await facebookApi.duplicateCampaignDeepCopy(campaignId, copyName);
+        console.log(`✅ Successfully duplicated campaign with ID: ${newCampaignId}`);
         newCampaigns.push({
           id: newCampaignId,
           name: copyName,
