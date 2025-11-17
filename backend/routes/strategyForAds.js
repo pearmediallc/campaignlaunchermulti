@@ -799,7 +799,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             const newAdSet = await userFacebookApi.createAdSet(adSetParams);
 
             if (newAdSet) {
-              // CRITICAL FIX: Ensure displayLink is explicitly passed for ad creation
+              // CRITICAL FIX: Ensure all fields including media are passed for ad creation
               const adParams = {
                 ...campaignData,
                 adSetId: newAdSet.id,
@@ -811,16 +811,30 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 headline: campaignData.headline,
                 primaryText: campaignData.primaryText,
                 description: campaignData.description,
-                callToAction: campaignData.callToAction
+                callToAction: campaignData.callToAction,
+                // CRITICAL: Pass through dynamic creative media paths if they exist
+                dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
+                dynamicCreativeMediaHashes: result.dynamicCreativeMediaHashes,
+                // Pass through image/video paths
+                imagePath: campaignData.imagePath,
+                videoPath: campaignData.videoPath,
+                imagePaths: campaignData.imagePaths,
+                // Pass through media type and dynamic flags
+                mediaType: campaignData.mediaType,
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                primaryTextVariations: campaignData.primaryTextVariations,
+                headlineVariations: campaignData.headlineVariations
               };
 
               console.log(`  🔗 Creating ad with display link: ${adParams.displayLink}`);
+              console.log(`  📸 Dynamic media: ${adParams.dynamicCreativeMediaPaths?.length || 0} files`);
 
               // Create ads for this ad set using the same creative
               const newAd = await userFacebookApi.createAd(adParams);
 
               duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
-              console.log(`  ✅ Created ad set ${i + 2} of ${targetAdSetCount} with display link`);
+              console.log(`  ✅ Created ad set ${i + 2} of ${targetAdSetCount} with display link and media`);
             }
 
           } catch (adSetError) {

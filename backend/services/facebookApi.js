@@ -4619,45 +4619,22 @@ class FacebookAPI {
   }
 
   /**
-   * Enhanced deep copy method that handles both small and large campaigns
-   * Uses async batch API for campaigns with more than 3 total objects
+   * Enhanced deep copy method - NOW ALWAYS USES MANUAL COPY
+   * Facebook's limit is too strict (even 1+3+3=7 objects fails)
    */
   async duplicateCampaignDeepCopy(campaignId, newName) {
     try {
-      // First, try regular deep copy
-      const url = `${this.baseURL}/${campaignId}/copies`;
-      const params = {
-        access_token: this.accessToken,
-        deep_copy: true,  // Copy all child objects (ad sets, ads)
-        end_time: null,    // Remove end time for new campaign
-        start_time: null,  // Remove start time for new campaign
-        rename_options: JSON.stringify({
-          rename_suffix: ' - Copy',
-          rename_strategy: 'DEEP_RENAME'  // Rename campaign, ad sets, and ads
-        }),
-        status_option: 'PAUSED'  // Start new campaign as paused
-      };
+      // Get campaign structure first
+      const structure = await this.getCampaignStructure(campaignId);
+      console.log(`  📊 Campaign structure: ${structure.adSetCount} ad sets, ${structure.totalAds} ads, ${structure.totalObjects} total objects`);
 
-      // If a custom name is provided, use it
-      if (newName) {
-        params.name = newName;
-      }
+      // Facebook's limit is EXTREMELY strict - even campaigns with 7 objects fail
+      // So we go straight to manual copy for ALL campaigns
+      console.log(`  🔧 Using manual copy (Facebook's 3-object limit is too restrictive)`);
+      return await this.manualCampaignCopy(campaignId, newName);
 
-      console.log(`  📝 Using Facebook /copies endpoint for deep copy`);
-      const response = await axios.post(url, null, { params });
-
-      // Facebook returns copied_campaign_id, not id
-      const newCampaignId = response.data.copied_campaign_id || response.data.id;
-      console.log(`  ✅ Campaign duplicated via deep copy. New ID: ${newCampaignId}`);
-
-      return newCampaignId;
     } catch (error) {
-      // Check if error is due to too many objects
-      if (error.response?.data?.error?.error_subcode === 1885194) {
-        console.log(`  ⚠️ Campaign has too many objects for regular deep copy, using async batch API...`);
-        return await this.duplicateCampaignAsyncBatch(campaignId, newName);
-      }
-      console.error(`  ❌ Deep copy failed:`, error.response?.data || error.message);
+      console.error(`  ❌ Duplication failed:`, error.response?.data || error.message);
       throw error;
     }
   }
