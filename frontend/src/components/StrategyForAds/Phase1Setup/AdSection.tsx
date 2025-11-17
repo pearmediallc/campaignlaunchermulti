@@ -818,13 +818,13 @@ const AdSection: React.FC = () => {
                         rows={2}
                         label={`Variation ${index + 1}`}
                         placeholder="Enter alternative primary text..."
-                        value={text}
+                        value={text || ''}
                         onChange={(e) => {
                           const newVariations = [...primaryTextVariations];
                           newVariations[index] = e.target.value;
                           setPrimaryTextVariations(newVariations);
                         }}
-                        helperText={`${text.length}/2200 characters`}
+                        helperText={`${(text || '').length}/2200 characters`}
                       />
                       {index > 0 && (
                         <IconButton
@@ -864,13 +864,13 @@ const AdSection: React.FC = () => {
                         size="small"
                         label={`Variation ${index + 1}`}
                         placeholder="Enter alternative headline..."
-                        value={headline}
+                        value={headline || ''}
                         onChange={(e) => {
                           const newVariations = [...headlineVariations];
                           newVariations[index] = e.target.value;
                           setHeadlineVariations(newVariations);
                         }}
-                        helperText={`${headline.length}/255 characters`}
+                        helperText={`${(headline || '').length}/255 characters`}
                       />
                       {index > 0 && (
                         <IconButton
