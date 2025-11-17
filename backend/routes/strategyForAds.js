@@ -850,7 +850,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               // CRITICAL FIX: Ensure all fields including media are passed for ad creation
               const adParams = {
                 ...campaignData,
-                adSetId: newAdSet.id,
+                adsetId: newAdSet.id,  // Note: lowercase 's' in adsetId to match Facebook API expectation
                 adName: `${campaignData.campaignName} - Ad ${i + 2}`,
                 postId: result.postId,
                 // Explicitly ensure these creative fields are passed
