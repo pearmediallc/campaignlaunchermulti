@@ -862,7 +862,14 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 callToAction: campaignData.callToAction,
                 // CRITICAL: Pass through dynamic creative media paths if they exist
                 dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
-                dynamicCreativeMediaHashes: result.dynamicCreativeMediaHashes,
+                // Pass the media hashes from the initial campaign creation
+                dynamicImages: result.mediaHashes?.dynamicImages,
+                dynamicVideos: result.mediaHashes?.dynamicVideos,
+                imageHash: result.mediaHashes?.imageHash,
+                videoId: result.mediaHashes?.videoId,
+                carouselCards: result.mediaHashes?.carouselCards,
+                // For Dynamic Creative, pass the full media assets object
+                mediaAssets: result.mediaHashes,
                 // Pass through image/video paths
                 imagePath: campaignData.imagePath,
                 videoPath: campaignData.videoPath,

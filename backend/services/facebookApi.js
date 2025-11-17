@@ -988,34 +988,40 @@ class FacebookAPI {
         }
 
         // Handle media for asset_feed_spec - can have BOTH images and videos
-        if (adData.dynamicImages && adData.dynamicImages.length > 0) {
+        // Check both direct properties and mediaAssets object for compatibility
+        const dynamicImages = adData.dynamicImages || adData.mediaAssets?.dynamicImages;
+        const dynamicVideos = adData.dynamicVideos || adData.mediaAssets?.dynamicVideos;
+
+        if (dynamicImages && dynamicImages.length > 0) {
           // Multiple images for Dynamic Creative
-          creative.asset_feed_spec.images = adData.dynamicImages.map(hash => ({ hash }));
-          console.log(`  📸 Added ${adData.dynamicImages.length} images to Dynamic Creative`);
+          creative.asset_feed_spec.images = dynamicImages.map(hash => ({ hash }));
+          console.log(`  📸 Added ${dynamicImages.length} images to Dynamic Creative`);
         }
 
-        if (adData.dynamicVideos && adData.dynamicVideos.length > 0) {
+        if (dynamicVideos && dynamicVideos.length > 0) {
           // Multiple videos for Dynamic Creative
-          creative.asset_feed_spec.videos = adData.dynamicVideos.map(videoId => ({ video_id: videoId }));
-          console.log(`  📹 Added ${adData.dynamicVideos.length} videos to Dynamic Creative`);
+          creative.asset_feed_spec.videos = dynamicVideos.map(videoId => ({ video_id: videoId }));
+          console.log(`  📹 Added ${dynamicVideos.length} videos to Dynamic Creative`);
         }
 
         // Set ad format based on what media we have
-        if (adData.dynamicVideos && adData.dynamicVideos.length > 0 && adData.dynamicImages && adData.dynamicImages.length > 0) {
+        if (dynamicVideos && dynamicVideos.length > 0 && dynamicImages && dynamicImages.length > 0) {
           // Mixed media - let Facebook decide format
           creative.asset_feed_spec.ad_formats.push('AUTOMATIC_FORMAT');
           console.log(`  🎨 Mixed media (images + videos) - using AUTOMATIC_FORMAT`);
-        } else if (adData.dynamicVideos && adData.dynamicVideos.length > 0) {
+        } else if (dynamicVideos && dynamicVideos.length > 0) {
           creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
-        } else if (adData.dynamicImages && adData.dynamicImages.length > 0) {
+        } else if (dynamicImages && dynamicImages.length > 0) {
           creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
-        } else if (adData.imageHash) {
+        } else if (adData.imageHash || adData.mediaAssets?.imageHash) {
           // Single image
-          creative.asset_feed_spec.images = [{ hash: adData.imageHash }];
+          const imageHash = adData.imageHash || adData.mediaAssets?.imageHash;
+          creative.asset_feed_spec.images = [{ hash: imageHash }];
           creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
-        } else if (adData.videoId) {
+        } else if (adData.videoId || adData.mediaAssets?.videoId) {
           // Single video
-          creative.asset_feed_spec.videos = [{ video_id: adData.videoId }];
+          const videoId = adData.videoId || adData.mediaAssets?.videoId;
+          creative.asset_feed_spec.videos = [{ video_id: videoId }];
           creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
         } else {
           // No media provided - Dynamic Creative requires media, throw error
