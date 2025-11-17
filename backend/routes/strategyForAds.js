@@ -757,7 +757,81 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       adSetsCreated: 1
     });
 
-    // Store campaign in tracking table for management
+    // Check if we need to duplicate ad sets based on duplicationSettings
+    const targetAdSetCount = campaignData.duplicationSettings?.adSetCount || 1;
+    let finalAdSetCount = 1; // Start with the initial ad set created
+
+    if (targetAdSetCount > 1) {
+      console.log(`📋 Duplicating ad sets to reach target count: ${targetAdSetCount}`);
+
+      try {
+        // Calculate how many more ad sets we need
+        const adSetsToCreate = targetAdSetCount - 1;
+
+        console.log(`🔄 Starting duplication of ${adSetsToCreate} ad sets...`);
+
+        // Use Facebook API directly to duplicate the ad sets
+        const duplicatedAdSets = [];
+
+        for (let i = 0; i < adSetsToCreate; i++) {
+          try {
+            // Create a new ad set by copying the original
+            const newAdSetData = {
+              name: `${result.adSet.name} - Copy ${i + 2}`,
+              campaign_id: result.campaign.id,
+              // Copy other parameters from the original ad set
+              ...result.adSet,
+              id: undefined, // Remove the ID so it creates a new one
+              status: 'ACTIVE'
+            };
+
+            // Create the ad set using the Facebook API
+            const newAdSet = await userFacebookApi.createAdSet({
+              ...campaignData,
+              campaignId: result.campaign.id,
+              adSetName: newAdSetData.name,
+              existingAdSetId: result.adSet.id // Reference to copy settings from
+            });
+
+            if (newAdSet) {
+              // Create ads for this ad set using the same creative
+              const newAd = await userFacebookApi.createAd({
+                ...campaignData,
+                adSetId: newAdSet.id,
+                adName: `${campaignData.campaignName} - Ad ${i + 2}`,
+                postId: result.postId
+              });
+
+              duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+              console.log(`  ✅ Created ad set ${i + 2} of ${targetAdSetCount}`);
+            }
+
+          } catch (adSetError) {
+            console.error(`  ❌ Failed to create ad set ${i + 2}:`, adSetError.message);
+            // Continue with next ad set
+          }
+        }
+
+        if (duplicatedAdSets.length > 0) {
+          finalAdSetCount = 1 + duplicatedAdSets.length;
+          console.log(`✅ Successfully created ${duplicatedAdSets.length} additional ad sets`);
+          console.log(`📊 Total ad sets in campaign: ${finalAdSetCount}`);
+
+          // Add the duplicated ad sets to the result
+          result.duplicatedAdSets = duplicatedAdSets;
+        } else {
+          console.log(`⚠️ No additional ad sets were created`);
+        }
+
+      } catch (duplicationError) {
+        console.error('⚠️ Ad set duplication failed:', duplicationError.message);
+        console.error('Continuing with initial 1-1-1 structure only');
+        // Don't fail the entire campaign creation if duplication fails
+        // The user still has the initial campaign structure
+      }
+    }
+
+    // Store campaign in tracking table for management with correct ad set count
     try {
       const { CampaignTracking } = require('../models');
       await CampaignTracking.create({
@@ -767,10 +841,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
         strategy_type: 'for-all',
         post_id: result.postId || null,
-        ad_set_count: 1, // Initial creation, will be updated to full count after duplication
+        ad_set_count: finalAdSetCount, // Use the actual final count
         status: 'ACTIVE'
       });
-      console.log(`📊 Campaign ${result.campaign.id} added to tracking for management`);
+      console.log(`📊 Campaign ${result.campaign.id} added to tracking with ${finalAdSetCount} ad sets`);
     } catch (trackingError) {
       console.error('Warning: Could not add campaign to tracking:', trackingError.message);
       // Don't fail the request if tracking fails
