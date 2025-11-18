@@ -992,43 +992,41 @@ class FacebookAPI {
         const dynamicImages = adData.dynamicImages || adData.mediaAssets?.dynamicImages;
         const dynamicVideos = adData.dynamicVideos || adData.mediaAssets?.dynamicVideos;
 
-        // For Dynamic Creative with mixed media, we need to choose one media type
-        // Facebook's asset_feed_spec doesn't support both images AND videos arrays together
-        // We must prioritize one type when both are present
-        if (dynamicVideos && dynamicVideos.length > 0 && dynamicImages && dynamicImages.length > 0) {
-          console.log(`  ⚠️ Mixed media detected (${dynamicImages.length} images, ${dynamicVideos.length} videos)`);
-          console.log(`  📹 Prioritizing videos for Dynamic Creative (Facebook limitation)`);
+        // Handle media for Dynamic Creative - Facebook DOES support both images and videos together
+        if (dynamicImages && dynamicImages.length > 0) {
+          // Add images to Dynamic Creative
+          creative.asset_feed_spec.images = dynamicImages.map(hash => ({ hash }));
+          console.log(`  📸 Added ${dynamicImages.length} images to Dynamic Creative`);
+        }
 
-          // Facebook doesn't support mixing images and videos in the same Dynamic Creative ad
-          // We'll prioritize videos as they typically have higher engagement
+        if (dynamicVideos && dynamicVideos.length > 0) {
+          // Add videos to Dynamic Creative
           creative.asset_feed_spec.videos = dynamicVideos.map(videoId => ({ video_id: videoId }));
-          creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
+          console.log(`  📹 Added ${dynamicVideos.length} videos to Dynamic Creative`);
+        }
 
-          console.log(`  ✅ Using ${dynamicVideos.length} videos for Dynamic Creative`);
-          console.log(`  ⚠️ Note: ${dynamicImages.length} images cannot be used with videos in Dynamic Creative`);
-
-          // Note: Images cannot be used when videos are present in Dynamic Creative
-          console.log(`  💡 Consider creating separate ad sets for images and videos`);
+        // Set ad format based on what media we have
+        if (dynamicVideos && dynamicVideos.length > 0 && dynamicImages && dynamicImages.length > 0) {
+          // Mixed media - Facebook will automatically optimize between images and videos
+          creative.asset_feed_spec.ad_formats = ['AUTOMATIC_FORMAT'];
+          console.log(`  🎨 Mixed media (images + videos) - using AUTOMATIC_FORMAT`);
+          console.log(`  ✅ Facebook will test all ${dynamicImages.length} images and ${dynamicVideos.length} videos`);
         } else if (dynamicVideos && dynamicVideos.length > 0) {
           // Only videos
-          creative.asset_feed_spec.videos = dynamicVideos.map(videoId => ({ video_id: videoId }));
           creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
-          console.log(`  📹 Added ${dynamicVideos.length} videos to Dynamic Creative`);
         } else if (dynamicImages && dynamicImages.length > 0) {
           // Only images
-          creative.asset_feed_spec.images = dynamicImages.map(hash => ({ hash }));
           creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
-          console.log(`  📸 Added ${dynamicImages.length} images to Dynamic Creative`);
         } else if (adData.imageHash || adData.mediaAssets?.imageHash) {
           // Single image
           const imageHash = adData.imageHash || adData.mediaAssets?.imageHash;
           creative.asset_feed_spec.images = [{ hash: imageHash }];
-          creative.asset_feed_spec.ad_formats.push('SINGLE_IMAGE');
+          creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
         } else if (adData.videoId || adData.mediaAssets?.videoId) {
           // Single video
           const videoId = adData.videoId || adData.mediaAssets?.videoId;
           creative.asset_feed_spec.videos = [{ video_id: videoId }];
-          creative.asset_feed_spec.ad_formats.push('SINGLE_VIDEO');
+          creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
         } else {
           // No media provided - Dynamic Creative requires media, throw error
           console.error('  ❌ Dynamic Creative/Text Variations requires media but none provided');
