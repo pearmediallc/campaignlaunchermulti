@@ -813,13 +813,17 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       console.log(`📋 Duplicating ad sets to reach target count: ${targetAdSetCount}`);
 
       try {
-        // Calculate how many more ad sets we need
-        const adSetsToCreate = targetAdSetCount - 1;
+        // FIXED: Initial creation always creates 1 ad set
+        // We need targetAdSetCount - 1 additional ad sets
+        const existingAdSetCount = 1; // Initial creation always creates 1
+        const adSetsToCreate = Math.max(0, targetAdSetCount - existingAdSetCount);
 
-        console.log(`🔄 Starting duplication of ${adSetsToCreate} ad sets...`);
+        console.log(`📊 Existing ad sets: ${existingAdSetCount}, Target: ${targetAdSetCount}`);
+        console.log(`🔄 Creating ${adSetsToCreate} additional ad sets...`);
 
         // Use Facebook API directly to duplicate the ad sets
         const duplicatedAdSets = [];
+        const failedCreations = []; // Track failed creations for recovery
 
         for (let i = 0; i < adSetsToCreate; i++) {
           try {
@@ -897,7 +901,83 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             if (adSetError.response?.data?.error) {
               console.error(`  📛 Facebook error:`, adSetError.response.data.error);
             }
+
+            // Track failed creation for retry
+            failedCreations.push({
+              index: i + 2,
+              type: 'adset',
+              params: adSetParams,
+              error: adSetError
+            });
+
             // Continue with next ad set
+          }
+        }
+
+        // RECOVERY: Retry failed creations with exponential backoff
+        if (failedCreations.length > 0) {
+          console.log(`\n🔄 Attempting recovery for ${failedCreations.length} failed creations...`);
+
+          for (const failed of failedCreations) {
+            try {
+              console.log(`  🔄 Retrying ad set ${failed.index}...`);
+
+              // Check if error was transient (code 2)
+              const isTransient = failed.error.fbError?.code === 2 ||
+                                 failed.error.fbError?.is_transient;
+
+              if (isTransient) {
+                // Wait a bit before retry for transient errors
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                // Retry with the retry mechanism
+                const newAdSet = await userFacebookApi.retryWithBackoff(
+                  userFacebookApi.createAdSet,
+                  failed.params,
+                  2 // Max 2 retries in recovery
+                );
+
+                if (newAdSet) {
+                  // Try to create the ad for this recovered ad set
+                  const adParams = {
+                    ...campaignData,
+                    adsetId: newAdSet.id,
+                    adName: `${campaignData.campaignName} - Ad ${failed.index}`,
+                    postId: result.postId,
+                    displayLink: campaignData.displayLink,
+                    url: campaignData.url,
+                    headline: campaignData.headline,
+                    primaryText: campaignData.primaryText,
+                    description: campaignData.description,
+                    callToAction: campaignData.callToAction,
+                    dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
+                    dynamicImages: result.mediaHashes?.dynamicImages,
+                    dynamicVideos: result.mediaHashes?.dynamicVideos,
+                    imageHash: result.mediaHashes?.imageHash,
+                    videoId: result.mediaHashes?.videoId,
+                    carouselCards: result.mediaHashes?.carouselCards,
+                    mediaAssets: result.mediaHashes,
+                    imagePath: campaignData.imagePath,
+                    videoPath: campaignData.videoPath,
+                    imagePaths: campaignData.imagePaths,
+                    mediaType: campaignData.mediaType,
+                    dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                    dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                    primaryTextVariations: campaignData.primaryTextVariations,
+                    headlineVariations: campaignData.headlineVariations
+                  };
+
+                  const newAd = await userFacebookApi.createAd(adParams);
+                  duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+                  console.log(`  ✅ Successfully recovered ad set ${failed.index}`);
+                }
+              } else {
+                console.log(`  ⚠️ Skipping non-transient error for ad set ${failed.index}`);
+              }
+            } catch (recoveryError) {
+              console.error(`  ❌ Recovery failed for ad set ${failed.index}:`, recoveryError.message);
+              // Continue with other recoveries
+            }
           }
         }
 

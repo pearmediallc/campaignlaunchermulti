@@ -1000,21 +1000,44 @@ class FacebookAPI {
         }
 
         if (dynamicVideos && dynamicVideos.length > 0) {
-          // Add videos to Dynamic Creative
-          creative.asset_feed_spec.videos = dynamicVideos.map(videoId => ({ video_id: videoId }));
-          console.log(`  📹 Added ${dynamicVideos.length} videos to Dynamic Creative`);
+          // FIXED: Validate video IDs to ensure they're not post IDs
+          const validVideoIds = dynamicVideos.filter(videoId => {
+            // Video IDs should be numeric strings without underscores
+            // Post IDs typically have underscores (e.g., "123456_789012")
+            if (!videoId || videoId.includes('_')) {
+              console.warn(`  ⚠️ Skipping invalid video ID (looks like post ID): ${videoId}`);
+              return false;
+            }
+            // Ensure it's a valid numeric ID
+            if (!/^\d+$/.test(videoId.toString())) {
+              console.warn(`  ⚠️ Skipping invalid video ID (not numeric): ${videoId}`);
+              return false;
+            }
+            return true;
+          });
+
+          if (validVideoIds.length > 0) {
+            // Add validated videos to Dynamic Creative
+            creative.asset_feed_spec.videos = validVideoIds.map(videoId => ({ video_id: videoId }));
+            console.log(`  📹 Added ${validVideoIds.length} valid videos to Dynamic Creative (filtered from ${dynamicVideos.length})`);
+          } else {
+            console.warn(`  ⚠️ No valid video IDs found after filtering`);
+          }
         }
 
-        // Set ad format based on what media we have
-        if (dynamicVideos && dynamicVideos.length > 0 && dynamicImages && dynamicImages.length > 0) {
+        // Set ad format based on what media we actually have after validation
+        const hasValidVideos = creative.asset_feed_spec.videos && creative.asset_feed_spec.videos.length > 0;
+        const hasImages = creative.asset_feed_spec.images && creative.asset_feed_spec.images.length > 0;
+
+        if (hasValidVideos && hasImages) {
           // Mixed media - Facebook will automatically optimize between images and videos
           creative.asset_feed_spec.ad_formats = ['AUTOMATIC_FORMAT'];
           console.log(`  🎨 Mixed media (images + videos) - using AUTOMATIC_FORMAT`);
-          console.log(`  ✅ Facebook will test all ${dynamicImages.length} images and ${dynamicVideos.length} videos`);
-        } else if (dynamicVideos && dynamicVideos.length > 0) {
+          console.log(`  ✅ Facebook will test all ${creative.asset_feed_spec.images.length} images and ${creative.asset_feed_spec.videos.length} videos`);
+        } else if (hasValidVideos) {
           // Only videos
           creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
-        } else if (dynamicImages && dynamicImages.length > 0) {
+        } else if (hasImages) {
           // Only images
           creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
         } else if (adData.imageHash || adData.mediaAssets?.imageHash) {
@@ -1510,6 +1533,51 @@ class FacebookAPI {
       '.gif': 'image/gif'
     };
     return types[ext] || 'image/jpeg';
+  }
+
+  /**
+   * Retry mechanism for Facebook API calls with exponential backoff
+   * @param {Function} apiFunction - The API function to call
+   * @param {Object} params - Parameters to pass to the function
+   * @param {Number} maxRetries - Maximum number of retry attempts (default 3)
+   * @returns {Promise} - Result of the API call
+   */
+  async retryWithBackoff(apiFunction, params, maxRetries = 3) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/${maxRetries}...`);
+        const result = await apiFunction.call(this, params);
+
+        if (attempt > 1) {
+          console.log(`✅ Succeeded on retry ${attempt}`);
+        }
+        return result;
+      } catch (error) {
+        lastError = error;
+
+        // Check if error is retryable
+        const isRetryable = error.fbError?.is_transient ||
+                           error.fbError?.code === 2 || // Transient error
+                           error.fbError?.code === 17 || // Rate limit
+                           error.fbError?.code === 368 || // Temporary issue
+                           error.fbError?.code === 80004; // Temporary network issue
+
+        if (isRetryable && attempt < maxRetries) {
+          const delay = Math.min(attempt * 2000, 10000); // 2s, 4s, 6s... max 10s
+          console.log(`⏳ Retryable error (code ${error.fbError?.code}). Waiting ${delay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // Non-retryable error or max retries reached
+        console.error(`❌ Failed after ${attempt} attempts. Error: ${error.message}`);
+        break;
+      }
+    }
+
+    throw lastError;
   }
 
   async createCampaignStructure(campaignData) {
