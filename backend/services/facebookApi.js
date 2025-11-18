@@ -33,6 +33,51 @@ class FacebookAPI {
     };
   }
 
+  /**
+   * Retry a function with exponential backoff
+   * @param {Function} fn - The async function to retry
+   * @param {Object} params - Parameters to pass to the function
+   * @param {Number} maxRetries - Maximum number of retries
+   * @param {Number} initialDelay - Initial delay in milliseconds
+   * @returns {Promise} - Result of the function
+   */
+  async retryWithBackoff(fn, params, maxRetries = 3, initialDelay = 2000) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Attempt ${attempt}/${maxRetries}...`);
+        const result = await fn.call(this, params);
+        if (attempt > 1) {
+          console.log(`✅ Retry successful on attempt ${attempt}`);
+        }
+        return result;
+      } catch (error) {
+        lastError = error;
+        const isTimeout = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+        const isTransient = error.response?.data?.error?.is_transient ||
+                          error.response?.data?.error?.code === 2 ||
+                          error.response?.status >= 500;
+
+        // Don't retry if it's not a transient error and not a timeout
+        if (!isTimeout && !isTransient && attempt === 1) {
+          console.log('❌ Non-transient error detected, not retrying');
+          throw error;
+        }
+
+        if (attempt < maxRetries) {
+          const delay = initialDelay * Math.pow(2, attempt - 1); // Exponential backoff
+          console.log(`⏳ Waiting ${delay/1000} seconds before retry...`);
+          console.log(`   Error was: ${error.message}`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    console.error(`❌ All ${maxRetries} attempts failed`);
+    throw lastError;
+  }
+
   async createCampaign(campaignData) {
     console.log('\n=== CAMPAIGN CREATION START ===');
     console.log('📍 Step 1: Creating Campaign');
@@ -89,7 +134,10 @@ class FacebookAPI {
       console.log('  - Spend Cap:', params.spend_cap ? `$${params.spend_cap/100}` : 'Not set');
       console.log('\n📤 Sending Campaign Creation Request...');
 
-      const response = await axios.post(url, null, { params });
+      const response = await axios.post(url, null, {
+        params,
+        timeout: 120000 // 120 seconds timeout for complex operations
+      });
       console.log('✅ Campaign Created Successfully!');
       console.log('🆔 Campaign ID:', response.data.id);
       console.log('=== CAMPAIGN CREATION END ===\n');
@@ -580,7 +628,10 @@ class FacebookAPI {
         targeting: params.targeting ? '[TARGETING_DATA]' : undefined
       }, null, 2));
 
-      const response = await axios.post(url, null, { params });
+      const response = await axios.post(url, null, {
+        params,
+        timeout: 120000 // 120 seconds timeout for complex operations
+      });
       console.log('✅ AdSet Created Successfully!');
       console.log('🆔 AdSet ID:', response.data.id);
       console.log('=== ADSET CREATION END ===\n');
@@ -1654,56 +1705,98 @@ class FacebookAPI {
       else if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
         // Handle Dynamic Creative multiple media uploads
         console.log('🎨 Processing Dynamic Creative media...');
+        console.log(`📊 Total media files to process: ${campaignData.dynamicCreativeMediaPaths.length}`);
         try {
           const dynamicImages = [];
           const dynamicVideos = [];
 
-          for (const mediaPath of campaignData.dynamicCreativeMediaPaths) {
+          // Separate media into images and videos
+          const mediaPaths = campaignData.dynamicCreativeMediaPaths.map(mediaPath => {
             const extension = mediaPath.toLowerCase().split('.').pop();
             const isVideo = ['mp4', 'mov', 'avi', 'wmv', 'flv', 'mkv'].includes(extension);
+            return { path: mediaPath, isVideo };
+          });
 
-            if (isVideo) {
-              console.log(`  📹 Uploading video: ${mediaPath}`);
-              try {
-                const videoId = await this.uploadVideo(mediaPath);
-                if (videoId) {
-                  dynamicVideos.push(videoId);
-                  console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+          const imagePaths = mediaPaths.filter(m => !m.isVideo).map(m => m.path);
+          const videoPaths = mediaPaths.filter(m => m.isVideo).map(m => m.path);
 
-                  // Wait for video to be processed
-                  console.log(`  ⏳ Waiting for video ${videoId} to be processed by Facebook...`);
-                  const isReady = await this.waitForVideoProcessing(videoId);
-                  if (!isReady) {
-                    console.warn(`  ⚠️ Video ${videoId} processing timeout - may cause issues`);
-                  } else {
-                    console.log(`  ✅ Video ${videoId} is ready for use`);
-                  }
-                }
-              } catch (videoError) {
-                console.error(`  ❌ Failed to upload video: ${videoError.message}`);
-                // Continue with other media instead of failing completely
-              }
-            } else {
-              console.log(`  📸 Processing image: ${mediaPath}`);
+          console.log(`  📸 ${imagePaths.length} images, 📹 ${videoPaths.length} videos`);
+
+          // Process all images in parallel
+          if (imagePaths.length > 0) {
+            console.log(`  🚀 Uploading ${imagePaths.length} images in parallel...`);
+            const imagePromises = imagePaths.map(async (mediaPath) => {
               try {
+                console.log(`  📸 Processing image: ${mediaPath}`);
                 // Check if image meets minimum dimensions for Dynamic Creative (600x600)
                 const dimensions = await ImageConverter.checkImageDimensions(mediaPath, 600, 600);
 
                 if (!dimensions) {
                   console.log(`  ⚠️ Skipping image - could not read dimensions: ${mediaPath}`);
+                  return null;
                 } else if (!dimensions.valid) {
                   console.log(`  ⚠️ Skipping image - dimensions (${dimensions.width}x${dimensions.height}) below minimum (600x600): ${mediaPath}`);
+                  return null;
                 } else {
                   console.log(`  ✅ Image dimensions OK (${dimensions.width}x${dimensions.height}), uploading...`);
                   const imageHash = await this.uploadImage(mediaPath);
                   if (imageHash) {
-                    dynamicImages.push(imageHash);
                     console.log(`  ✅ Image uploaded with hash: ${imageHash}`);
+                    return imageHash;
                   }
                 }
               } catch (imageError) {
-                console.error(`  ❌ Failed to process image: ${imageError.message}`);
-                // Continue with other media instead of failing completely
+                console.error(`  ❌ Failed to process image ${mediaPath}: ${imageError.message}`);
+                return null;
+              }
+            });
+
+            const imageResults = await Promise.all(imagePromises);
+            dynamicImages.push(...imageResults.filter(hash => hash !== null));
+          }
+
+          // Process videos in parallel (limited to 3 at a time to avoid overwhelming the API)
+          if (videoPaths.length > 0) {
+            console.log(`  🚀 Uploading ${videoPaths.length} videos (max 3 concurrent)...`);
+
+            // Process videos in batches of 3
+            const batchSize = 3;
+            for (let i = 0; i < videoPaths.length; i += batchSize) {
+              const batch = videoPaths.slice(i, i + batchSize);
+              console.log(`  📹 Processing video batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(videoPaths.length/batchSize)}`);
+
+              const videoPromises = batch.map(async (mediaPath) => {
+                console.log(`  📹 Uploading video: ${mediaPath}`);
+                try {
+                  const videoId = await this.uploadVideo(mediaPath);
+                  if (videoId) {
+                    console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+                    return videoId;
+                  }
+                } catch (videoError) {
+                  console.error(`  ❌ Failed to upload video ${mediaPath}: ${videoError.message}`);
+                  return null;
+                }
+              });
+
+              const batchResults = await Promise.all(videoPromises);
+              const validVideos = batchResults.filter(id => id !== null);
+
+              // Process video readiness checks in parallel for this batch
+              if (validVideos.length > 0) {
+                console.log(`  ⏳ Checking processing status for ${validVideos.length} videos...`);
+                const processingPromises = validVideos.map(async (videoId) => {
+                  const isReady = await this.waitForVideoProcessing(videoId, 5, 2000); // Reduced retries and wait time
+                  if (!isReady) {
+                    console.warn(`  ⚠️ Video ${videoId} processing timeout - continuing anyway`);
+                  } else {
+                    console.log(`  ✅ Video ${videoId} is ready`);
+                  }
+                  return videoId; // Return the video ID regardless of processing status
+                });
+
+                const processedVideos = await Promise.all(processingPromises);
+                dynamicVideos.push(...processedVideos);
               }
             }
           }
