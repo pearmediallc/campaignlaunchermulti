@@ -629,7 +629,7 @@ const AdSection: React.FC = () => {
             control={control}
             rules={{
               required: 'Headline is required',
-              maxLength: { value: 40, message: 'Headline must be 40 characters or less' }
+              maxLength: { value: 255, message: 'Headline must be 255 characters or less' }
             }}
             render={({ field, fieldState: { error } }) => (
               <TextField
@@ -638,7 +638,7 @@ const AdSection: React.FC = () => {
                 label="Headline"
                 placeholder="Short, attention-grabbing headline"
                 error={!!error}
-                helperText={error?.message || `${field.value?.length || 0}/40 characters`}
+                helperText={error?.message || `${field.value?.length || 0}/255 characters`}
               />
             )}
           />
@@ -650,7 +650,7 @@ const AdSection: React.FC = () => {
             name="description"
             control={control}
             rules={{
-              maxLength: { value: 30, message: 'Description must be 30 characters or less' }
+              maxLength: { value: 255, message: 'Description must be 255 characters or less' }
             }}
             render={({ field, fieldState: { error } }) => (
               <TextField
@@ -659,7 +659,7 @@ const AdSection: React.FC = () => {
                 label="Description (Optional)"
                 placeholder="Additional context below headline"
                 error={!!error}
-                helperText={error?.message || `${field.value?.length || 0}/30 characters`}
+                helperText={error?.message || `${field.value?.length || 0}/255 characters`}
               />
             )}
           />
