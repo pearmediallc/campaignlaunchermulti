@@ -110,33 +110,35 @@ const AdSection: React.FC = () => {
   const mediaType = watch('mediaType');
 
   // Sync dynamic text variations to form data
+  // Only sync when enableDynamicVariations changes, not when variations change
   useEffect(() => {
-    console.log('🎨 Dynamic Text Variations State Changed:', {
-      enableDynamicVariations,
-      primaryTextVariations,
-      headlineVariations
+    console.log('🎨 Dynamic Text Enable State Changed:', {
+      enableDynamicVariations
     });
 
     if (enableDynamicVariations) {
-      const filteredPrimary = primaryTextVariations.filter(t => t.trim());
-      const filteredHeadlines = headlineVariations.filter(h => h.trim());
-
-      console.log('✅ Setting form values:', {
-        dynamicTextEnabled: true,
-        primaryTextVariations: filteredPrimary,
-        headlineVariations: filteredHeadlines
-      });
-
+      console.log('✅ Enabling dynamic text variations in form');
       setValue('dynamicTextEnabled', true);
-      setValue('primaryTextVariations', filteredPrimary);
-      setValue('headlineVariations', filteredHeadlines);
+      // Don't set the variations here - let them be controlled by the input handlers
     } else {
       console.log('❌ Disabling dynamic text variations');
       setValue('dynamicTextEnabled', false);
-      setValue('primaryTextVariations', undefined);
-      setValue('headlineVariations', undefined);
+      setValue('primaryTextVariations', []);
+      setValue('headlineVariations', []);
     }
-  }, [enableDynamicVariations, primaryTextVariations, headlineVariations, setValue]);
+  }, [enableDynamicVariations, setValue]);
+
+  // Separate effect to sync variations to form (without filtering empty values)
+  useEffect(() => {
+    if (enableDynamicVariations) {
+      console.log('📝 Syncing variations to form:', {
+        primaryTextVariations,
+        headlineVariations
+      });
+      setValue('primaryTextVariations', primaryTextVariations);
+      setValue('headlineVariations', headlineVariations);
+    }
+  }, [primaryTextVariations, headlineVariations, enableDynamicVariations, setValue]);
 
   // Watch for template loading - sync form data to local state
   useEffect(() => {
