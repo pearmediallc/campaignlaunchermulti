@@ -128,38 +128,25 @@ const AdSection: React.FC = () => {
     }
   }, [enableDynamicVariations, setValue]);
 
-  // Separate effect to sync variations to form (without filtering empty values)
-  useEffect(() => {
-    if (enableDynamicVariations) {
-      console.log('📝 Syncing variations to form:', {
-        primaryTextVariations,
-        headlineVariations
-      });
-      setValue('primaryTextVariations', primaryTextVariations);
-      setValue('headlineVariations', headlineVariations);
-    }
-  }, [primaryTextVariations, headlineVariations, enableDynamicVariations, setValue]);
+  // REMOVED the problematic syncing effect that was causing infinite loops
+  // Instead, we'll update form values directly in the onChange handlers
 
-  // Watch for template loading - sync form data to local state
+  // Watch for template loading - sync form data to local state ONCE
   useEffect(() => {
-    // Only update if form has values and local state doesn't match
-    if (formDynamicTextEnabled && !enableDynamicVariations) {
-      console.log('📋 Template loaded with dynamic text enabled, syncing local state');
-      setEnableDynamicVariations(true);
+    // Only sync from form to local state when template loads
+    // This should only happen once when a template is selected
+    if (formDynamicTextEnabled !== undefined) {
+      setEnableDynamicVariations(formDynamicTextEnabled);
     }
 
-    if (formPrimaryVariations && formPrimaryVariations.length > 0 &&
-        JSON.stringify(formPrimaryVariations) !== JSON.stringify(primaryTextVariations)) {
-      console.log('📋 Template loaded with primary text variations:', formPrimaryVariations);
+    if (formPrimaryVariations && formPrimaryVariations.length > 0) {
       setPrimaryTextVariations(formPrimaryVariations);
     }
 
-    if (formHeadlineVariations && formHeadlineVariations.length > 0 &&
-        JSON.stringify(formHeadlineVariations) !== JSON.stringify(headlineVariations)) {
-      console.log('📋 Template loaded with headline variations:', formHeadlineVariations);
+    if (formHeadlineVariations && formHeadlineVariations.length > 0) {
       setHeadlineVariations(formHeadlineVariations);
     }
-  }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]); // Don't include local state to avoid infinite loop
+  }, []); // Empty deps - only run once on mount/template load
 
   // Auto-select saved page or first available page
   useEffect(() => {
@@ -825,6 +812,8 @@ const AdSection: React.FC = () => {
                           const newVariations = [...primaryTextVariations];
                           newVariations[index] = e.target.value;
                           setPrimaryTextVariations(newVariations);
+                          // Also update form value directly to avoid sync loops
+                          setValue('primaryTextVariations', newVariations);
                         }}
                         helperText={`${(text || '').length}/2200 characters`}
                       />
@@ -835,6 +824,7 @@ const AdSection: React.FC = () => {
                           onClick={() => {
                             const newVariations = primaryTextVariations.filter((_, i) => i !== index);
                             setPrimaryTextVariations(newVariations);
+                            setValue('primaryTextVariations', newVariations);
                           }}
                         >
                           <Delete />
@@ -847,7 +837,11 @@ const AdSection: React.FC = () => {
                       size="small"
                       variant="outlined"
                       startIcon={<AdsClick />}
-                      onClick={() => setPrimaryTextVariations([...primaryTextVariations, ''])}
+                      onClick={() => {
+                        const newVariations = [...primaryTextVariations, ''];
+                        setPrimaryTextVariations(newVariations);
+                        setValue('primaryTextVariations', newVariations);
+                      }}
                     >
                       Add Primary Text Variation
                     </Button>
@@ -871,6 +865,8 @@ const AdSection: React.FC = () => {
                           const newVariations = [...headlineVariations];
                           newVariations[index] = e.target.value;
                           setHeadlineVariations(newVariations);
+                          // Also update form value directly to avoid sync loops
+                          setValue('headlineVariations', newVariations);
                         }}
                         helperText={`${(headline || '').length}/255 characters`}
                       />
@@ -881,6 +877,7 @@ const AdSection: React.FC = () => {
                           onClick={() => {
                             const newVariations = headlineVariations.filter((_, i) => i !== index);
                             setHeadlineVariations(newVariations);
+                            setValue('headlineVariations', newVariations);
                           }}
                         >
                           <Delete />
@@ -893,7 +890,11 @@ const AdSection: React.FC = () => {
                       size="small"
                       variant="outlined"
                       startIcon={<AdsClick />}
-                      onClick={() => setHeadlineVariations([...headlineVariations, ''])}
+                      onClick={() => {
+                        const newVariations = [...headlineVariations, ''];
+                        setHeadlineVariations(newVariations);
+                        setValue('headlineVariations', newVariations);
+                      }}
                     >
                       Add Headline Variation
                     </Button>
