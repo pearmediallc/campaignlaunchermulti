@@ -1727,13 +1727,10 @@ class FacebookAPI {
               mediaAssets.dynamicImages = uniqueImages;
               console.log(`✅ Dynamic Creative: ${uniqueImages.length} unique images (${dynamicImages.length - uniqueImages.length} duplicates removed)`);
             } else {
-              console.log('❌ No valid images for Dynamic Creative after filtering');
-              throw new Error('No images meet the minimum 600x600 dimension requirement for Dynamic Creative. Please use larger images.');
+              console.log('⚠️ No valid images for Dynamic Creative after duplicate filtering');
             }
-          } else {
-            console.log('❌ No valid images uploaded for Dynamic Creative');
-            throw new Error('No images could be uploaded for Dynamic Creative. Please check your images meet the 600x600 minimum dimension requirement.');
           }
+
           if (dynamicVideos.length > 0) {
             // Remove duplicate video IDs as well
             const uniqueVideos = [...new Set(dynamicVideos)];
@@ -1743,6 +1740,17 @@ class FacebookAPI {
             } else {
               console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos uploaded`);
             }
+          }
+
+          // FIXED: Check if we have ANY media (images OR videos), not just images
+          const hasValidImages = mediaAssets.dynamicImages && mediaAssets.dynamicImages.length > 0;
+          const hasValidVideos = mediaAssets.dynamicVideos && mediaAssets.dynamicVideos.length > 0;
+
+          if (!hasValidImages && !hasValidVideos) {
+            console.log('❌ No valid media (images or videos) uploaded for Dynamic Creative');
+            throw new Error('No valid media uploaded for Dynamic Creative. Please upload at least one image (600x600 minimum) or video.');
+          } else {
+            console.log(`✅ Dynamic Creative media ready: ${mediaAssets.dynamicImages?.length || 0} images, ${mediaAssets.dynamicVideos?.length || 0} videos`);
           }
 
           // If we have dynamic media, we should use asset_feed_spec format
