@@ -2010,10 +2010,22 @@ class FacebookAPI {
                     console.warn(`  ⚠️ Skipping undefined video ID`);
                     return null;
                   }
-                  // Don't wait for processing - Facebook will process in background
-                  // Just verify the video was uploaded successfully
-                  console.log(`  ✅ Video ${videoId} uploaded - processing in background`);
-                  return videoId; // Return immediately without waiting
+
+                  // Quick check for video readiness (max 3 seconds)
+                  // This prevents "Video not ready for use in an ad" errors
+                  try {
+                    const isReady = await this.waitForVideoProcessing(videoId, 1, 3000);
+                    if (isReady) {
+                      console.log(`  ✅ Video ${videoId} ready for immediate use`);
+                      return videoId;
+                    } else {
+                      console.warn(`  ⚠️ Video ${videoId} still processing - excluding from this campaign`);
+                      return null; // Don't include videos that aren't ready
+                    }
+                  } catch (error) {
+                    console.warn(`  ⚠️ Could not verify video ${videoId} status - excluding for safety`);
+                    return null;
+                  }
                 });
 
                 const processedVideos = await Promise.all(processingPromises);
@@ -2054,13 +2066,15 @@ class FacebookAPI {
               mediaAssets.dynamicVideos = uniqueVideos;
               const duplicatesRemoved = dynamicVideos.length - uniqueVideos.length;
               if (duplicatesRemoved > 0) {
-                console.log(`✅ Dynamic Creative: ${uniqueVideos.length} valid videos (${duplicatesRemoved} invalid/duplicates removed)`);
+                console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos ready for use (${duplicatesRemoved} still processing/invalid removed)`);
               } else {
-                console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos uploaded`);
+                console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos ready for use`);
               }
             } else {
-              console.log('⚠️ No valid video IDs after filtering');
+              console.log('⚠️ All videos still processing - will proceed with images only');
             }
+          } else if (campaignData.videos && campaignData.videos.length > 0) {
+            console.log('⚠️ Videos were provided but none are ready yet - proceeding with images');
           }
 
           // FIXED: Check if we have ANY media (images OR videos), not just images
@@ -2068,8 +2082,14 @@ class FacebookAPI {
           const hasValidVideos = mediaAssets.dynamicVideos && mediaAssets.dynamicVideos.length > 0;
 
           if (!hasValidImages && !hasValidVideos) {
-            console.log('❌ No valid media (images or videos) uploaded for Dynamic Creative');
-            throw new Error('No valid media uploaded for Dynamic Creative. Please upload at least one image (600x600 minimum) or video.');
+            // Check if videos are still processing
+            if (campaignData.videos && campaignData.videos.length > 0) {
+              console.log('❌ All videos are still processing and no images provided');
+              throw new Error('Videos are still being processed by Facebook. Please either: 1) Include images in your campaign, or 2) Wait a moment and try again.');
+            } else {
+              console.log('❌ No valid media (images or videos) uploaded for Dynamic Creative');
+              throw new Error('No valid media uploaded for Dynamic Creative. Please upload at least one image (600x600 minimum) or video.');
+            }
           } else {
             console.log(`✅ Dynamic Creative media ready: ${mediaAssets.dynamicImages?.length || 0} images, ${mediaAssets.dynamicVideos?.length || 0} videos`);
           }
