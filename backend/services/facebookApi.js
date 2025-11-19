@@ -1926,15 +1926,17 @@ class FacebookAPI {
 
       // Check if we should reuse media from a previous campaign
       if (campaignData.skipMediaUpload && campaignData.reusedMediaHashes) {
-        console.log('⚠️ DISABLED: Media reuse has been disabled to prevent media bleeding');
-        console.log('📸 Each campaign will upload its own media independently');
-        // Don't reuse media - let it upload fresh
-        // mediaAssets = campaignData.reusedMediaHashes;
+        console.log('✅ ENABLED: Reusing media from first campaign for consistency');
+        console.log('📸 This ensures all campaign copies have identical media');
+        mediaAssets = campaignData.reusedMediaHashes;
+        console.log(`   - Reused Images: ${mediaAssets.dynamicImages?.length || 0}`);
+        console.log(`   - Reused Videos: ${mediaAssets.dynamicVideos?.length || 0}`);
       }
       console.log('===========================================\n');
 
       // PRIORITY 1: Check for Dynamic Creative media FIRST
-      if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
+      // Skip upload if we're reusing media from a previous campaign
+      if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0 && !campaignData.skipMediaUpload) {
         // Handle Dynamic Creative multiple media uploads
         console.log('🎨 Processing Dynamic Creative media...');
         console.log(`📊 Total media files to process: ${campaignData.dynamicCreativeMediaPaths.length}`);
@@ -2022,19 +2024,19 @@ class FacebookAPI {
                     return null;
                   }
 
-                  // Quick check for video readiness (max 3 seconds)
-                  // This prevents "Video not ready for use in an ad" errors
+                  // Wait for video to be ready (up to 30 seconds with 3-second intervals)
+                  // This ensures all campaigns get the same media consistently
                   try {
-                    const isReady = await this.waitForVideoProcessing(videoId, 1, 3000);
+                    const isReady = await this.waitForVideoProcessing(videoId, 10, 3000);
                     if (isReady) {
-                      console.log(`  ✅ Video ${videoId} ready for immediate use`);
+                      console.log(`  ✅ Video ${videoId} ready for use in ads`);
                       return videoId;
                     } else {
-                      console.warn(`  ⚠️ Video ${videoId} still processing - excluding from this campaign`);
+                      console.warn(`  ⚠️ Video ${videoId} still processing after 30s - will retry in subsequent campaigns`);
                       return null; // Don't include videos that aren't ready
                     }
                   } catch (error) {
-                    console.warn(`  ⚠️ Could not verify video ${videoId} status - excluding for safety`);
+                    console.warn(`  ⚠️ Could not verify video ${videoId} status: ${error.message}`);
                     return null;
                   }
                 });
@@ -6390,14 +6392,18 @@ class FacebookAPI {
         const processingPhase = status?.processing_phase;
         const videoStatus = status?.video_status;
 
-        console.log(`    Processing phase: ${processingPhase || 'none'}`);
+        // FIX: processing_phase is an object with status property
+        const processingPhaseStatus = typeof processingPhase === 'object' ? processingPhase?.status : processingPhase;
+
+        console.log(`    Processing phase: ${JSON.stringify(processingPhase) || 'none'}`);
+        console.log(`    Processing phase status: ${processingPhaseStatus || 'none'}`);
         console.log(`    Video status: ${videoStatus || 'none'}`);
 
         // Facebook video processing phases:
         // - processing: Video is being processed
-        // - ready: Video is ready for use
-        // If no status object or processing_phase is 'ready', video is ready
-        if (!status || processingPhase === 'ready' || videoStatus === 'ready') {
+        // - ready/complete: Video is ready for use
+        // Check processingPhase.status === 'complete' OR videoStatus === 'ready'
+        if (!status || processingPhaseStatus === 'complete' || videoStatus === 'ready') {
           console.log(`  ✅ Video is ready for use`);
           return true;
         }
