@@ -1768,6 +1768,17 @@ class FacebookAPI {
               const videoPromises = batch.map(async (mediaPath) => {
                 console.log(`  📹 Uploading video: ${mediaPath}`);
                 try {
+                  // Check file size before upload
+                  const fs = require('fs');
+                  const stats = fs.statSync(mediaPath);
+                  const fileSizeInMB = stats.size / (1024 * 1024);
+
+                  if (fileSizeInMB > 100) { // Facebook typically has issues with videos > 100MB
+                    console.error(`  ❌ Video too large: ${fileSizeInMB.toFixed(2)}MB (max 100MB recommended)`);
+                    console.log(`  ℹ️ Consider compressing this video before upload`);
+                    return null;
+                  }
+
                   const videoId = await this.uploadVideo(mediaPath);
                   if (videoId) {
                     console.log(`  ✅ Video uploaded with ID: ${videoId}`);
@@ -1775,17 +1786,25 @@ class FacebookAPI {
                   }
                 } catch (videoError) {
                   console.error(`  ❌ Failed to upload video ${mediaPath}: ${videoError.message}`);
+                  if (videoError.response?.status === 413) {
+                    console.error(`  ℹ️ Video file is too large for Facebook. Please compress it.`);
+                  }
                   return null;
                 }
               });
 
               const batchResults = await Promise.all(videoPromises);
-              const validVideos = batchResults.filter(id => id !== null);
+              const validVideos = batchResults.filter(id => id !== null && id !== undefined);
 
               // Process video readiness checks in parallel for this batch
               if (validVideos.length > 0) {
                 console.log(`  ⏳ Checking processing status for ${validVideos.length} videos...`);
                 const processingPromises = validVideos.map(async (videoId) => {
+                  // Extra safety check
+                  if (!videoId) {
+                    console.warn(`  ⚠️ Skipping undefined video ID`);
+                    return null;
+                  }
                   const isReady = await this.waitForVideoProcessing(videoId, 5, 2000); // Reduced retries and wait time
                   if (!isReady) {
                     console.warn(`  ⚠️ Video ${videoId} processing timeout - continuing anyway`);
@@ -1796,7 +1815,7 @@ class FacebookAPI {
                 });
 
                 const processedVideos = await Promise.all(processingPromises);
-                dynamicVideos.push(...processedVideos);
+                dynamicVideos.push(...processedVideos.filter(id => id !== null && id !== undefined));
               }
             }
           }
@@ -1825,13 +1844,20 @@ class FacebookAPI {
           }
 
           if (dynamicVideos.length > 0) {
-            // Remove duplicate video IDs as well
-            const uniqueVideos = [...new Set(dynamicVideos)];
-            mediaAssets.dynamicVideos = uniqueVideos;
-            if (uniqueVideos.length < dynamicVideos.length) {
-              console.log(`✅ Dynamic Creative: ${uniqueVideos.length} unique videos (${dynamicVideos.length - uniqueVideos.length} duplicates removed)`);
+            // Remove duplicate and invalid video IDs
+            const uniqueVideos = [...new Set(dynamicVideos)]
+              .filter(id => id !== null && id !== undefined && typeof id === 'string' && id.length > 0);
+
+            if (uniqueVideos.length > 0) {
+              mediaAssets.dynamicVideos = uniqueVideos;
+              const duplicatesRemoved = dynamicVideos.length - uniqueVideos.length;
+              if (duplicatesRemoved > 0) {
+                console.log(`✅ Dynamic Creative: ${uniqueVideos.length} valid videos (${duplicatesRemoved} invalid/duplicates removed)`);
+              } else {
+                console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos uploaded`);
+              }
             } else {
-              console.log(`✅ Dynamic Creative: ${uniqueVideos.length} videos uploaded`);
+              console.log('⚠️ No valid video IDs after filtering');
             }
           }
 
@@ -2004,7 +2030,8 @@ class FacebookAPI {
           headlineVariations: campaignData.headlineVariations?.length || 0
         });
 
-        const ad = await this.createAd({
+        // Wrap ad creation with retry logic for transient errors
+        const adParams = {
           campaignName: campaignData.campaignName,
           adsetId: adSet.id,
           url: campaignData.url,
@@ -2021,7 +2048,20 @@ class FacebookAPI {
           primaryTextVariations: campaignData.primaryTextVariations,
           headlineVariations: campaignData.headlineVariations,
           ...mediaAssets
-        });
+        };
+
+        let ad;
+        try {
+          ad = await this.createAd(adParams);
+        } catch (error) {
+          // If it's a transient error (code 2), retry with backoff
+          if (error.fbError?.is_transient || error.fbError?.code === 2) {
+            console.log('⚠️ Transient error on ad creation, retrying with backoff...');
+            ad = await this.retryWithBackoff(this.createAd, adParams, 3, 3000);
+          } else {
+            throw error; // Re-throw non-transient errors
+          }
+        }
 
         console.log('✅ Ad creation request sent with editorName:', campaignData.editorName || 'none');
         ads.push(ad);
