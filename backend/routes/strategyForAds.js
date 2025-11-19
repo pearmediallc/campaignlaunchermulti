@@ -741,7 +741,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     for (let campaignIndex = 0; campaignIndex < numberOfCampaigns; campaignIndex++) {
       // Modify campaign name for multiple campaigns
-      const currentCampaignName = numberOfCampaigns > 1
+      // campaignIndex 0 = Original campaign (no "Copy" suffix)
+      // campaignIndex 1+ = Copy 2, Copy 3, Copy 4, etc.
+      const currentCampaignName = numberOfCampaigns > 1 && campaignIndex > 0
         ? `${campaignData.campaignName} - Copy ${campaignIndex + 1}`
         : campaignData.campaignName;
 
