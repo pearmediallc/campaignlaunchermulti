@@ -1248,6 +1248,227 @@ class FacebookAPI {
   }
 
   /**
+   * Smart video upload with automatic fallbacks
+   * This method tries multiple approaches to ensure video upload succeeds
+   * 1. Try normal upload (existing method)
+   * 2. If fails with 413, try resumable upload
+   * 3. If still fails, try with compression
+   * NEVER modifies the original uploadVideo method
+   */
+  async uploadVideoSmart(videoPath) {
+    try {
+      // Get file size for logging
+      const stats = fs.statSync(videoPath);
+      const fileSizeInMB = stats.size / (1024 * 1024);
+      console.log(`  📊 Video size: ${fileSizeInMB.toFixed(2)}MB`);
+
+      // CHECK CACHE FIRST (optional - won't break if fails)
+      const cachedId = await this.checkMediaCache(videoPath, 'video');
+      if (cachedId) {
+        console.log(`  ⚡ Using cached video ID: ${cachedId}`);
+        return cachedId;
+      }
+
+      // ATTEMPT 1: Try normal upload first (existing method)
+      let videoId = null;
+      try {
+        console.log(`  🚀 Attempting standard upload...`);
+        videoId = await this.uploadVideo(videoPath);
+        if (videoId) {
+          console.log(`  ✅ Standard upload successful!`);
+          // Cache for future use (fire and forget)
+          this.saveToMediaCache(videoPath, videoId, 'video').catch(() => {});
+          return videoId;
+        }
+      } catch (error) {
+        console.log(`  ⚠️ Standard upload failed: ${error.message}`);
+
+        // Check if it's a size issue (413 error)
+        if (error.response?.status === 413 || error.message?.includes('too large')) {
+          console.log(`  🔄 Video too large for standard upload, trying resumable upload...`);
+
+          // ATTEMPT 2: Try resumable upload for large files
+          try {
+            const videoId = await this.uploadVideoResumable(videoPath);
+            if (videoId) {
+              console.log(`  ✅ Resumable upload successful!`);
+              return videoId;
+            }
+          } catch (resumableError) {
+            console.log(`  ⚠️ Resumable upload failed: ${resumableError.message}`);
+            console.log(`  🔄 Attempting compressed upload as last resort...`);
+
+            // ATTEMPT 3: Compress and upload
+            try {
+              const compressedId = await this.uploadVideoWithCompression(videoPath);
+              if (compressedId) {
+                console.log(`  ✅ Compressed upload successful!`);
+                return compressedId;
+              }
+            } catch (compressError) {
+              console.error(`  ❌ All upload methods failed: ${compressError.message}`);
+            }
+          }
+        }
+      }
+
+      // If we get here, all attempts failed
+      console.error(`  ❌ Unable to upload video after all attempts`);
+      return null;
+
+    } catch (error) {
+      console.error(`  ❌ Error in smart upload: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Resumable video upload for large files (up to 10GB)
+   * Uses Facebook's resumable upload API
+   */
+  async uploadVideoResumable(videoPath) {
+    try {
+      const stats = fs.statSync(videoPath);
+      const fileSize = stats.size;
+      const fileName = path.basename(videoPath);
+
+      console.log(`  📦 Starting resumable upload for ${fileName} (${(fileSize / (1024 * 1024)).toFixed(2)}MB)`);
+
+      // Step 1: Initialize upload session
+      const initUrl = `${this.baseURL}/act_${this.adAccountId}/advideos`;
+      const initResponse = await axios.post(initUrl, null, {
+        params: {
+          access_token: this.accessToken,
+          upload_phase: 'start',
+          file_size: fileSize
+        },
+        timeout: 30000
+      });
+
+      if (!initResponse.data?.upload_session_id) {
+        throw new Error('Failed to initialize upload session');
+      }
+
+      const sessionId = initResponse.data.upload_session_id;
+      console.log(`  🔑 Upload session created: ${sessionId}`);
+
+      // Step 2: Upload chunks (10MB each)
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+      const chunks = Math.ceil(fileSize / CHUNK_SIZE);
+      const fileHandle = fs.openSync(videoPath, 'r');
+
+      for (let i = 0; i < chunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, fileSize);
+        const chunkSize = end - start;
+
+        const buffer = Buffer.alloc(chunkSize);
+        fs.readSync(fileHandle, buffer, 0, chunkSize, start);
+
+        console.log(`  📤 Uploading chunk ${i + 1}/${chunks} (${(chunkSize / (1024 * 1024)).toFixed(2)}MB)`);
+
+        const form = new FormData();
+        form.append('video_file_chunk', buffer, {
+          filename: fileName,
+          contentType: 'application/octet-stream'
+        });
+        form.append('access_token', this.accessToken);
+        form.append('upload_phase', 'transfer');
+        form.append('upload_session_id', sessionId);
+        form.append('start_offset', start.toString());
+
+        await axios.post(initUrl, form, {
+          headers: form.getHeaders(),
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+          timeout: 120000 // 2 minutes per chunk
+        });
+      }
+
+      fs.closeSync(fileHandle);
+
+      // Step 3: Finalize upload
+      console.log(`  🔐 Finalizing upload...`);
+      const finalizeResponse = await axios.post(initUrl, null, {
+        params: {
+          access_token: this.accessToken,
+          upload_phase: 'finish',
+          upload_session_id: sessionId
+        },
+        timeout: 30000
+      });
+
+      if (finalizeResponse.data?.id) {
+        console.log(`  ✅ Resumable upload completed! Video ID: ${finalizeResponse.data.id}`);
+        return finalizeResponse.data.id;
+      }
+
+      throw new Error('Failed to finalize upload');
+
+    } catch (error) {
+      console.error(`  ❌ Resumable upload error: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload video with automatic compression
+   * Uses FFmpeg to compress video to a manageable size
+   */
+  async uploadVideoWithCompression(videoPath, targetSizeMB = 90) {
+    try {
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execPromise = util.promisify(exec);
+
+      const stats = fs.statSync(videoPath);
+      const originalSizeMB = stats.size / (1024 * 1024);
+
+      // Only compress if needed
+      if (originalSizeMB <= targetSizeMB) {
+        console.log(`  ℹ️ Video already under ${targetSizeMB}MB, uploading as-is`);
+        return await this.uploadVideo(videoPath);
+      }
+
+      console.log(`  🎬 Compressing video from ${originalSizeMB.toFixed(2)}MB to ~${targetSizeMB}MB`);
+
+      const tempPath = videoPath.replace(/\.[^/.]+$/, '_compressed.mp4');
+
+      // Calculate bitrate for target size
+      // Get video duration first
+      const durationCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+      const { stdout: duration } = await execPromise(durationCmd);
+      const videoDuration = parseFloat(duration);
+
+      // Calculate target bitrate (in kbps)
+      const targetBitrate = Math.floor((targetSizeMB * 8192) / videoDuration - 128); // Subtract audio bitrate
+
+      // Compress using FFmpeg
+      const compressCmd = `ffmpeg -i "${videoPath}" -c:v libx264 -b:v ${targetBitrate}k -c:a aac -b:a 128k -y "${tempPath}"`;
+
+      console.log(`  ⏳ Compressing... This may take a moment`);
+      await execPromise(compressCmd);
+
+      // Upload compressed version
+      const compressedStats = fs.statSync(tempPath);
+      const compressedSizeMB = compressedStats.size / (1024 * 1024);
+      console.log(`  ✅ Compressed to ${compressedSizeMB.toFixed(2)}MB`);
+
+      const videoId = await this.uploadVideo(tempPath);
+
+      // Clean up temp file
+      fs.unlinkSync(tempPath);
+
+      return videoId;
+
+    } catch (error) {
+      console.error(`  ❌ Compression upload error: ${error.message}`);
+      // If compression fails, still try regular upload as last resort
+      return await this.uploadVideo(videoPath);
+    }
+  }
+
+  /**
    * Create a Page Video Post with display link
    * This creates a published post on the Page which can then be used for ads
    * @param {Object} postData - Data for the video post
@@ -1767,30 +1988,14 @@ class FacebookAPI {
 
               const videoPromises = batch.map(async (mediaPath) => {
                 console.log(`  📹 Uploading video: ${mediaPath}`);
-                try {
-                  // Check file size before upload
-                  const fs = require('fs');
-                  const stats = fs.statSync(mediaPath);
-                  const fileSizeInMB = stats.size / (1024 * 1024);
 
-                  if (fileSizeInMB > 100) { // Facebook typically has issues with videos > 100MB
-                    console.error(`  ❌ Video too large: ${fileSizeInMB.toFixed(2)}MB (max 100MB recommended)`);
-                    console.log(`  ℹ️ Consider compressing this video before upload`);
-                    return null;
-                  }
-
-                  const videoId = await this.uploadVideo(mediaPath);
-                  if (videoId) {
-                    console.log(`  ✅ Video uploaded with ID: ${videoId}`);
-                    return videoId;
-                  }
-                } catch (videoError) {
-                  console.error(`  ❌ Failed to upload video ${mediaPath}: ${videoError.message}`);
-                  if (videoError.response?.status === 413) {
-                    console.error(`  ℹ️ Video file is too large for Facebook. Please compress it.`);
-                  }
-                  return null;
+                // Use smart upload with automatic fallbacks
+                const videoId = await this.uploadVideoSmart(mediaPath);
+                if (videoId) {
+                  console.log(`  ✅ Video uploaded with ID: ${videoId}`);
+                  return videoId;
                 }
+                return null;
               });
 
               const batchResults = await Promise.all(videoPromises);
@@ -1805,13 +2010,10 @@ class FacebookAPI {
                     console.warn(`  ⚠️ Skipping undefined video ID`);
                     return null;
                   }
-                  const isReady = await this.waitForVideoProcessing(videoId, 5, 2000); // Reduced retries and wait time
-                  if (!isReady) {
-                    console.warn(`  ⚠️ Video ${videoId} processing timeout - continuing anyway`);
-                  } else {
-                    console.log(`  ✅ Video ${videoId} is ready`);
-                  }
-                  return videoId; // Return the video ID regardless of processing status
+                  // Don't wait for processing - Facebook will process in background
+                  // Just verify the video was uploaded successfully
+                  console.log(`  ✅ Video ${videoId} uploaded - processing in background`);
+                  return videoId; // Return immediately without waiting
                 });
 
                 const processedVideos = await Promise.all(processingPromises);
@@ -6160,6 +6362,134 @@ class FacebookAPI {
 
     console.warn(`  ⚠️ Video ${videoId} processing timeout after ${maxRetries} attempts`);
     return false;
+  }
+
+  /**
+   * Check media cache for existing upload
+   * This is OPTIONAL - failures don't affect upload flow
+   * @param {string} filePath - Path to the media file
+   * @param {string} type - 'video' or 'image'
+   * @returns {Promise<string|null>} - Cached media ID or null
+   */
+  async checkMediaCache(filePath, type = 'video') {
+    try {
+      const crypto = require('crypto');
+      const cacheDir = path.join(process.cwd(), '.media_cache');
+
+      // Create cache directory if it doesn't exist
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+
+      // Calculate file hash
+      const fileBuffer = fs.readFileSync(filePath);
+      const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+      const cacheFile = path.join(cacheDir, `${hash}.json`);
+
+      // Check if cache file exists
+      if (!fs.existsSync(cacheFile)) {
+        return null;
+      }
+
+      // Read cache data
+      const cacheData = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+
+      // Check if cache is still valid (24 hours)
+      const age = Date.now() - cacheData.timestamp;
+      if (age > 24 * 60 * 60 * 1000) {
+        // Cache too old, delete it
+        fs.unlinkSync(cacheFile);
+        return null;
+      }
+
+      // Verify the media still exists on Facebook
+      const mediaId = cacheData.mediaId;
+      try {
+        if (type === 'video') {
+          // Quick check if video exists
+          const response = await axios.get(
+            `${this.baseURL}/${mediaId}`,
+            {
+              params: {
+                fields: 'id',
+                access_token: this.accessToken
+              },
+              timeout: 5000 // Quick timeout for cache check
+            }
+          );
+          if (response.data?.id) {
+            console.log(`  ✅ Cache hit! Video ${mediaId} verified on Facebook`);
+            return mediaId;
+          }
+        } else {
+          // For images, we can't easily verify, so trust the cache
+          console.log(`  ✅ Cache hit! Using cached image hash`);
+          return mediaId;
+        }
+      } catch (verifyError) {
+        // If verification fails, invalidate cache
+        fs.unlinkSync(cacheFile);
+        return null;
+      }
+
+      return null;
+
+    } catch (error) {
+      // Any error in cache checking is non-fatal
+      console.log(`  ℹ️ Cache check skipped: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Save media ID to cache for future use
+   * This is OPTIONAL - failures are ignored
+   * @param {string} filePath - Path to the media file
+   * @param {string} mediaId - Facebook media ID or hash
+   * @param {string} type - 'video' or 'image'
+   */
+  async saveToMediaCache(filePath, mediaId, type = 'video') {
+    try {
+      const crypto = require('crypto');
+      const cacheDir = path.join(process.cwd(), '.media_cache');
+
+      // Create cache directory if it doesn't exist
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+
+      // Calculate file hash
+      const fileBuffer = fs.readFileSync(filePath);
+      const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+      const cacheFile = path.join(cacheDir, `${hash}.json`);
+
+      // Save cache data
+      const cacheData = {
+        mediaId,
+        type,
+        filePath: path.basename(filePath),
+        fileSize: fs.statSync(filePath).size,
+        timestamp: Date.now()
+      };
+
+      fs.writeFileSync(cacheFile, JSON.stringify(cacheData, null, 2));
+      console.log(`  💾 Cached ${type} for future use`);
+
+      // Clean old cache files (older than 7 days)
+      const files = fs.readdirSync(cacheDir);
+      for (const file of files) {
+        const filePath = path.join(cacheDir, file);
+        const stat = fs.statSync(filePath);
+        const age = Date.now() - stat.mtime.getTime();
+        if (age > 7 * 24 * 60 * 60 * 1000) {
+          fs.unlinkSync(filePath);
+        }
+      }
+
+    } catch (error) {
+      // Caching errors are non-fatal
+      // Silently ignore
+    }
   }
 }
 

@@ -62,3 +62,4 @@ ngrok-tunnels.yml
 
 # Private keys and credentials
 generate-keys.js
+.media_cache/
