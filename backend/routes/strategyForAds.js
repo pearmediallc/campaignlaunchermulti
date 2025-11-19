@@ -751,11 +751,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         campaignName: currentCampaignName
       };
 
-      // Reuse media hashes from first campaign for subsequent campaigns
-      if (campaignIndex > 0 && mediaHashes) {
-        currentCampaignData.reusedMediaHashes = mediaHashes;
-        currentCampaignData.skipMediaUpload = true;
-        console.log(`♻️ Campaign ${campaignIndex + 1}: Reusing media from first campaign`);
+      // FIX: Don't reuse media hashes between different campaign copies
+      // Each campaign copy should upload its own media to prevent mixing
+      // This was causing the 1-5-4 issue where media was bleeding between campaigns
+      if (campaignIndex > 0 && mediaHashes && false) { // Disabled media reuse
+        // NOTE: Media reuse is disabled to prevent media bleeding between campaigns
+        // Each campaign will upload its own media independently
+        console.log(`📸 Campaign ${campaignIndex + 1}: Will upload its own media (isolation fix)`);
       }
 
       // Add delay between campaign creations to avoid rate limits
@@ -867,6 +869,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 // CRITICAL: Pass through dynamic creative media paths if they exist
                 dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
                 // Pass the media hashes from the initial campaign creation
+                // All ad sets in the SAME campaign should share media
                 dynamicImages: result.mediaHashes?.dynamicImages,
                 dynamicVideos: result.mediaHashes?.dynamicVideos,
                 imageHash: result.mediaHashes?.imageHash,

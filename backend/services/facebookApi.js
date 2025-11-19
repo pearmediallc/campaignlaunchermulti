@@ -1917,13 +1917,24 @@ class FacebookAPI {
       // Handle media upload based on type
       let mediaAssets = {};
 
+      // FIX: Add logging to track media isolation
+      console.log('\n🔒 ========== MEDIA ISOLATION CHECK ==========');
+      console.log(`📌 Campaign: ${campaignData.campaignName}`);
+      console.log(`📊 Media Type: ${campaignData.mediaType}`);
+      console.log(`🔄 Skip Upload: ${campaignData.skipMediaUpload ? 'YES' : 'NO'}`);
+      console.log(`♻️ Has Reused Hashes: ${campaignData.reusedMediaHashes ? 'YES' : 'NO'}`);
+
       // Check if we should reuse media from a previous campaign
       if (campaignData.skipMediaUpload && campaignData.reusedMediaHashes) {
-        console.log('♻️ Reusing media hashes from previous campaign');
-        mediaAssets = campaignData.reusedMediaHashes;
+        console.log('⚠️ DISABLED: Media reuse has been disabled to prevent media bleeding');
+        console.log('📸 Each campaign will upload its own media independently');
+        // Don't reuse media - let it upload fresh
+        // mediaAssets = campaignData.reusedMediaHashes;
       }
+      console.log('===========================================\n');
+
       // PRIORITY 1: Check for Dynamic Creative media FIRST
-      else if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
+      if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
         // Handle Dynamic Creative multiple media uploads
         console.log('🎨 Processing Dynamic Creative media...');
         console.log(`📊 Total media files to process: ${campaignData.dynamicCreativeMediaPaths.length}`);
@@ -2092,6 +2103,19 @@ class FacebookAPI {
             }
           } else {
             console.log(`✅ Dynamic Creative media ready: ${mediaAssets.dynamicImages?.length || 0} images, ${mediaAssets.dynamicVideos?.length || 0} videos`);
+
+            // FIX: Add detailed media tracking
+            console.log('\n📊 ========== MEDIA ASSET SUMMARY ==========');
+            console.log(`📌 Campaign: ${campaignData.campaignName}`);
+            console.log(`🖼️ Images: ${mediaAssets.dynamicImages?.length || 0}`);
+            console.log(`🎬 Videos: ${mediaAssets.dynamicVideos?.length || 0}`);
+            if (mediaAssets.dynamicImages?.length > 0) {
+              console.log(`   Image hashes: ${mediaAssets.dynamicImages.slice(0, 3).join(', ')}${mediaAssets.dynamicImages.length > 3 ? '...' : ''}`);
+            }
+            if (mediaAssets.dynamicVideos?.length > 0) {
+              console.log(`   Video IDs: ${mediaAssets.dynamicVideos.slice(0, 3).join(', ')}${mediaAssets.dynamicVideos.length > 3 ? '...' : ''}`);
+            }
+            console.log('==========================================\n');
           }
 
           // If we have dynamic media, we should use asset_feed_spec format
@@ -2183,7 +2207,10 @@ class FacebookAPI {
           const variation = campaignData.variations[i];
           
           // Handle variation-specific media
-          let variationMediaAssets = { ...mediaAssets };
+          // FIX: Only use variation-specific media, don't inherit from main campaign
+          let variationMediaAssets = {};
+
+          // Check if variation has its own media
           if (variation.mediaType && variation.mediaType !== campaignData.mediaType) {
             // Upload variation-specific media if different from main
             if (variation.mediaType === 'video' && variation.videoPath) {
@@ -2193,8 +2220,14 @@ class FacebookAPI {
               const imageHash = await this.uploadImage(variation.imagePath);
               if (imageHash) variationMediaAssets = { imageHash };
             }
-          } else if (variation.imagePath) {
-            // Upload variation image if provided
+          } else {
+            // Use the same media type as main campaign but only include what's needed
+            // Don't spread all mediaAssets to prevent media bleeding between campaigns
+            variationMediaAssets = { ...mediaAssets };
+          }
+
+          if (variation.imagePath && !variationMediaAssets.imageHash) {
+            // Upload variation image if provided and not already uploaded
             const imageHash = await this.uploadImage(variation.imagePath);
             if (imageHash) variationMediaAssets.imageHash = imageHash;
           }
