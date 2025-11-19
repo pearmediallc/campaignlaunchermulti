@@ -837,7 +837,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             const adSetParams = {
               ...campaignData,
               campaignId: result.campaign.id,
-              adSetName: `${result.adSet.name} - Copy ${i + 2}`,
+              adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
             };
 
             // CRITICAL FIX: Only set ad set budget if NOT using Campaign Budget Optimization
@@ -861,7 +861,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               const adParams = {
                 ...campaignData,
                 adsetId: newAdSet.id,  // Note: lowercase 's' in adsetId to match Facebook API expectation
-                adName: `${campaignData.campaignName} - Ad ${i + 2}`,
+                adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
                 postId: result.postId,
                 // Explicitly ensure these creative fields are passed
                 displayLink: campaignData.displayLink,

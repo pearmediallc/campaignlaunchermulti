@@ -2990,8 +2990,17 @@ class FacebookAPI {
           }
 
           // Create new ad set with same settings including attribution
+          // Extract number from original name if it exists (e.g., "AdSet 1" -> 1)
+          // If creating multiple copies, increment the number sequentially
+          const nameMatch = originalAdSet.name.match(/AdSet (\d+)$/);
+          const baseNumber = nameMatch ? parseInt(nameMatch[1]) : 1;
+          const newNumber = baseNumber + i;
+          const newName = originalAdSet.name.includes('AdSet')
+            ? originalAdSet.name.replace(/AdSet \d+$/, `AdSet ${newNumber}`)
+            : `${originalAdSet.name} ${i + 1}`;
+
           const newAdSetData = {
-            name: `${originalAdSet.name} - Copy ${i + 1}`,
+            name: newName,
             campaign_id: campaignId,
             targeting: JSON.stringify(cleanedTargeting),  // Must be stringified for Facebook API
             daily_budget: originalAdSet.daily_budget,
