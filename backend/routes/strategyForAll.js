@@ -9,6 +9,7 @@ const AuditService = require('../services/AuditService');
 const { uploadSingle } = require('../middleware/upload');
 const db = require('../models');
 const { decryptToken } = require('./facebookSDKAuth');
+const FailureTracker = require('../services/FailureTracker');
 
 // Get OAuth resources (pages, pixels, business managers) for form population
 router.get('/resources', authenticate, async (req, res) => {

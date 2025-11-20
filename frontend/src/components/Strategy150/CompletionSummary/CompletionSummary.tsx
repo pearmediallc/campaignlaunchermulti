@@ -24,10 +24,12 @@ import {
   Share,
   Add,
   OpenInNew,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  ErrorOutline as ErrorIcon
 } from '@mui/icons-material';
 import { Strategy150Response } from '../../../types/strategy150';
 import MultiplyContainer from '../MultiplySection/MultiplyContainer';
+import FailureReportModal from '../../shared/FailureReportModal';
 
 interface CompletionSummaryProps {
   campaignResult: Strategy150Response | null;
@@ -41,6 +43,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
   onCreateNew
 }) => {
   const [showMultiplyDialog, setShowMultiplyDialog] = useState(false);
+  const [showFailureReport, setShowFailureReport] = useState(false);
 
   // Store campaign data in session storage for multiplication
   useEffect(() => {
@@ -276,6 +279,17 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         >
           Create New Strategy
         </Button>
+
+        <Button
+          variant="outlined"
+          size="large"
+          color="warning"
+          startIcon={<ErrorIcon />}
+          onClick={() => setShowFailureReport(true)}
+          sx={{ minWidth: 200 }}
+        >
+          View Creation Report
+        </Button>
       </Box>
 
       {/* Tips */}
@@ -327,6 +341,14 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
           <Button onClick={handleCloseMultiply}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Failure Report Modal */}
+      <FailureReportModal
+        open={showFailureReport}
+        onClose={() => setShowFailureReport(false)}
+        campaignId={campaignResult?.data?.campaign?.id || ''}
+        campaignName={campaignResult?.data?.campaign?.name}
+      />
     </Box>
   );
 };

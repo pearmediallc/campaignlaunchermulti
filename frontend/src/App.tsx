@@ -5,7 +5,9 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import axios from 'axios';
 import { AuthProvider } from './contexts/AuthContext';
+import { FailureTrackingProvider } from './contexts/FailureTrackingContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import FailureNotificationBadge from './components/shared/FailureNotificationBadge';
 import Login from './components/Login';
 import Register from './components/Register';
 import CampaignForm from './components/CampaignForm';
@@ -98,7 +100,8 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <Router>
+        <FailureTrackingProvider>
+          <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -233,6 +236,7 @@ function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <FailureNotificationBadge />
         </Router>
         <ToastContainer
           position="bottom-right"
@@ -245,6 +249,7 @@ function App() {
           draggable
           pauseOnHover
         />
+      </FailureTrackingProvider>
       </AuthProvider>
     </ThemeProvider>
   );
