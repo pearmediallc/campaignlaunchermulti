@@ -16,6 +16,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const dataDeletionRoutes = require('./routes/dataDeletion');
 const variationsRoutes = require('./routes/variations');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 
@@ -160,6 +161,9 @@ app.use('/api/templates', require('./routes/templates'));
 
 // Failed entities routes (for campaign creation failure tracking and recovery)
 app.use('/api/failures', require('./routes/failures'));
+
+// AI routes (for ChatGPT-powered ad copy variations)
+app.use('/api/ai', aiRoutes);
 
 // Migration runner (temporary - remove after fixing production)
 app.use('/api/migrations', require('./routes/migrationRunner'));

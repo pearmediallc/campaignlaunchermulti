@@ -16,9 +16,10 @@ import {
   CircularProgress,
   Alert
 } from '@mui/material';
-import { CloudUpload, CheckCircle, PhotoLibrary } from '@mui/icons-material';
+import { CloudUpload, CheckCircle, PhotoLibrary, AutoAwesome } from '@mui/icons-material';
 import { AdVariation, OriginalAdData } from '../../../types/adDuplication';
 import LibrarySelector from '../../LibrarySelector';
+import AIVariationsGenerator from '../../shared/AIVariationsGenerator';
 
 interface VariationFormProps {
   variationNumber: number;
@@ -55,6 +56,8 @@ const VariationForm: React.FC<VariationFormProps> = ({
   const [uploadError, setUploadError] = useState<string>('');
   const [showLibrarySelector, setShowLibrarySelector] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [aiGenerationType, setAIGenerationType] = useState<'primary_text' | 'headline'>('primary_text');
 
   // Extract original values from originalAdData
   const getOriginalValue = (field: string): string => {
@@ -259,6 +262,34 @@ const VariationForm: React.FC<VariationFormProps> = ({
     }
   };
 
+  // AI Variations Handlers
+  const handleOpenAIGenerator = (type: 'primary_text' | 'headline') => {
+    setAIGenerationType(type);
+    setShowAIGenerator(true);
+  };
+
+  const handleApplyAIVariations = (selectedVariations: string[]) => {
+    if (aiGenerationType === 'primary_text') {
+      // Apply variations to primary text fields
+      const newPrimaryVariations = [...(variation.primaryTextVariations || Array(5).fill(''))];
+      selectedVariations.forEach((varText, idx) => {
+        if (idx < 5) {
+          newPrimaryVariations[idx] = varText;
+        }
+      });
+      handleFieldChange('primaryTextVariations', newPrimaryVariations);
+    } else if (aiGenerationType === 'headline') {
+      // Apply variations to headline fields
+      const newHeadlineVariations = [...(variation.headlineVariations || Array(5).fill(''))];
+      selectedVariations.forEach((varText, idx) => {
+        if (idx < 5) {
+          newHeadlineVariations[idx] = varText;
+        }
+      });
+      handleFieldChange('headlineVariations', newHeadlineVariations);
+    }
+  };
+
   return (
     <Box>
       {/* Use Original Toggle */}
@@ -421,9 +452,21 @@ const VariationForm: React.FC<VariationFormProps> = ({
 
           {/* Text Fields with Variations */}
           <Paper sx={{ p: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Primary Text & Variations
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="subtitle1">
+                Primary Text & Variations
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AutoAwesome />}
+                onClick={() => handleOpenAIGenerator('primary_text')}
+                disabled={!variation.primaryText || variation.primaryText.trim().length === 0}
+                sx={{ ml: 2 }}
+              >
+                Generate with AI
+              </Button>
+            </Box>
             <TextField
               label="Primary Text (Main)"
               multiline
@@ -432,7 +475,7 @@ const VariationForm: React.FC<VariationFormProps> = ({
               value={variation.primaryText || ''}
               onChange={(e) => handleFieldChange('primaryText', e.target.value)}
               placeholder={`Original: ${getOriginalValue('primaryText')}`}
-              helperText="This is your main primary text"
+              helperText="This is your main primary text. Fill this first, then use AI to generate variations."
               sx={{ mb: 2 }}
             />
 
@@ -459,16 +502,28 @@ const VariationForm: React.FC<VariationFormProps> = ({
           </Paper>
 
           <Paper sx={{ p: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Headline & Variations
-            </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="subtitle1">
+                Headline & Variations
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AutoAwesome />}
+                onClick={() => handleOpenAIGenerator('headline')}
+                disabled={!variation.headline || variation.headline.trim().length === 0}
+                sx={{ ml: 2 }}
+              >
+                Generate with AI
+              </Button>
+            </Box>
             <TextField
               label="Headline (Main)"
               fullWidth
               value={variation.headline || ''}
               onChange={(e) => handleFieldChange('headline', e.target.value)}
               placeholder={`Original: ${getOriginalValue('headline')}`}
-              helperText="This is your main headline"
+              helperText="This is your main headline. Fill this first, then use AI to generate variations."
               sx={{ mb: 2 }}
             />
 
@@ -587,6 +642,16 @@ const VariationForm: React.FC<VariationFormProps> = ({
         mediaType="single_image" // Variations use single images/videos
         onSelect={handleLibrarySelect}
         onClose={() => setShowLibrarySelector(false)}
+      />
+
+      {/* AI Variations Generator Modal */}
+      <AIVariationsGenerator
+        open={showAIGenerator}
+        onClose={() => setShowAIGenerator(false)}
+        baseText={aiGenerationType === 'primary_text' ? variation.primaryText || '' : variation.headline || ''}
+        type={aiGenerationType}
+        maxLength={aiGenerationType === 'primary_text' ? 125 : 40}
+        onApply={handleApplyAIVariations}
       />
     </Box>
   );
