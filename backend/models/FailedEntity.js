@@ -137,10 +137,20 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   FailedEntity.getFailuresByUser = async function(userId, options = {}) {
+    const { Sequelize } = require('sequelize');
+    const { Op } = Sequelize;
+
     const where = { userId };
 
     if (options.status) {
-      where.status = options.status;
+      // Parse comma-separated status string into array
+      const statusArray = typeof options.status === 'string'
+        ? options.status.split(',').map(s => s.trim())
+        : Array.isArray(options.status)
+          ? options.status
+          : [options.status];
+
+      where.status = { [Op.in]: statusArray };
     }
 
     if (options.entityType) {

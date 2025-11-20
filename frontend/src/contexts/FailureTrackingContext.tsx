@@ -61,7 +61,7 @@ interface FailureTrackingProviderProps {
 export function FailureTrackingProvider({ children }: FailureTrackingProviderProps) {
   const [allFailures, setAllFailures] = useState<FailedEntity[]>([]);
   const [isMinimized, setIsMinimized] = useState(true);
-  const [isVisible, setIsVisible] = useState(false);
+  const [isVisible, setIsVisible] = useState(true); // Always visible by default
   const [loading, setLoading] = useState(false);
   const [dismissedCampaigns, setDismissedCampaigns] = useState<string[]>(() => {
     const stored = localStorage.getItem('dismissedFailureCampaigns');
@@ -84,14 +84,7 @@ export function FailureTrackingProvider({ children }: FailureTrackingProviderPro
       if (response.data.success) {
         const failures = response.data.failures;
         setAllFailures(failures);
-
-        // Show badge if there are unresolved failures
-        const hasUnresolved = failures.some(
-          (f: FailedEntity) => !dismissedCampaigns.includes(f.campaignId)
-        );
-        if (hasUnresolved && failures.length > 0) {
-          setIsVisible(true);
-        }
+        // Badge is always visible, no conditional logic needed
       }
     } catch (error) {
       console.error('Error fetching failures:', error);
@@ -188,11 +181,7 @@ export function FailureTrackingProvider({ children }: FailureTrackingProviderPro
       localStorage.setItem('dismissedFailureCampaigns', JSON.stringify(updated));
       return updated;
     });
-
-    // Hide badge if no more unresolved campaigns
-    if (campaignGroups.length === 0) {
-      setIsVisible(false);
-    }
+    // Badge remains visible even after clearing all failures
   }, [campaignGroups]);
 
   const dismissCampaign = useCallback((campaignId: string) => {

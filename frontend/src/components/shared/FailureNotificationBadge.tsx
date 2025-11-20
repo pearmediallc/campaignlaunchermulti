@@ -45,9 +45,8 @@ const FailureNotificationBadge: React.FC = () => {
   const [selectedCampaign, setSelectedCampaign] = useState<{id: string; name: string} | null>(null);
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
 
-  if (!isVisible || unresolvedCount === 0) {
-    return null;
-  }
+  // Always show badge (even when count is 0) - removed the conditional return
+  // Badge is always visible so users know the feature exists
 
   const handleAccordionChange = (campaignId: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
     setExpandedCampaign(isExpanded ? campaignId : null);
