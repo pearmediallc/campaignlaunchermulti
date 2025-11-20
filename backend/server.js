@@ -158,6 +158,9 @@ app.use('/api/data-deletion', dataDeletionRoutes);
 // Campaign templates routes
 app.use('/api/templates', require('./routes/templates'));
 
+// Failed entities routes (for campaign creation failure tracking and recovery)
+app.use('/api/failures', require('./routes/failures'));
+
 // Migration runner (temporary - remove after fixing production)
 app.use('/api/migrations', require('./routes/migrationRunner'));
 

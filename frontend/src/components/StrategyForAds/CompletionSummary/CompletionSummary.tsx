@@ -35,11 +35,13 @@ import {
   ContentCopy as CopyIcon,
   Psychology as VariationIcon,
   ExpandMore,
-  Visibility
+  Visibility,
+  ErrorOutline as ErrorIcon
 } from '@mui/icons-material';
 import { StrategyForAdsResponse } from '../../../types/strategyForAds';
 import MultiplyContainer from '../MultiplySection/MultiplyContainer';
 import AdDuplicationModal from '../AdDuplication/AdDuplicationModal';
+import FailureReportModal from '../../shared/FailureReportModal';
 
 interface CompletionSummaryProps {
   campaignResult: StrategyForAdsResponse | null;
@@ -56,6 +58,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
 }) => {
   const [showMultiplyDialog, setShowMultiplyDialog] = useState(false);
   const [showAdDuplicationDialog, setShowAdDuplicationDialog] = useState(false);
+  const [showFailureReport, setShowFailureReport] = useState(false);
 
   // Store campaign data in session storage for multiplication
   useEffect(() => {
@@ -553,6 +556,17 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         >
           Create New Strategy
         </Button>
+
+        <Button
+          variant="outlined"
+          size="large"
+          color="warning"
+          startIcon={<ErrorIcon />}
+          onClick={() => setShowFailureReport(true)}
+          sx={{ minWidth: 200 }}
+        >
+          View Creation Report
+        </Button>
       </Box>
 
       {/* Tips */}
@@ -612,6 +626,14 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         campaignId={campaignResult?.data?.campaign?.id || ''}
         originalAdId={originalAdId}
         availableAdSets={availableAdSets}
+      />
+
+      {/* Failure Report Modal */}
+      <FailureReportModal
+        open={showFailureReport}
+        onClose={() => setShowFailureReport(false)}
+        campaignId={campaignResult?.data?.campaign?.id || ''}
+        campaignName={campaignResult?.data?.campaign?.name}
       />
     </Box>
   );

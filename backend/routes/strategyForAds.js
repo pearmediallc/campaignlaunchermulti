@@ -11,6 +11,7 @@ const AuditService = require('../services/AuditService');
 const { uploadSingle } = require('../middleware/upload');
 const db = require('../models');
 const { decryptToken } = require('./facebookSDKAuth');
+const FailureTracker = require('../services/FailureTracker');
 
 // Get OAuth resources (pages, pixels, business managers) for form population
 router.get('/resources', authenticate, async (req, res) => {
@@ -909,6 +910,25 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               console.error(`  📛 Facebook error:`, adSetError.response.data.error);
             }
 
+            // Track failed creation in database
+            await FailureTracker.trackFailedEntity({
+              userId,
+              campaignId: result.campaign.id,
+              campaignName: currentCampaignName,
+              adsetId: null,
+              adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+              adId: null,
+              adName: null,
+              entityType: 'adset',
+              error: adSetError,
+              strategyType: 'strategyForAds',
+              metadata: {
+                index: i + 2,
+                targetAdSetCount,
+                budgetLevel: campaignData.budgetLevel
+              }
+            });
+
             // Track failed creation for retry
             failedCreations.push({
               index: i + 2,
@@ -987,6 +1007,145 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             }
           }
         }
+
+        // ============================================================
+        // PHASE 4: DEFICIT RECOVERY - GUARANTEED COUNT DELIVERY
+        // ============================================================
+        console.log('\n🎯 ========== DEFICIT RECOVERY PHASE ==========');
+
+        const currentCount = 1 + duplicatedAdSets.length; // 1 original + duplicates
+        const targetCount = targetAdSetCount;
+        const deficit = targetCount - currentCount;
+
+        console.log(`📊 Target: ${targetCount} ad sets`);
+        console.log(`📊 Current: ${currentCount} ad sets`);
+        console.log(`📊 Deficit: ${deficit} ad sets`);
+
+        if (deficit > 0) {
+          console.log(`\n🔄 Creating ${deficit} additional ad sets to reach target count...`);
+
+          const deficitCreations = [];
+
+          for (let d = 0; d < deficit; d++) {
+            const nextIndex = currentCount + d + 1; // Next available index
+
+            try {
+              console.log(`\n  📝 Creating deficit ad set ${d + 1}/${deficit} (Index: ${nextIndex})...`);
+
+              // Wait 20s between deficit creations (rate limit safety)
+              if (d > 0) {
+                console.log(`  ⏳ Waiting 20s before next creation...`);
+                await new Promise(resolve => setTimeout(resolve, 20000));
+              }
+
+              // Prepare ad set parameters
+              const adSetParams = {
+                ...campaignData,
+                campaignId: result.campaign.id,
+                adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+              };
+
+              // Budget handling (CBO vs ABO)
+              if (campaignData.budgetLevel === 'adset') {
+                adSetParams.dailyBudget = campaignData.dailyBudget;
+                adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
+              } else {
+                delete adSetParams.dailyBudget;
+                delete adSetParams.lifetimeBudget;
+                delete adSetParams.adSetBudget;
+              }
+
+              // Create ad set
+              const newAdSet = await userFacebookApi.createAdSet(adSetParams);
+
+              if (newAdSet) {
+                console.log(`  ✅ Deficit ad set ${d + 1} created: ${newAdSet.id}`);
+
+                // Create ad for this ad set
+                const adParams = {
+                  ...campaignData,
+                  adsetId: newAdSet.id,
+                  adName: `[Launcher] ${campaignData.campaignName} - Ad ${nextIndex}`,
+                  postId: result.postId,
+                  displayLink: campaignData.displayLink,
+                  url: campaignData.url,
+                  headline: campaignData.headline,
+                  primaryText: campaignData.primaryText,
+                  description: campaignData.description,
+                  callToAction: campaignData.callToAction,
+                  dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
+                  dynamicImages: result.mediaHashes?.dynamicImages,
+                  dynamicVideos: result.mediaHashes?.dynamicVideos,
+                  imageHash: result.mediaHashes?.imageHash,
+                  videoId: result.mediaHashes?.videoId,
+                  carouselCards: result.mediaHashes?.carouselCards,
+                  mediaAssets: result.mediaHashes,
+                  imagePath: campaignData.imagePath,
+                  videoPath: campaignData.videoPath,
+                  imagePaths: campaignData.imagePaths,
+                  mediaType: campaignData.mediaType,
+                  dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                  dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                  primaryTextVariations: campaignData.primaryTextVariations,
+                  headlineVariations: campaignData.headlineVariations
+                };
+
+                const newAd = await userFacebookApi.createAd(adParams);
+
+                if (newAd) {
+                  console.log(`  ✅ Deficit ad ${d + 1} created: ${newAd.id}`);
+                  deficitCreations.push({ adSet: newAdSet, ad: newAd });
+                } else {
+                  console.error(`  ❌ Deficit ad ${d + 1} creation failed (ad set exists without ad)`);
+                }
+              }
+
+            } catch (deficitError) {
+              console.error(`  ❌ Deficit creation ${d + 1}/${deficit} failed:`, deficitError.message);
+
+              // Track failed deficit creation in database
+              await FailureTracker.trackFailedEntity({
+                userId,
+                campaignId: result.campaign.id,
+                campaignName: currentCampaignName,
+                adsetId: null,
+                adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                adId: null,
+                adName: null,
+                entityType: 'adset',
+                error: deficitError,
+                strategyType: 'strategyForAds',
+                metadata: {
+                  deficitRecovery: true,
+                  index: nextIndex,
+                  targetAdSetCount,
+                  budgetLevel: campaignData.budgetLevel
+                }
+              });
+
+              // Continue trying other deficit creations
+            }
+          }
+
+          // Update counts
+          if (deficitCreations.length > 0) {
+            duplicatedAdSets.push(...deficitCreations);
+            console.log(`\n✅ Deficit recovery added ${deficitCreations.length} ad sets`);
+          }
+
+          const finalCountAfterRecovery = 1 + duplicatedAdSets.length;
+          console.log(`📊 Final count: ${finalCountAfterRecovery}/${targetCount}`);
+
+          if (finalCountAfterRecovery < targetCount) {
+            const stillMissing = targetCount - finalCountAfterRecovery;
+            console.warn(`⚠️  Still missing ${stillMissing} ad sets after all attempts`);
+          }
+
+        } else {
+          console.log(`✅ Target count already achieved: ${currentCount}/${targetCount}`);
+        }
+
+        console.log('========================================\n');
 
         if (duplicatedAdSets.length > 0) {
           finalAdSetCount = 1 + duplicatedAdSets.length;
