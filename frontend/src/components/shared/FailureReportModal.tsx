@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -81,7 +81,7 @@ const FailureReportModal: React.FC<FailureReportModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const fetchFailures = async () => {
+  const fetchFailures = useCallback(async () => {
     setLoading(true);
     setErrorMessage(null);
 
@@ -104,7 +104,7 @@ const FailureReportModal: React.FC<FailureReportModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [campaignId]);
 
   const handleRetry = async (failureId: number) => {
     setRetrying(failureId);
@@ -141,7 +141,7 @@ const FailureReportModal: React.FC<FailureReportModalProps> = ({
     if (open) {
       fetchFailures();
     }
-  }, [open, campaignId]);
+  }, [open, campaignId, fetchFailures]);
 
   const getStatusChip = (status: FailedEntity['status']) => {
     const statusConfig = {
