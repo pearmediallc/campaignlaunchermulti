@@ -82,7 +82,7 @@ Generate ${count} compelling variations that maintain the same message but with 
     console.log('📏 Max length:', charLimit);
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
