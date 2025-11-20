@@ -29,7 +29,7 @@ import {
   Stack
 } from '@mui/material';
 import { Controller, useFormContext } from 'react-hook-form';
-import { AdsClick, CloudUpload, Delete, Image, VideoLibrary, ViewCarousel } from '@mui/icons-material';
+import { AdsClick, CloudUpload, Delete, Image, VideoLibrary, ViewCarousel, AutoAwesome } from '@mui/icons-material';
 import {
   URL_TYPE_OPTIONS,
   StrategyForAllFormData
@@ -37,6 +37,7 @@ import {
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
 import axios from 'axios';
 import LibrarySelector from '../../LibrarySelector';
+import AIVariationsGenerator from '../../shared/AIVariationsGenerator';
 
 // Call-to-Action options
 const CALL_TO_ACTION_OPTIONS = [
@@ -94,6 +95,10 @@ const AdSection: React.FC = () => {
   const [enableDynamicVariations, setEnableDynamicVariations] = useState(false);
   const [primaryTextVariations, setPrimaryTextVariations] = useState<string[]>(['']);
   const [headlineVariations, setHeadlineVariations] = useState<string[]>(['']);
+
+  // AI Variations state
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [aiGenerationType, setAIGenerationType] = useState<'primary_text' | 'headline'>('primary_text');
 
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
@@ -233,6 +238,35 @@ const AdSection: React.FC = () => {
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+  };
+
+  // AI Variations handlers
+  const handleOpenAIGenerator = (type: 'primary_text' | 'headline') => {
+    setAIGenerationType(type);
+    setShowAIGenerator(true);
+  };
+
+  const handleApplyAIVariations = (selectedVariations: string[]) => {
+    if (aiGenerationType === 'primary_text') {
+      // Apply to primary text variations
+      const newVariations = [...primaryTextVariations];
+      selectedVariations.forEach((varText, idx) => {
+        if (idx < 5) {
+          newVariations[idx] = varText;
+        }
+      });
+      setPrimaryTextVariations(newVariations);
+    } else if (aiGenerationType === 'headline') {
+      // Apply to headline variations
+      const newVariations = [...headlineVariations];
+      selectedVariations.forEach((varText, idx) => {
+        if (idx < 5) {
+          newVariations[idx] = varText;
+        }
+      });
+      setHeadlineVariations(newVariations);
+    }
+    setShowAIGenerator(false);
   };
 
   return (
@@ -606,6 +640,19 @@ const AdSection: React.FC = () => {
 
         {/* Primary Text */}
         <Box sx={{ width: "100%" }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="body2" fontWeight="medium">Primary Text</Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<AutoAwesome />}
+              onClick={() => handleOpenAIGenerator('primary_text')}
+              disabled={!watch('primaryText') || watch('primaryText').trim().length === 0}
+              sx={{ ml: 2 }}
+            >
+              Generate with AI
+            </Button>
+          </Box>
           <Controller
             name="primaryText"
             control={control}
@@ -619,7 +666,6 @@ const AdSection: React.FC = () => {
                 fullWidth
                 multiline
                 rows={4}
-                label="Primary Text"
                 placeholder="Main text that appears above your ad"
                 error={!!error}
                 helperText={error?.message || `${field.value?.length || 0}/2500 characters (recommended: 125 for optimal display)`}
@@ -630,6 +676,19 @@ const AdSection: React.FC = () => {
 
         {/* Headline */}
         <Box sx={{ width: "100%" }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+            <Typography variant="body2" fontWeight="medium">Headline</Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<AutoAwesome />}
+              onClick={() => handleOpenAIGenerator('headline')}
+              disabled={!watch('headline') || watch('headline').trim().length === 0}
+              sx={{ ml: 2 }}
+            >
+              Generate with AI
+            </Button>
+          </Box>
           <Controller
             name="headline"
             control={control}
@@ -641,7 +700,6 @@ const AdSection: React.FC = () => {
               <TextField
                 {...field}
                 fullWidth
-                label="Headline"
                 placeholder="Short, attention-grabbing headline"
                 error={!!error}
                 helperText={error?.message || `${field.value?.length || 0}/255 characters`}
@@ -853,6 +911,16 @@ const AdSection: React.FC = () => {
         mediaType={mediaType || 'single_image'}
         onSelect={handleLibrarySelect}
         onClose={() => setShowLibraryModal(false)}
+      />
+
+      {/* AI Variations Generator Modal */}
+      <AIVariationsGenerator
+        open={showAIGenerator}
+        onClose={() => setShowAIGenerator(false)}
+        baseText={aiGenerationType === 'primary_text' ? watch('primaryText') || '' : watch('headline') || ''}
+        type={aiGenerationType}
+        maxLength={aiGenerationType === 'primary_text' ? 125 : 40}
+        onApply={handleApplyAIVariations}
       />
     </Paper>
   );
