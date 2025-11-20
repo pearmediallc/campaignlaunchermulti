@@ -129,12 +129,73 @@ router.post('/:id/retry', authenticate, async (req, res) => {
       });
     }
 
-    // Decrypt access token
-    const accessToken = decryptToken(facebookAuth.encryptedAccessToken);
-    const adAccountId = facebookAuth.selectedAdAccount?.id || await ResourceHelper.getSelectedResource(userId, 'adAccount');
+    // SAFEGUARD 1: Check if already retrying
+    if (failedEntity.status === 'retrying') {
+      return res.status(409).json({
+        success: false,
+        error: 'This entity is already being retried. Please wait for the current retry to complete.',
+        currentStatus: 'retrying'
+      });
+    }
 
-    // Initialize Facebook API
-    const userFacebookApi = new FacebookAPI(accessToken, adAccountId);
+    // SAFEGUARD 2: Check if already resolved
+    if (failedEntity.status === 'resolved') {
+      return res.status(409).json({
+        success: false,
+        error: 'This entity has already been successfully resolved.',
+        currentStatus: 'resolved'
+      });
+    }
+
+    // SAFEGUARD 3: Limit retry attempts
+    if (failedEntity.retryCount >= 3) {
+      // Mark as permanent failure after 3 attempts
+      await failedEntity.update({
+        status: 'permanent_failure',
+        lastError: 'Maximum retry attempts (3) exceeded'
+      });
+
+      return res.status(400).json({
+        success: false,
+        error: 'Maximum retry attempts (3) exceeded. This has been marked as a permanent failure.',
+        retryCount: failedEntity.retryCount
+      });
+    }
+
+    // FIX: Decrypt access token (field is 'accessToken', not 'encryptedAccessToken')
+    const decryptedToken = decryptToken(facebookAuth.accessToken);
+
+    if (!decryptedToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'Failed to decrypt Facebook access token. Please reconnect your Facebook account.',
+        requiresReauth: true
+      });
+    }
+
+    // Get active resources using ResourceHelper
+    const activeResources = await ResourceHelper.getActiveResourcesWithFallback(userId);
+
+    if (!activeResources.selectedAdAccountId || !activeResources.selectedPageId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please select an ad account and page before retrying'
+      });
+    }
+
+    // FIX: Initialize Facebook API with correct parameter format (object, not positional params)
+    const userFacebookApi = new FacebookAPI({
+      accessToken: decryptedToken,
+      adAccountId: activeResources.selectedAdAccountId.replace('act_', ''),
+      pageId: activeResources.selectedPageId
+    });
+
+    // SAFEGUARD 4: Mark as retrying BEFORE attempting retry (prevents concurrent retries)
+    await failedEntity.update({
+      status: 'retrying',
+      retryCount: failedEntity.retryCount + 1,
+      lastAttemptAt: new Date()
+    });
 
     // Define retry function based on entity type
     const retryFunction = async (entity) => {
@@ -143,24 +204,49 @@ router.post('/:id/retry', authenticate, async (req, res) => {
         const adSetParams = {
           ...entity.metadata,
           campaignId: entity.campaignId,
-          adSetName: entity.adsetName
+          name: entity.adsetName
         };
 
         const newAdSet = await userFacebookApi.createAdSet(adSetParams);
 
         // If ad set created, try to create the ad
         if (newAdSet && entity.metadata.adParams) {
-          const adParams = {
-            ...entity.metadata.adParams,
-            adsetId: newAdSet.id
-          };
+          try {
+            const adParams = {
+              ...entity.metadata.adParams,
+              adsetId: newAdSet.id
+            };
 
-          const newAd = await userFacebookApi.createAd(adParams);
+            const newAd = await userFacebookApi.createAd(adParams);
 
-          return {
-            adsetId: newAdSet.id,
-            adId: newAd?.id
-          };
+            return {
+              adsetId: newAdSet.id,
+              adId: newAd?.id
+            };
+          } catch (adError) {
+            // Ad creation failed, but adset succeeded
+            console.error(`⚠️ Adset ${newAdSet.id} created but ad creation failed:`, adError.message);
+
+            // Track ad failure separately (don't fail the whole retry)
+            await FailureTracker.trackFailure({
+              userId: entity.userId,
+              campaignId: entity.campaignId,
+              entityType: 'ad',
+              adsetId: newAdSet.id,
+              adName: entity.metadata.adParams.name,
+              error: adError.message,
+              metadata: {
+                ...entity.metadata.adParams,
+                adsetId: newAdSet.id
+              }
+            });
+
+            return {
+              adsetId: newAdSet.id,
+              adId: null,
+              warning: 'Adset created successfully, but ad creation failed. A new failure entry has been created for the ad.'
+            };
+          }
         }
 
         return {
@@ -171,7 +257,7 @@ router.post('/:id/retry', authenticate, async (req, res) => {
         const adParams = {
           ...entity.metadata,
           adsetId: entity.adsetId,
-          adName: entity.adName
+          name: entity.adName
         };
 
         const newAd = await userFacebookApi.createAd(adParams);
@@ -194,19 +280,33 @@ router.post('/:id/retry', authenticate, async (req, res) => {
         result: retryResult.result
       });
     } else {
+      // Retry failed - status already updated by FailureTracker
       res.status(500).json({
         success: false,
-        error: 'Retry failed',
-        message: retryResult.error?.message || 'Unknown error',
+        error: 'Retry failed: ' + (retryResult.error?.message || retryResult.error || 'Unknown error'),
+        retryCount: failedEntity.retryCount,
+        canRetryAgain: failedEntity.retryCount < 3,
         permanentFailure: retryResult.permanentFailure || false
       });
     }
   } catch (error) {
     console.error('Error retrying failed entity:', error);
+
+    // Revert status back to 'failed' if retry errored
+    if (failedEntity) {
+      try {
+        await failedEntity.update({
+          status: 'failed',
+          lastError: error.message
+        });
+      } catch (updateError) {
+        console.error('Failed to revert status:', updateError);
+      }
+    }
+
     res.status(500).json({
       success: false,
-      error: 'Failed to retry entity',
-      message: error.message
+      error: 'Retry operation failed: ' + error.message
     });
   }
 });

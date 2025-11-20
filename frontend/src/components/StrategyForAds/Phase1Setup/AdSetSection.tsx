@@ -1278,11 +1278,11 @@ const AdSetSection: React.FC = () => {
                 {...field}
                 fullWidth
                 type="number"
-                label="Number of Ad Sets to Duplicate"
+                label="Total Number of Ad Sets (including initial)"
                 inputProps={{ min: 0, max: 50, step: 1 }}
                 helperText={
                   error?.message ||
-                  "Enter 0 to create only 1-1-1 structure (1 campaign, 1 ad set, 1 ad). Enter 1-50 to duplicate ad sets."
+                  "Enter 0 for 1-1-1 structure only. Enter 1-50 for total ad sets (e.g., 50 = 1 initial + 49 duplicates)."
                 }
                 error={!!error}
               />
@@ -1308,13 +1308,13 @@ const AdSetSection: React.FC = () => {
                   return Number(budget).toFixed(2);
                 })()} per ad set
                 <br />
-                • <strong>Total ad sets:</strong> {watch('duplicationSettings.adSetCount') === 0
+                • <strong>Total ad sets after duplication:</strong> {watch('duplicationSettings.adSetCount') === 0
                   ? 1
-                  : ((Number(watch('duplicationSettings.adSetCount')) || 49) + 1)
+                  : (Number(watch('duplicationSettings.adSetCount')) || 50)
                 }
                 {watch('duplicationSettings.adSetCount') === 0
                   ? ' (1-1-1 structure only)'
-                  : ` (1 initial + ${Number(watch('duplicationSettings.adSetCount')) || 49} duplicates)`
+                  : ` (includes 1 initial + ${(Number(watch('duplicationSettings.adSetCount')) || 50) - 1} duplicates)`
                 }
                 <br />
                 • <strong>Total {watch('budgetType') === 'daily' ? 'daily' : 'lifetime'} spend:</strong> $
@@ -1324,8 +1324,8 @@ const AdSetSection: React.FC = () => {
                     : (watch('adSetBudget.lifetimeBudget') || 0);
                   // Ensure budget is treated as a number (in dollars)
                   const budget = Number(budgetValue);
-                  const adSetCount = Number(watch('duplicationSettings.adSetCount')) || 49;
-                  const totalAdSets = watch('duplicationSettings.adSetCount') === 0 ? 1 : (adSetCount + 1);
+                  const adSetCount = Number(watch('duplicationSettings.adSetCount')) || 50;
+                  const totalAdSets = watch('duplicationSettings.adSetCount') === 0 ? 1 : adSetCount;
                   const totalSpend = budget * totalAdSets;
                   // Format with thousands separator
                   return totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

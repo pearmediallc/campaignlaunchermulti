@@ -34,6 +34,66 @@ class FacebookAPI {
   }
 
   /**
+   * Convert attribution setting string to Facebook API attribution_spec array
+   * This ensures consistent attribution across initial creation and duplication
+   * @param {String} attributionSetting - Attribution setting from form (e.g., '1_day_click_1_day_view')
+   * @returns {Array} - Facebook attribution_spec array
+   */
+  buildAttributionSpecFromSetting(attributionSetting) {
+    const spec = [];
+
+    switch(attributionSetting) {
+      case '1_day_click_1_day_view':
+        spec.push(
+          { event_type: 'CLICK_THROUGH', window_days: 1 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        );
+        break;
+      case '7_day_click_1_day_view':
+        spec.push(
+          { event_type: 'CLICK_THROUGH', window_days: 7 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        );
+        break;
+      case '28_day_click_1_day_view':
+        spec.push(
+          { event_type: 'CLICK_THROUGH', window_days: 28 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        );
+        break;
+      case '1_day_click':
+        spec.push({ event_type: 'CLICK_THROUGH', window_days: 1 });
+        break;
+      case '7_day_click':
+        spec.push({ event_type: 'CLICK_THROUGH', window_days: 7 });
+        break;
+      case '1_day_click_1_day_engaged_view_1_day_view':
+        spec.push(
+          { event_type: 'CLICK_THROUGH', window_days: 1 },
+          { event_type: 'ENGAGED_VIDEO_VIEW', window_days: 1 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        );
+        break;
+      case 'standard':
+        // Standard attribution (7-day click + 1-day view)
+        spec.push(
+          { event_type: 'CLICK_THROUGH', window_days: 7 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        );
+        break;
+      default:
+        // Default to 1-day click + 1-day view
+        spec.push(
+          { event_type: 'CLICK_THROUGH', window_days: 1 },
+          { event_type: 'VIEW_THROUGH', window_days: 1 }
+        );
+        console.log(`  ⚠️ Unknown attribution setting "${attributionSetting}", using default (1-day click + 1-day view)`);
+    }
+
+    return spec;
+  }
+
+  /**
    * Retry a function with exponential backoff
    * @param {Function} fn - The async function to retry
    * @param {Object} params - Parameters to pass to the function
@@ -3036,9 +3096,27 @@ class FacebookAPI {
             console.log(`  ✅ Setting is_dynamic_creative=true on duplicated ad set (required for asset_feed_spec)`);
           }
 
-          // Copy attribution_spec from original ad set if it exists
-          if (originalAdSet.attribution_spec) {
+          // Copy attribution_spec - PRIORITY ORDER:
+          // 1. Use formData attribution setting (user's explicit choice from initial setup)
+          // 2. Fallback to copying from original adset
+          // 3. Default to 1-day click + 1-day view
+          if (formData?.attributionSetting) {
+            const attributionSpec = this.buildAttributionSpecFromSetting(formData.attributionSetting);
+            if (attributionSpec && attributionSpec.length > 0) {
+              newAdSetData.attribution_spec = JSON.stringify(attributionSpec);
+              console.log(`  ✅ Using attribution from formData (user's initial choice):`, attributionSpec);
+            }
+          } else if (originalAdSet.attribution_spec) {
             newAdSetData.attribution_spec = JSON.stringify(originalAdSet.attribution_spec);
+            console.log(`  ✅ Copying attribution from original adset:`, originalAdSet.attribution_spec);
+          } else {
+            // Default fallback if neither formData nor original adset has attribution
+            const defaultAttribution = [
+              { event_type: 'CLICK_THROUGH', window_days: 1 },
+              { event_type: 'VIEW_THROUGH', window_days: 1 }
+            ];
+            newAdSetData.attribution_spec = JSON.stringify(defaultAttribution);
+            console.log(`  ⚠️ Using default attribution (1-day click + 1-day view)`);
           }
 
           // CRITICAL: Copy spending limits if they exist on original ad set
@@ -3089,13 +3167,69 @@ class FacebookAPI {
           if (errorSubcode) console.error(`     Error Subcode: ${errorSubcode}`);
           if (fbError.error_data) console.error(`     Error Data:`, fbError.error_data);
 
+          // Track failure immediately for manual retry if auto-retry fails
+          if (userId) {
+            const FailureTracker = require('./FailureTracker');
+            await FailureTracker.trackFailure({
+              userId,
+              campaignId,
+              entityType: 'adset',
+              adsetName: newName,
+              error: errorMessage,
+              metadata: {
+                ...newAdSetData,
+                copyIndex: i + 1,
+                originalAdSetId: originalAdSetId,
+                postId: actualPostId
+              }
+            });
+          }
+
+          // IMMEDIATE AUTO-RETRY (one attempt after 3 seconds)
+          console.log(`⏳ Waiting 3 seconds before immediate auto-retry for copy ${i + 1}...`);
+          await this.delay(3000);
+
+          try {
+            console.log(`🔄 Attempting immediate auto-retry for copy ${i + 1}...`);
+
+            const retryResponse = await axios.post(
+              `${this.baseURL}/act_${campaignAccountId}/adsets`,
+              null,
+              { params: newAdSetData }
+            );
+
+            if (retryResponse.data && retryResponse.data.id) {
+              const newAdSetId = retryResponse.data.id;
+              newAdSetIds.push(newAdSetId);
+              console.log(`✅ Immediate auto-retry succeeded for copy ${i + 1}: ${newAdSetId}`);
+
+              // Update progress
+              updateProgress({
+                completed: i + 1,
+                currentOperation: `Created ad set copy ${i + 1} of ${count} (after auto-retry)`,
+                adSets: newAdSetIds.map((id, idx) => ({
+                  id: id,
+                  name: `Ad Set Copy ${idx + 1}`
+                }))
+              });
+
+              // Don't add to errors array since retry succeeded
+              continue; // Skip adding to errors array and move to next iteration
+            }
+          } catch (retryError) {
+            console.error(`❌ Immediate auto-retry also failed for copy ${i + 1}`);
+            const retryFbError = retryError.response?.data?.error || retryError;
+            console.error(`     Retry Error:`, retryFbError.message || retryError.message);
+          }
+
+          // Only add to errors if both original and retry failed
           results.errors.push({
             copyNumber: i + 1,
             error: errorMessage,
             fullError: fbError
           });
 
-          // Update progress: Error occurred
+          // Update progress: Error occurred (after retry failed)
           updateProgress({
             errors: results.errors.map(err => ({
               adSetIndex: err.copyNumber || err.adSetIndex,

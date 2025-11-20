@@ -115,7 +115,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
 
     // Duplication Settings
     duplicationSettings: {
-      adSetCount: 49,           // Default to 49 ad sets
+      adSetCount: 50,           // Default to 50 total ad sets (1 initial + 49 duplicates)
       totalBudget: undefined,   // User must provide (for Ad Set Budget level)
       budgetPerAdSet: undefined // Calculated automatically
     },

@@ -1542,7 +1542,12 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       originalAdSetId,
       postId: postId,
       count,
-      formData,
+      formData: {
+        ...formData,
+        // Ensure attribution setting is explicitly passed from user's initial setup
+        attributionSetting: formData.attributionSetting || '1_day_click_1_day_view',
+        attributionWindow: formData.attributionWindow
+      },
       userId: req.user.id
     };
 
