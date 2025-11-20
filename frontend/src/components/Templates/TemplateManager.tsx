@@ -43,7 +43,7 @@ import { toast } from 'react-toastify';
 
 interface TemplateManagerProps {
   formData: any;
-  onLoadTemplate: (templateData: TemplateData) => void;
+  onLoadTemplate: (templateData: TemplateData, templateId?: number) => void;
   onClearForm: () => void;
 }
 
@@ -62,6 +62,8 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<CampaignTemplate | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [loadedTemplateId, setLoadedTemplateId] = useState<number | null>(null);
+  const [updateConfirmOpen, setUpdateConfirmOpen] = useState(false);
 
   // Fetch templates when component mounts
   useEffect(() => {
@@ -87,7 +89,8 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
     try {
       setLoading(true);
       const fullTemplate = await templateApi.getTemplate(template.id);
-      onLoadTemplate(fullTemplate.templateData);
+      onLoadTemplate(fullTemplate.templateData, template.id);
+      setLoadedTemplateId(template.id);
       setLoadMenuAnchor(null);
       toast.success(`Template "${template.templateName}" loaded successfully`);
     } catch (error) {
@@ -122,6 +125,43 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
     } catch (error) {
       console.error('Failed to save template:', error);
       toast.error('Failed to save template');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!loadedTemplateId) {
+      toast.error('No template loaded to update');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Strip out non-saveable fields (same logic as saveFormAsTemplate)
+      const {
+        mediaFiles,
+        image,
+        video,
+        images,
+        postId,
+        manualPostId,
+        useExistingPost,
+        ...templateData
+      } = formData;
+
+      const updatedTemplate = await templateApi.updateTemplate(loadedTemplateId, {
+        templateData,
+        mediaUrls: formData.mediaUrls
+      });
+
+      toast.success(`Template "${updatedTemplate.templateName}" updated successfully`);
+      setUpdateConfirmOpen(false);
+      fetchTemplates(); // Refresh template list
+    } catch (error) {
+      console.error('Failed to update template:', error);
+      toast.error('Failed to update template');
     } finally {
       setLoading(false);
     }
@@ -184,11 +224,27 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
         Save as Template
       </Button>
 
+      {/* Update Template Button (only show when a template is loaded) */}
+      {loadedTemplateId && (
+        <Button
+          variant="contained"
+          startIcon={<EditIcon />}
+          onClick={() => setUpdateConfirmOpen(true)}
+          disabled={loading}
+          color="primary"
+        >
+          Update Template
+        </Button>
+      )}
+
       {/* Clear Form Button */}
       <Button
         variant="outlined"
         startIcon={<ClearIcon />}
-        onClick={onClearForm}
+        onClick={() => {
+          onClearForm();
+          setLoadedTemplateId(null); // Clear loaded template tracking
+        }}
         disabled={loading}
         color="error"
       >
@@ -392,6 +448,58 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
             startIcon={loading ? <CircularProgress size={20} /> : <DeleteIcon />}
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Update Template Confirmation Dialog */}
+      <Dialog
+        open={updateConfirmOpen}
+        onClose={() => setUpdateConfirmOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Update Template</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            You are about to overwrite the existing template with your current form data.
+          </Alert>
+          <Typography gutterBottom>
+            Template: <strong>{templates.find(t => t.id === loadedTemplateId)?.templateName}</strong>
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            This will replace all fields in the template with your current form values, including:
+          </Typography>
+          <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Targeting settings
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Budget configuration
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              Creative content and variations
+            </Typography>
+            <Typography component="li" variant="body2" color="text.secondary">
+              All other campaign settings
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="error" sx={{ mt: 2, display: 'block' }}>
+            This action cannot be undone. The original template data will be permanently replaced.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUpdateConfirmOpen(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleUpdateTemplate}
+            variant="contained"
+            color="primary"
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={20} /> : <EditIcon />}
+          >
+            Update Template
           </Button>
         </DialogActions>
       </Dialog>

@@ -32,6 +32,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
   const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<StrategyForAdsFormData | null>(null);
+  const [loadedTemplateId, setLoadedTemplateId] = useState<number | null>(null);
   const { resources } = useFacebookResources();
 
   // System default values (fallback if no user template)
@@ -219,8 +220,13 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
   };
 
   // Template management handlers
-  const handleLoadTemplate = (templateData: TemplateData) => {
+  const handleLoadTemplate = (templateData: TemplateData, templateId?: number) => {
     console.log('📋 Loading template with data:', templateData);
+
+    // Track loaded template ID for update functionality
+    if (templateId) {
+      setLoadedTemplateId(templateId);
+    }
 
     // Load template data into form
     Object.keys(templateData).forEach((key) => {
@@ -242,6 +248,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
 
   const handleClearForm = () => {
     methods.reset();
+    setLoadedTemplateId(null); // Clear loaded template tracking
   };
 
   // Form sections for better organization
