@@ -41,8 +41,10 @@ class FacebookAPI {
    * @param {Number} initialDelay - Initial delay in milliseconds
    * @returns {Promise} - Result of the function
    */
-  async retryWithBackoff(fn, params, maxRetries = 3, initialDelay = 2000) {
+  async retryWithBackoff(fn, params, maxRetries = 3) {
     let lastError = null;
+    // Enhanced retry delays: 15s, 45s, 90s (much longer to allow Facebook rate limits to reset)
+    const delays = [15000, 45000, 90000];
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -58,16 +60,23 @@ class FacebookAPI {
         const isTransient = error.response?.data?.error?.is_transient ||
                           error.response?.data?.error?.code === 2 ||
                           error.response?.status >= 500;
+        const isRateLimit = error.response?.data?.error?.code === 4 ||
+                          error.response?.data?.error?.code === 17 ||
+                          error.response?.data?.error?.code === 613 ||
+                          error.response?.data?.error?.code === 80004;
 
-        // Don't retry if it's not a transient error and not a timeout
-        if (!isTimeout && !isTransient && attempt === 1) {
+        // Don't retry if it's not a transient error, timeout, or rate limit
+        if (!isTimeout && !isTransient && !isRateLimit && attempt === 1) {
           console.log('❌ Non-transient error detected, not retrying');
           throw error;
         }
 
         if (attempt < maxRetries) {
-          const delay = initialDelay * Math.pow(2, attempt - 1); // Exponential backoff
-          console.log(`⏳ Waiting ${delay/1000} seconds before retry...`);
+          const delay = delays[attempt - 1] || 90000; // Use predefined delays (15s, 45s, 90s)
+          console.log(`⏳ Waiting ${delay/1000}s before retry...`);
+          if (isRateLimit) {
+            console.log(`   ⚠️  Rate limit detected - using extended delay to allow Facebook API cooldown`);
+          }
           console.log(`   Error was: ${error.message}`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
@@ -201,7 +210,7 @@ class FacebookAPI {
       console.log('  - Dynamic Creative:', adSetData.dynamicTextEnabled ? 'ENABLED' : 'DISABLED');
 
       let params = {
-        name: `[Launcher] ${adSetData.campaignName} - AdSet`,
+        name: `[Launcher] ${adSetData.campaignName} - AdSet Main`,
         campaign_id: adSetData.campaignId,
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
@@ -2289,6 +2298,7 @@ class FacebookAPI {
 
         // Wrap ad creation with retry logic for transient errors
         const adParams = {
+          name: `[Launcher] ${campaignData.campaignName} - Ad Main`, // Explicitly set "Main" suffix for initial ad
           campaignName: campaignData.campaignName,
           adsetId: adSet.id,
           url: campaignData.url,
@@ -2542,6 +2552,7 @@ class FacebookAPI {
 
       const ad = await this.createAd({
         campaignName: campaignData.campaignName,
+        name: `[Launcher] ${campaignData.campaignName} - Ad Main`, // Explicitly set "Main" suffix for initial ad
         adsetId: adSet.id,
         url: campaignData.url,
         primaryText: campaignData.primaryText,
@@ -2556,7 +2567,12 @@ class FacebookAPI {
         dynamicTextEnabled: campaignData.dynamicTextEnabled,
         primaryTextVariations: campaignData.primaryTextVariations,
         headlineVariations: campaignData.headlineVariations,
-        ...mediaAssets
+        // CRITICAL FIX: Explicitly pass media assets instead of spread operator
+        // This ensures media is properly passed to createAd for Strategy150
+        imageHash: mediaAssets.imageHash,
+        videoId: mediaAssets.videoId,
+        videoThumbnail: mediaAssets.videoThumbnail,
+        carouselCards: mediaAssets.carouselCards
       });
 
       console.log('✅ Ad creation request sent with editorName:', campaignData.editorName || 'none');
@@ -3122,9 +3138,21 @@ class FacebookAPI {
           isAdSetDynamicCreative = formData?.dynamicTextEnabled === true;
         }
 
+        // BATCH CREATION: Create ads in batches to avoid rate limiting
+        const BATCH_SIZE = 10;
+        const INTER_BATCH_DELAY = 30000; // 30 seconds between batches
+        const totalBatches = Math.ceil(newAdSetIds.length / BATCH_SIZE);
+
+        console.log(`\n📦 Creating ${newAdSetIds.length} ads in batches of ${BATCH_SIZE}`);
+        console.log(`📊 Total batches: ${totalBatches}`);
+
         // Create ads for each copied adset with retry logic
         for (let i = 0; i < newAdSetIds.length; i++) {
           const newAdSetId = newAdSetIds[i];
+          const currentBatch = Math.floor(i / BATCH_SIZE) + 1;
+          const positionInBatch = (i % BATCH_SIZE) + 1;
+
+          console.log(`\n🔄 Batch ${currentBatch}/${totalBatches} - Creating ad ${positionInBatch}/${Math.min(BATCH_SIZE, newAdSetIds.length - (currentBatch - 1) * BATCH_SIZE)} (Overall: ${i + 1}/${newAdSetIds.length})`);
 
           // Check if this ad set should have variations (Strategy for Ads)
           console.log(`\n🔍 DEBUG - Checking variations for Ad Set ${i + 1}:`);
@@ -3806,6 +3834,17 @@ class FacebookAPI {
             });
           }
           } // Close else block for standard duplication
+
+          // BATCH DELAY: Wait between batches to avoid rate limiting
+          const isLastInBatch = (i + 1) % BATCH_SIZE === 0;
+          const isNotLastOverall = i + 1 < newAdSetIds.length;
+
+          if (isLastInBatch && isNotLastOverall) {
+            console.log(`\n⏸️  Batch ${currentBatch} complete (${i + 1}/${newAdSetIds.length} ads created)`);
+            console.log(`⏳ Waiting ${INTER_BATCH_DELAY/1000}s before starting batch ${currentBatch + 1}...`);
+            console.log(`   This delay helps prevent Facebook API rate limiting`);
+            await new Promise(resolve => setTimeout(resolve, INTER_BATCH_DELAY));
+          }
         }
 
         // After all ad sets and ads are created, ensure attribution is correct
