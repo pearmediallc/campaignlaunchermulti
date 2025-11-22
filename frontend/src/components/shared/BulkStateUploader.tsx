@@ -226,7 +226,7 @@ const BulkStateUploader: React.FC<BulkStateUploaderProps> = ({
               multiline
               rows={8}
               variant="outlined"
-              placeholder="Paste state names here (one per line or comma-separated)&#10;Example:&#10;California, Texas, New York&#10;or&#10;CA&#10;TX&#10;NY"
+              placeholder="Paste state names here (one per line, comma, or semicolon separated)&#10;Example:&#10;California; Texas; New York&#10;or&#10;CA, TX, NY"
               value={textInput}
               onChange={(e) => {
                 setTextInput(e.target.value);
@@ -241,13 +241,13 @@ const BulkStateUploader: React.FC<BulkStateUploaderProps> = ({
                 Supported formats:
               </Typography>
               <Typography variant="caption" display="block">
-                • One state per line: California, Texas, New York
+                • Semicolon-separated: Alabama; Arizona; California
               </Typography>
               <Typography variant="caption" display="block">
                 • Comma-separated: CA, TX, NY
               </Typography>
               <Typography variant="caption" display="block">
-                • Mixed: California, TX, New York (full names or abbreviations)
+                • One per line or mixed: California; TX, New York
               </Typography>
             </Box>
 

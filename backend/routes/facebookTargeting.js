@@ -201,9 +201,9 @@ router.post('/parse-states-text', authenticate, async (req, res) => {
 
     console.log(`📝 Processing pasted text (${text.length} characters)`);
 
-    // Parse text - split by newlines or commas
+    // Parse text - split by newlines, commas, or semicolons
     const stateNames = text
-      .split(/[\n,]+/) // Split by newlines or commas
+      .split(/[\n,;]+/) // Split by newlines, commas, or semicolons
       .map(line => line.trim())
       .filter(line => line.length > 0 && !line.startsWith('#')); // Remove empty and comment lines
 
