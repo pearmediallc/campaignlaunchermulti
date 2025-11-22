@@ -38,6 +38,9 @@ import {
 } from '../../../types/strategy150';
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
 import axios from 'axios';
+import SavedAudienceLoader from '../../shared/SavedAudienceLoader';
+import BulkStateUploader from '../../shared/BulkStateUploader';
+import DaypartingSchedule from '../../shared/DaypartingSchedule';
 
 // Full list of countries for targeting
 const COUNTRIES = [
@@ -153,6 +156,8 @@ const AdSetSection: React.FC = () => {
   const { resources, loading: loadingResources, refetch: refetchResources } = useFacebookResources();
   const [customAudiences, setCustomAudiences] = useState<any[]>([]);
   const [lookalikeAudiences, setLookalikeAudiences] = useState<any[]>([]);
+  const [savedAudienceDialogOpen, setSavedAudienceDialogOpen] = useState(false);
+  const [bulkStateDialogOpen, setBulkStateDialogOpen] = useState(false);
 
   // For backward compatibility with existing pixel loading logic
   const loadingPixels = loadingResources;
@@ -234,6 +239,45 @@ const AdSetSection: React.FC = () => {
     } catch (error) {
       console.error('Error fetching audiences:', error);
     }
+  };
+
+  // Handler for loading saved audience targeting
+  const handleLoadSavedAudience = (targeting: any) => {
+    // Apply the targeting from saved audience to form
+    if (targeting.geo_locations) {
+      if (targeting.geo_locations.countries) {
+        setValue('targeting.locations.countries', targeting.geo_locations.countries);
+      }
+      if (targeting.geo_locations.regions) {
+        // regions come as {key, name} objects from Facebook API
+        const regionKeys = targeting.geo_locations.regions.map((r: any) => r.key);
+        setValue('targeting.locations.regions', regionKeys);
+      }
+    }
+    if (targeting.age_min !== undefined) {
+      setValue('targeting.ageMin', targeting.age_min);
+    }
+    if (targeting.age_max !== undefined) {
+      setValue('targeting.ageMax', targeting.age_max);
+    }
+    if (targeting.genders !== undefined) {
+      setValue('targeting.genders', targeting.genders);
+    }
+    if (targeting.custom_audiences) {
+      setValue('targeting.customAudiences', targeting.custom_audiences);
+    }
+  };
+
+  // Handler for bulk state upload
+  const handleBulkStatesUploaded = (regions: Array<{ key: string; name: string }>) => {
+    // Apply the mapped state keys to form
+    const stateKeys = regions.map(r => r.key);
+    setValue('targeting.locations.regions', stateKeys);
+  };
+
+  // Handler for dayparting schedule changes
+  const handleDaypartingChange = (blocks: Array<{ days: number[]; startTime: number; endTime: number }>) => {
+    setValue('adSetBudget.dayparting', blocks);
   };
 
   // Dayparting field array
@@ -606,104 +650,32 @@ const AdSetSection: React.FC = () => {
           </>
         )}
 
-        {/* Dayparting */}
+        {/* Dayparting Schedule */}
         {budgetType === 'lifetime' && (
-          <>
-            <Box sx={{ width: "100%" }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Ad Scheduling (Dayparting)
-                <Button
-                  size="small"
-                  startIcon={<Add />}
-                  onClick={() => addDayparting({ days: [], startTime: '00:00', endTime: '23:59' })}
-                  sx={{ ml: 2 }}
-                >
-                  Add Schedule
-                </Button>
-              </Typography>
-            </Box>
-            {daypartingFields.map((field, index) => (
-              <Box sx={{ width: "100%" }} key={field.id}>
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <Box sx={{ width: "100%" }}>
-                      <Controller
-                        name={`adSetBudget.dayparting.${index}.days`}
-                        control={control}
-                        render={({ field }) => (
-                          <FormControl fullWidth>
-                            <InputLabel>Days</InputLabel>
-                            <Select
-                              {...field}
-                              multiple
-                              label="Days"
-                              renderValue={(selected) => (
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                  {(selected as string[]).map((value) => (
-                                    <Chip key={value} label={value} size="small" />
-                                  ))}
-                                </Box>
-                              )}
-                            >
-                              {daysOfWeek.map(day => (
-                                <MenuItem key={day} value={day}>
-                                  <Checkbox checked={(field.value as string[])?.includes(day)} />
-                                  {day}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        )}
-                      />
-                    </Box>
-                    <Box sx={{ width: "100%" }}>
-                      <Controller
-                        name={`adSetBudget.dayparting.${index}.startTime`}
-                        control={control}
-                        render={({ field }) => (
-                          <TextField
-                            {...field}
-                            fullWidth
-                            type="time"
-                            label="Start Time"
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        )}
-                      />
-                    </Box>
-                    <Box sx={{ width: "100%" }}>
-                      <Controller
-                        name={`adSetBudget.dayparting.${index}.endTime`}
-                        control={control}
-                        render={({ field }) => (
-                          <TextField
-                            {...field}
-                            fullWidth
-                            type="time"
-                            label="End Time"
-                            InputLabelProps={{ shrink: true }}
-                          />
-                        )}
-                      />
-                    </Box>
-                    <Box sx={{ width: "100%" }}>
-                      <IconButton onClick={() => removeDayparting(index)} color="error">
-                        <Delete />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                </Paper>
-              </Box>
-            ))}
-          </>
+          <Box sx={{ width: "100%" }}>
+            <DaypartingSchedule
+              value={watch('adSetBudget.dayparting') || []}
+              onChange={handleDaypartingChange}
+            />
+          </Box>
         )}
 
         <Box sx={{ width: "100%" }}>
           <Divider sx={{ my: 2 }} />
-          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-            <LocationOn sx={{ verticalAlign: 'middle', mr: 1 }} />
-            Audience
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+              <LocationOn sx={{ verticalAlign: 'middle', mr: 1 }} />
+              Audience
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setSavedAudienceDialogOpen(true)}
+              sx={{ textTransform: 'none' }}
+            >
+              Load from Saved Audience
+            </Button>
+          </Box>
         </Box>
 
         {/* Location Targeting */}
@@ -803,6 +775,16 @@ const AdSetSection: React.FC = () => {
                 />
               )}
             />
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setBulkStateDialogOpen(true)}
+                sx={{ textTransform: 'none' }}
+              >
+                Bulk Upload States
+              </Button>
+            </Box>
           </Box>
         )}
 
@@ -1302,6 +1284,20 @@ const AdSetSection: React.FC = () => {
           </Alert>
         </Box>
       </Box>
+
+      {/* Saved Audience Loader Dialog */}
+      <SavedAudienceLoader
+        open={savedAudienceDialogOpen}
+        onClose={() => setSavedAudienceDialogOpen(false)}
+        onLoadAudience={handleLoadSavedAudience}
+      />
+
+      {/* Bulk State Uploader Dialog */}
+      <BulkStateUploader
+        open={bulkStateDialogOpen}
+        onClose={() => setBulkStateDialogOpen(false)}
+        onStatesUploaded={handleBulkStatesUploaded}
+      />
     </Paper>
   );
 };

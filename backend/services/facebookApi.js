@@ -689,6 +689,43 @@ class FacebookAPI {
         }
       }
 
+      // DAYPARTING SUPPORT: Add ad scheduling if provided
+      if (adSetData.schedule && adSetData.schedule.dayparting && adSetData.schedule.dayparting.length > 0) {
+        // Validate lifetime budget is being used
+        if (!params.lifetime_budget) {
+          console.warn('⚠️ Dayparting requires lifetime budget. Ignoring dayparting schedule.');
+        } else {
+          // Build adset_schedule array
+          params.adset_schedule = adSetData.schedule.dayparting.map(block => {
+            // Validate day numbers (0-6)
+            const validDays = block.days.filter(day => day >= 0 && day <= 6);
+
+            if (validDays.length === 0) {
+              throw new Error('Dayparting block must have at least one valid day (0-6, where 0=Sunday)');
+            }
+
+            // Validate time ranges (0-1439 minutes)
+            if (block.startTime < 0 || block.startTime > 1439) {
+              throw new Error(`Invalid start time: ${block.startTime}. Must be between 0-1439 minutes`);
+            }
+            if (block.endTime < 0 || block.endTime > 1439) {
+              throw new Error(`Invalid end time: ${block.endTime}. Must be between 0-1439 minutes`);
+            }
+            if (block.startTime >= block.endTime) {
+              throw new Error(`Start time (${block.startTime}) must be before end time (${block.endTime})`);
+            }
+
+            return {
+              days: validDays,
+              start_minute: block.startTime,
+              end_minute: block.endTime
+            };
+          });
+
+          console.log('✅ Dayparting schedule applied:', JSON.stringify(params.adset_schedule, null, 2));
+        }
+      }
+
       console.log('\n📤 Sending AdSet Creation Request...');
       console.log('🔍 FINAL CHECK - is_dynamic_creative in params?', params.is_dynamic_creative);
       console.log('📦 Final params being sent:', JSON.stringify({
@@ -3004,6 +3041,7 @@ class FacebookAPI {
       });
 
       for (let i = 0; i < count; i++) {
+        let newName = `Ad Set Copy ${i + 1}`; // Default fallback - accessible in catch block
         try {
           console.log(`  Creating copy ${i + 1} of ${count}...`);
 
@@ -3071,7 +3109,7 @@ class FacebookAPI {
           const nameMatch = originalAdSet.name.match(/AdSet (\d+)$/);
           const baseNumber = nameMatch ? parseInt(nameMatch[1]) : 1;
           const newNumber = baseNumber + i;
-          const newName = originalAdSet.name.includes('AdSet')
+          newName = originalAdSet.name.includes('AdSet')
             ? originalAdSet.name.replace(/AdSet \d+$/, `AdSet ${newNumber}`)
             : `${originalAdSet.name} ${i + 1}`;
 

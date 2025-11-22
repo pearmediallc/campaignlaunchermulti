@@ -165,6 +165,9 @@ app.use('/api/failures', require('./routes/failures'));
 // AI routes (for ChatGPT-powered ad copy variations)
 app.use('/api/ai', aiRoutes);
 
+// Facebook targeting routes (saved audiences, bulk state upload, location search)
+app.use('/api/facebook-targeting', require('./routes/facebookTargeting'));
+
 // Migration runner (temporary - remove after fixing production)
 app.use('/api/migrations', require('./routes/migrationRunner'));
 

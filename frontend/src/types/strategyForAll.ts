@@ -33,9 +33,9 @@ export interface StrategyForAllFormData {
     endDate?: string;
     scheduleType?: 'run_continuously' | 'scheduled';
     dayparting?: Array<{
-      days: string[];
-      startTime: string;
-      endTime: string;
+      days: number[]; // 0=Sunday, 6=Saturday
+      startTime: number; // Minutes since midnight (0-1439)
+      endTime: number; // Minutes since midnight (0-1439)
     }>;
     spendingLimits?: {
       // Legacy fields (backward compatibility)
