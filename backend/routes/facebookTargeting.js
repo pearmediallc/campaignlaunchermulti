@@ -69,9 +69,13 @@ router.get('/saved-audiences', authenticate, async (req, res) => {
       });
     }
 
+    // Ensure ad account ID has 'act_' prefix (but don't double it)
+    const adAccountId = activeResources.selectedAdAccountId.toString();
+    const formattedAdAccountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
     // Fetch saved audiences from Facebook
     const response = await axios.get(
-      `https://graph.facebook.com/v18.0/act_${activeResources.selectedAdAccountId}/saved_audiences`,
+      `https://graph.facebook.com/v18.0/${formattedAdAccountId}/saved_audiences`,
       {
         params: {
           access_token: decryptedToken,
@@ -174,6 +178,54 @@ router.post('/bulk-upload-states', authenticate, upload.single('file'), async (r
     res.status(500).json({
       success: false,
       error: 'Failed to process state upload',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/facebook-targeting/parse-states-text
+ * Parse pasted text with state names and map to Facebook region keys
+ */
+router.post('/parse-states-text', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.userId;
+    const { text } = req.body;
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Text input is required'
+      });
+    }
+
+    console.log(`📝 Processing pasted text (${text.length} characters)`);
+
+    // Parse text - split by newlines or commas
+    const stateNames = text
+      .split(/[\n,]+/) // Split by newlines or commas
+      .map(line => line.trim())
+      .filter(line => line.length > 0 && !line.startsWith('#')); // Remove empty and comment lines
+
+    console.log(`📊 Extracted ${stateNames.length} state names from text`);
+
+    // Validate state names
+    const validation = LocationMapper.validateStates(stateNames);
+
+    // Return results even if some are invalid
+    res.json({
+      success: true,
+      regions: validation.validStates,
+      count: validation.validStates.length,
+      originalCount: stateNames.length,
+      invalidStates: validation.invalidStates,
+      hasInvalidStates: validation.invalidStates.length > 0
+    });
+  } catch (error) {
+    console.error('Error processing text state input:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process state text',
       message: error.message
     });
   }
