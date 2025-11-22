@@ -6473,17 +6473,39 @@ class FacebookAPI {
         // Create ads for this ad set
         for (let j = 1; j <= adSet.numberOfCopies; j++) {
           try {
-            // Determine which variation to use
-            // Variation index: j-1 (0-based), cycle through variations if more copies than variations
-            const variationIndex = (j - 1) % Math.max(variations.length, 1);
-            const variation = variations[variationIndex] || null;
+            // ENHANCED: Determine which variation to use based on mode
+            let effectiveVariation = null;
 
-            // Check if this variation has "applyToRemaining" flag
-            // If so, use this variation for all remaining ads in this ad set
-            let effectiveVariation = variation;
-            if (variation && variation.applyToRemaining && j > 1) {
-              // Use the same variation as before
-              effectiveVariation = variations.find(v => v.applyToRemaining);
+            if (variations && variations.length > 0) {
+              // Try to find specific variation for this ad set + ad number (per-ad-creative mode)
+              effectiveVariation = variations.find(v =>
+                v.adSetIndex === adSet.adSetIndex &&
+                v.adNumber === j
+              );
+
+              if (effectiveVariation) {
+                console.log(`   🎨 Found per-ad variation: Ad Set ${adSet.adSetIndex}, Ad #${j}`);
+              } else {
+                // Fallback 1: Find variation by ad set only (single-creative mode)
+                effectiveVariation = variations.find(v => v.adSetIndex === adSet.adSetIndex);
+
+                if (effectiveVariation) {
+                  console.log(`   🎨 Found ad-set variation: Ad Set ${adSet.adSetIndex} (shared across all ads)`);
+                } else {
+                  // Fallback 2: Cycle through variations (original behavior)
+                  const variationIndex = (j - 1) % Math.max(variations.length, 1);
+                  effectiveVariation = variations[variationIndex];
+
+                  if (effectiveVariation) {
+                    console.log(`   🎨 Using cycled variation ${variationIndex + 1}`);
+                  }
+                }
+              }
+
+              // Check if this variation has "applyToRemaining" flag
+              if (effectiveVariation && effectiveVariation.applyToRemaining && j > 1) {
+                effectiveVariation = variations.find(v => v.applyToRemaining);
+              }
             }
 
             console.log(`   Creating ad ${j}/${adSet.numberOfCopies}...`);

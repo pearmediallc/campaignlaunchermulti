@@ -171,8 +171,11 @@ export interface StrategyForAdsFormData {
   adVariationConfig?: {
     selectedAdSetIndices: number[];  // Which ad sets get variations (0-indexed)
     adsPerAdSet: number;              // Number of ads per selected ad set (1-7)
+    variationMode?: 'single_creative' | 'per_ad_creative';  // NEW: How creatives are assigned
     variations: Array<{
       variationNumber: number;
+      adSetIndex?: number;  // Which ad set this variation is for (0-indexed)
+      adNumber?: number;    // NEW: Which ad within the ad set (1-indexed, for per_ad_creative mode)
       useOriginal?: boolean;
       primaryText?: string;
       headline?: string;
@@ -183,8 +186,14 @@ export interface StrategyForAdsFormData {
       imageUrl?: string;
       videoId?: string;
       imageHash?: string;
+      videoHash?: string;  // NEW: Track video hash
       useOriginalMedia?: boolean;
       mediaFile?: File;
+      editorName?: string;  // From Creative Library
+      primaryTextVariations?: string[];  // Dynamic text variations
+      headlineVariations?: string[];     // Dynamic headline variations
+      dynamicTextEnabled?: boolean;      // Per-variation dynamic text flag
+      applyToRemaining?: boolean;        // Apply media to remaining variations
     }>;
   };
 

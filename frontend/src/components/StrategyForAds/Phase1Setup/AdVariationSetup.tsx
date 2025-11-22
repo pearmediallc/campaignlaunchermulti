@@ -12,7 +12,10 @@ import {
   Chip,
   OutlinedInput,
   SelectChangeEvent,
-  Divider
+  Divider,
+  RadioGroup,
+  FormControlLabel,
+  Radio
 } from '@mui/material';
 import { Controller, useFormContext } from 'react-hook-form';
 import { Psychology as VariationIcon } from '@mui/icons-material';
@@ -158,6 +161,64 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
               helperText="Maximum 7 ads per ad set (including the original ad). Each variation will have different content/post ID."
               sx={{ mb: 3 }}
             />
+          )}
+
+          {/* NEW: Creative Assignment Mode Selector (only show if multiple ads per ad set) */}
+          {!dynamicTextEnabled && adsPerAdSet > 1 && (
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'info.light', border: '2px solid', borderColor: 'info.main' }}>
+              <Typography variant="subtitle2" gutterBottom fontWeight="bold" color="info.dark">
+                🎨 Creative Assignment Mode
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Choose how creatives (images/videos) should be assigned across your {adsPerAdSet} ads per ad set:
+              </Typography>
+              <RadioGroup
+                value={watch('adVariationConfig.variationMode') || 'single_creative'}
+                onChange={(e) => setValue('adVariationConfig.variationMode', e.target.value as 'single_creative' | 'per_ad_creative')}
+              >
+                <FormControlLabel
+                  value="single_creative"
+                  control={<Radio />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        Same Creative Per Ad Set (Standard)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        All {adsPerAdSet} ads within each selected ad set will use the SAME creative. Best for testing different text variations or budget allocation with identical creatives.
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ mb: 1, alignItems: 'flex-start' }}
+                />
+                <FormControlLabel
+                  value="per_ad_creative"
+                  control={<Radio />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        Different Creatives Per Ad (Advanced)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Each of the {adsPerAdSet} ads within each ad set gets its OWN unique creative. You'll configure {selectedAdSetIndices.length} × {adsPerAdSet} = {selectedAdSetIndices.length * adsPerAdSet} total unique creatives. Perfect for testing multiple creatives simultaneously.
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ alignItems: 'flex-start' }}
+                />
+              </RadioGroup>
+
+              {watch('adVariationConfig.variationMode') === 'per_ad_creative' && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  <Typography variant="caption" fontWeight="bold" display="block">
+                    ⚠️ You will need to upload {selectedAdSetIndices.length * adsPerAdSet} unique creatives
+                  </Typography>
+                  <Typography variant="caption">
+                    Example: Ad Set 1 will have {adsPerAdSet} different creatives, Ad Set 2 will have {adsPerAdSet} different creatives, etc.
+                  </Typography>
+                </Alert>
+              )}
+            </Paper>
           )}
 
           <Divider sx={{ my: 3 }} />
