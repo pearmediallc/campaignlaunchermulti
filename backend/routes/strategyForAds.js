@@ -1512,9 +1512,14 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       originalAdSetId,
       postId,
       formData,
-      count = 49,
+      count = 50, // Total ad sets desired (including 1 initial)
       duplicateBudgets = [] // Array of custom budgets for each duplicate
     } = req.body;
+
+    // ✅ FIX: count represents TOTAL ad sets (e.g., 50 = 1 initial + 49 copies)
+    // So we need to create (count - 1) copies to reach the total
+    const copiesToCreate = count > 1 ? count - 1 : 0;
+    console.log(`📊 User requested ${count} total ad sets → Creating ${copiesToCreate} copies (1 initial + ${copiesToCreate} duplicates = ${count} total)`);
 
     if (!campaignId || !originalAdSetId) {
       return res.status(400).json({
@@ -1553,7 +1558,7 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       campaignId,
       originalAdSetId,
       postId: postId,
-      count,
+      count: copiesToCreate, // ✅ FIX: Pass number of COPIES to create
       formData: {
         ...formData,
         // Ensure attribution setting is explicitly passed from user's initial setup
@@ -1568,15 +1573,15 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       duplicateData.customBudgets = duplicateBudgets;
     } else {
       // Default to $1 for each duplicated ad set
-      duplicateData.customBudgets = Array(count).fill(1.00);
+      duplicateData.customBudgets = Array(copiesToCreate).fill(1.00);
     }
 
     // Store job info for progress tracking
     duplicationJobs.set(campaignId, {
       campaignId,
-      count,
+      count: copiesToCreate, // ✅ FIX: Track number of COPIES
       completed: 0,
-      total: count,
+      total: copiesToCreate, // ✅ FIX: Total COPIES to create
       status: 'in_progress',
       currentOperation: 'Starting duplication...',
       adSets: [],
@@ -1599,7 +1604,8 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       message: 'Duplication process started',
       data: {
         campaignId,
-        count,
+        count: copiesToCreate, // ✅ FIX: Return number of COPIES
+        totalAdSets: count, // Total ad sets including initial
         status: 'in_progress',
         adAccount: activeResources.selectedAdAccount, // Add ad account info from active resources
         postId: postId || 'Will be fetched from original ad' // Include postId status

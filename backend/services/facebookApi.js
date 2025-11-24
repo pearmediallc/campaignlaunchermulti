@@ -3329,6 +3329,24 @@ class FacebookAPI {
             newAdSetData.daily_spend_cap = originalAdSet.daily_spend_cap;
           }
 
+          // ✅ FIX: Apply schedule to ALL duplicated ad sets (from formData)
+          if (formData?.adSetBudget) {
+            const startDateSource = formData.adSetBudget.startDate;
+            const endDateSource = formData.adSetBudget.endDate;
+
+            if (startDateSource) {
+              const startDate = new Date(startDateSource);
+              newAdSetData.start_time = Math.floor(startDate.getTime() / 1000);
+              console.log(`  📅 Applied start_time to duplicated ad set ${i + 1}: ${startDateSource} → Unix: ${newAdSetData.start_time}`);
+            }
+
+            if (endDateSource) {
+              const endDate = new Date(endDateSource);
+              newAdSetData.end_time = Math.floor(endDate.getTime() / 1000);
+              console.log(`  📅 Applied end_time to duplicated ad set ${i + 1}: ${endDateSource} → Unix: ${newAdSetData.end_time}`);
+            }
+          }
+
           const copyResponse = await axios.post(
             `${this.baseURL}/act_${campaignAccountId}/adsets`,
             null,
