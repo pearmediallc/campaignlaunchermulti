@@ -677,26 +677,32 @@ class FacebookAPI {
         } else {
           throw new Error('Lifetime budget campaigns require both start and end dates. Please select campaign schedule dates with at least 24 hours duration.');
         }
-      } else if (adSetData.schedule) {
-        // For daily budget, schedule is optional
-        if (adSetData.schedule.startTime) {
-          const startDate = new Date(adSetData.schedule.startTime);
+      } else {
+        // ✅ FIX: Handle schedule from adSetBudget (new format) or schedule object (old format)
+        const startDateSource = adSetData.adSetBudget?.startDate || adSetData.schedule?.startTime || adSetData.schedule?.startDate;
+        const endDateSource = adSetData.adSetBudget?.endDate || adSetData.schedule?.endTime || adSetData.schedule?.endDate;
+
+        if (startDateSource) {
+          const startDate = new Date(startDateSource);
           params.start_time = Math.floor(startDate.getTime() / 1000);
+          console.log('📅 Schedule Start Time:', startDateSource, '→ Unix:', params.start_time);
         }
-        if (adSetData.schedule.endTime) {
-          const endDate = new Date(adSetData.schedule.endTime);
+        if (endDateSource) {
+          const endDate = new Date(endDateSource);
           params.end_time = Math.floor(endDate.getTime() / 1000);
+          console.log('📅 Schedule End Time:', endDateSource, '→ Unix:', params.end_time);
         }
       }
 
       // DAYPARTING SUPPORT: Add ad scheduling if provided
-      if (adSetData.schedule && adSetData.schedule.dayparting && adSetData.schedule.dayparting.length > 0) {
+      const daypartingSource = adSetData.adSetBudget?.dayparting || adSetData.schedule?.dayparting;
+      if (daypartingSource && daypartingSource.length > 0) {
         // Validate lifetime budget is being used
         if (!params.lifetime_budget) {
           console.warn('⚠️ Dayparting requires lifetime budget. Ignoring dayparting schedule.');
         } else {
           // Build adset_schedule array
-          params.adset_schedule = adSetData.schedule.dayparting.map(block => {
+          params.adset_schedule = daypartingSource.map(block => {
             // Validate day numbers (0-6)
             const validDays = block.days.filter(day => day >= 0 && day <= 6);
 

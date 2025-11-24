@@ -245,13 +245,13 @@ const validateStrategyForAll = [
     .isLength({ max: 255 })
     .withMessage('Dynamic editor name must be 255 characters or less'),
 
-  // Duplication settings for dynamic ad set count (0-49)
+  // Duplication settings for dynamic ad set count (0-50)
   // 0 = Create only initial 1-1-1 structure (no duplication)
-  // 1-49 = Create 1-1-1 + duplicate ad sets
+  // 1-50 = Create 1-1-1 + duplicate ad sets
   body('duplicationSettings.adSetCount')
     .optional()
-    .isInt({ min: 0, max: 49 })
-    .withMessage('Ad set count must be between 0 and 49'),
+    .isInt({ min: 0, max: 50 })
+    .withMessage('Ad set count must be between 0 and 50'),
 
   // totalBudget is now optional for both ABO and CBO (backward compatibility)
   body('duplicationSettings.totalBudget')
