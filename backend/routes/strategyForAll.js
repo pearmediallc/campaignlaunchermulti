@@ -557,13 +557,25 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         ...req.body.adSetBudget,
         dailyBudget: parseBudget(req.body.adSetBudget?.dailyBudget) ?? parseBudget(req.body.dailyBudget),
         lifetimeBudget: parseBudget(req.body.adSetBudget?.lifetimeBudget) ?? parseBudget(req.body.lifetimeBudget),
-        scheduleType: req.body.adSetBudget?.scheduleType  // Required - user must select
+        // ✅ FIX: Auto-detect scheduleType from presence of dates
+        scheduleType: req.body.adSetBudget?.scheduleType ||
+                      req.body.scheduleType ||
+                      (req.body.endDate || req.body.adSetBudget?.endDate || req.body.schedule?.endDate ? 'scheduled' : 'run_continuously'),
+        startDate: req.body.adSetBudget?.startDate || req.body.startDate || req.body.schedule?.startDate,
+        endDate: req.body.adSetBudget?.endDate || req.body.endDate || req.body.schedule?.endDate,
+        dayparting: req.body.adSetBudget?.dayparting || req.body.dayparting || req.body.schedule?.dayparting
       } : {
         // When using CBO, still preserve spendingLimits AND dailyBudget (they apply at ad set level)
         // dailyBudget is needed for spending limits calculation even though campaign uses CBO
         dailyBudget: parseBudget(req.body.adSetBudget?.dailyBudget) ?? parseBudget(req.body.dailyBudget),
         spendingLimits: req.body.adSetBudget?.spendingLimits,
-        scheduleType: req.body.adSetBudget?.scheduleType  // Required - user must select
+        // ✅ FIX: Auto-detect scheduleType from presence of dates
+        scheduleType: req.body.adSetBudget?.scheduleType ||
+                      req.body.scheduleType ||
+                      (req.body.endDate || req.body.adSetBudget?.endDate || req.body.schedule?.endDate ? 'scheduled' : 'run_continuously'),
+        startDate: req.body.adSetBudget?.startDate || req.body.startDate || req.body.schedule?.startDate,
+        endDate: req.body.adSetBudget?.endDate || req.body.endDate || req.body.schedule?.endDate,
+        dayparting: req.body.adSetBudget?.dayparting || req.body.dayparting || req.body.schedule?.dayparting
       },
       budgetType: req.body.budgetType,  // Required - user must select
 

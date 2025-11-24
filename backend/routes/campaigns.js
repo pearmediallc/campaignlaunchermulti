@@ -240,6 +240,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       selectedPageId = req.body.selectedPageId;
     }
     
+    // Parse schedule if it exists
+    const parsedSchedule = req.body.schedule ? JSON.parse(req.body.schedule) : null;
+
     const campaignData = {
       campaignName: req.body.campaignName,
       budgetType: req.body.budgetType || 'daily',
@@ -253,7 +256,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       mediaType: req.body.mediaType || 'single_image',
       callToAction: req.body.callToAction || 'LEARN_MORE',
       conversionLocation: req.body.conversionLocation || 'website',
-      schedule: req.body.schedule ? JSON.parse(req.body.schedule) : null,
+      schedule: parsedSchedule,
       targeting: req.body.targeting ? JSON.parse(req.body.targeting) : null,
       placements: req.body.placements ? JSON.parse(req.body.placements) : null,
       selectedPageId: selectedPageId,
@@ -261,7 +264,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       selectedPixelId: selectedPixelId,
       imagePath: req.body.mediaType === 'single_image' ? mediaPath : null,
       videoPath: req.body.mediaType === 'video' ? mediaPath : null,
-      imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null
+      imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
+      // ✅ FIX: Add adSetBudget with schedule auto-detection
+      adSetBudget: {
+        scheduleType: parsedSchedule?.scheduleType ||
+                      req.body.scheduleType ||
+                      (parsedSchedule?.endDate || req.body.endDate ? 'scheduled' : 'run_continuously'),
+        startDate: parsedSchedule?.startDate || req.body.startDate,
+        endDate: parsedSchedule?.endDate || req.body.endDate,
+        dayparting: parsedSchedule?.dayparting || req.body.dayparting
+      }
     };
     
     console.log('🎨 Media paths in campaign data:', {

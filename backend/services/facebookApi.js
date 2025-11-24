@@ -2374,7 +2374,7 @@ class FacebookAPI {
         try {
           console.log('🎬 Starting video upload...');
           console.log('  Video path:', campaignData.videoPath);
-          const videoId = await this.uploadVideo(campaignData.videoPath);
+          const videoId = await this.uploadVideoReliable(campaignData.videoPath);
           if (videoId) {
             mediaAssets.videoId = videoId;
             console.log('✅ Video uploaded successfully with ID:', videoId);
