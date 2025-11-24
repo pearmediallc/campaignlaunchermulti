@@ -15,7 +15,8 @@ import {
   Divider,
   RadioGroup,
   FormControlLabel,
-  Radio
+  Radio,
+  Checkbox
 } from '@mui/material';
 import { Controller, useFormContext } from 'react-hook-form';
 import { Psychology as VariationIcon } from '@mui/icons-material';
@@ -29,6 +30,7 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
   const { control, watch, setValue } = useFormContext<StrategyForAdsFormData>();
   const [selectedAdSetIndices, setSelectedAdSetIndices] = useState<number[]>([]);
   const [adsPerAdSet, setAdsPerAdSet] = useState<number>(3);
+  const [enablePerAdCreative, setEnablePerAdCreative] = useState<boolean>(false);
 
   // Check if dynamic text variations are enabled at top level
   const dynamicTextEnabled = watch('dynamicTextEnabled');
@@ -163,60 +165,67 @@ const AdVariationSetup: React.FC<AdVariationSetupProps> = ({ adSetCount }) => {
             />
           )}
 
-          {/* NEW: Creative Assignment Mode Selector (only show if multiple ads per ad set) */}
+          {/* NEW: Enable Different Creatives Checkbox */}
           {!dynamicTextEnabled && adsPerAdSet > 1 && (
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'info.light', border: '2px solid', borderColor: 'info.main' }}>
-              <Typography variant="subtitle2" gutterBottom fontWeight="bold" color="info.dark">
-                🎨 Creative Assignment Mode
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                Choose how creatives (images/videos) should be assigned across your {adsPerAdSet} ads per ad set:
-              </Typography>
-              <RadioGroup
-                value={watch('adVariationConfig.variationMode') || 'single_creative'}
-                onChange={(e) => setValue('adVariationConfig.variationMode', e.target.value as 'single_creative' | 'per_ad_creative')}
-              >
-                <FormControlLabel
-                  value="single_creative"
-                  control={<Radio />}
-                  label={
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>
-                        Same Creative Per Ad Set (Standard)
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        All {adsPerAdSet} ads within each selected ad set will use the SAME creative. Best for testing different text variations or budget allocation with identical creatives.
-                      </Typography>
-                    </Box>
-                  }
-                  sx={{ mb: 1, alignItems: 'flex-start' }}
-                />
-                <FormControlLabel
-                  value="per_ad_creative"
-                  control={<Radio />}
-                  label={
-                    <Box>
-                      <Typography variant="body2" fontWeight={600}>
-                        Different Creatives Per Ad (Advanced)
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Each of the {adsPerAdSet} ads within each ad set gets its OWN unique creative. You'll configure {selectedAdSetIndices.length} × {adsPerAdSet} = {selectedAdSetIndices.length * adsPerAdSet} total unique creatives. Perfect for testing multiple creatives simultaneously.
-                      </Typography>
-                    </Box>
-                  }
-                  sx={{ alignItems: 'flex-start' }}
-                />
-              </RadioGroup>
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.300' }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={enablePerAdCreative}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setEnablePerAdCreative(checked);
+                      // Update form value
+                      setValue('adVariationConfig.variationMode', checked ? 'per_ad_creative' : 'single_creative');
+                    }}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      🎨 Use Different Creatives for Each Ad
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Enable this to upload unique images/videos for each of the {adsPerAdSet} ads within each ad set
+                    </Typography>
+                  </Box>
+                }
+              />
 
-              {watch('adVariationConfig.variationMode') === 'per_ad_creative' && (
-                <Alert severity="warning" sx={{ mt: 2 }}>
-                  <Typography variant="caption" fontWeight="bold" display="block">
-                    ⚠️ You will need to upload {selectedAdSetIndices.length * adsPerAdSet} unique creatives
+              {/* Show details when checkbox is checked */}
+              {enablePerAdCreative && (
+                <Box sx={{ mt: 2, pl: 4 }}>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <Typography variant="caption" fontWeight="bold" display="block">
+                      📸 Per-Ad Creative Mode Enabled
+                    </Typography>
+                    <Typography variant="caption">
+                      You'll configure {selectedAdSetIndices.length} × {adsPerAdSet} = {selectedAdSetIndices.length * adsPerAdSet} unique creatives total.
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                      Each tab will show {adsPerAdSet} creative forms side-by-side with horizontal scrolling.
+                    </Typography>
+                  </Alert>
+
+                  <Alert severity="warning">
+                    <Typography variant="caption" fontWeight="bold" display="block">
+                      ⚠️ You will need to upload {selectedAdSetIndices.length * adsPerAdSet} unique creatives
+                    </Typography>
+                    <Typography variant="caption">
+                      Example: Ad Set 3 will have {adsPerAdSet} different creatives, Ad Set 4 will have {adsPerAdSet} different creatives, etc.
+                    </Typography>
+                  </Alert>
+                </Box>
+              )}
+
+              {/* Show default behavior when unchecked */}
+              {!enablePerAdCreative && (
+                <Box sx={{ mt: 1, pl: 4 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    📌 <strong>Default Mode:</strong> All {adsPerAdSet} ads within each ad set will use the SAME creative.
                   </Typography>
-                  <Typography variant="caption">
-                    Example: Ad Set 1 will have {adsPerAdSet} different creatives, Ad Set 2 will have {adsPerAdSet} different creatives, etc.
-                  </Typography>
-                </Alert>
+                </Box>
               )}
             </Paper>
           )}
