@@ -1297,23 +1297,32 @@ class FacebookAPI {
 
   async uploadVideo(videoPath) {
     try {
+      console.log('🎬 [uploadVideo] START - Standard video upload method');
+      console.log('🎬 [uploadVideo] Video path:', videoPath);
+
       // Validate file exists
       if (!fs.existsSync(videoPath)) {
+        console.error('🎬 [uploadVideo] ERROR - File not found:', videoPath);
         throw new Error(`Video file not found: ${videoPath}`);
       }
 
       const stats = fs.statSync(videoPath);
       const fileSizeInMB = stats.size / (1024 * 1024);
-      
+      console.log('🎬 [uploadVideo] File size:', fileSizeInMB.toFixed(2), 'MB');
+
       if (fileSizeInMB > 4096) { // 4GB limit
+        console.error('🎬 [uploadVideo] ERROR - File too large:', fileSizeInMB.toFixed(2), 'MB (max 4GB)');
         throw new Error(`Video file too large: ${fileSizeInMB.toFixed(2)}MB (max 4GB)`);
       }
 
       // Read video file
+      console.log('🎬 [uploadVideo] Reading video file into buffer...');
       const videoBuffer = fs.readFileSync(videoPath);
       const fileName = path.basename(videoPath);
-      
+      console.log('🎬 [uploadVideo] Buffer size:', (videoBuffer.length / (1024 * 1024)).toFixed(2), 'MB');
+
       // Create form data
+      console.log('🎬 [uploadVideo] Creating FormData for Facebook API...');
       const form = new FormData();
       form.append('source', videoBuffer, {
         filename: fileName,
@@ -1322,9 +1331,11 @@ class FacebookAPI {
       form.append('access_token', this.accessToken);
 
       const url = `${this.baseURL}/act_${this.adAccountId}/advideos`;
-      
-      console.log(`Uploading video: ${fileName}`);
-      console.log(`File size: ${fileSizeInMB.toFixed(2)}MB`);
+      console.log('🎬 [uploadVideo] Upload URL:', url);
+
+      console.log(`🎬 [uploadVideo] Uploading video: ${fileName}`);
+      console.log(`🎬 [uploadVideo] File size: ${fileSizeInMB.toFixed(2)}MB`);
+      console.log('🎬 [uploadVideo] Sending POST request to Facebook...');
 
       const response = await axios.post(url, form, {
         headers: {
@@ -1335,20 +1346,34 @@ class FacebookAPI {
         timeout: 300000 // 5 minutes timeout for video
       });
 
+      console.log('🎬 [uploadVideo] Response received from Facebook');
+      console.log('🎬 [uploadVideo] Response status:', response.status);
+      console.log('🎬 [uploadVideo] Response data:', JSON.stringify(response.data, null, 2));
+
       if (response.data?.id) {
-        console.log('✅ Video uploaded successfully!');
-        console.log('Video ID:', response.data.id);
+        console.log('✅ [uploadVideo] Video uploaded successfully!');
+        console.log('✅ [uploadVideo] Video ID:', response.data.id);
         return response.data.id;
       }
 
+      console.error('🎬 [uploadVideo] ERROR - Invalid response structure from Facebook');
       throw new Error('Invalid response structure from Facebook');
 
     } catch (error) {
+      console.error('❌ [uploadVideo] CATCH BLOCK - Error occurred');
+      console.error('❌ [uploadVideo] Error name:', error.name);
+      console.error('❌ [uploadVideo] Error message:', error.message);
+      console.error('❌ [uploadVideo] HTTP Status:', error.response?.status);
+      console.error('❌ [uploadVideo] HTTP Status Text:', error.response?.statusText);
+
       if (error.response?.data?.error) {
         const fbError = error.response.data.error;
-        console.error('Facebook API Error:', fbError);
+        console.error('❌ [uploadVideo] Facebook API Error:', JSON.stringify(fbError, null, 2));
       }
-      console.error('Video upload failed:', error.message);
+
+      // IMPORTANT: Keep existing behavior - return null (don't throw)
+      // This maintains backward compatibility with existing code
+      console.log('🎬 [uploadVideo] Returning null (existing behavior preserved)');
       return null;
     }
   }
@@ -1433,15 +1458,24 @@ class FacebookAPI {
    * Uses Facebook's resumable upload API
    */
   async uploadVideoResumable(videoPath) {
+    console.log('📦 [uploadVideoResumable] START - Facebook resumable upload method');
+    console.log('📦 [uploadVideoResumable] Video path:', videoPath);
+
     try {
       const stats = fs.statSync(videoPath);
       const fileSize = stats.size;
+      const fileSizeInMB = fileSize / (1024 * 1024);
       const fileName = path.basename(videoPath);
 
-      console.log(`  📦 Starting resumable upload for ${fileName} (${(fileSize / (1024 * 1024)).toFixed(2)}MB)`);
+      console.log(`📦 [uploadVideoResumable] File: ${fileName}`);
+      console.log(`📦 [uploadVideoResumable] Size: ${fileSizeInMB.toFixed(2)}MB (${fileSize} bytes)`);
 
       // Step 1: Initialize upload session
       const initUrl = `${this.baseURL}/act_${this.adAccountId}/advideos`;
+      console.log('📦 [uploadVideoResumable] STEP 1: Initializing upload session');
+      console.log('📦 [uploadVideoResumable] URL:', initUrl);
+      console.log('📦 [uploadVideoResumable] Params:', { upload_phase: 'start', file_size: fileSize });
+
       const initResponse = await axios.post(initUrl, null, {
         params: {
           access_token: this.accessToken,
@@ -1451,27 +1485,40 @@ class FacebookAPI {
         timeout: 30000
       });
 
+      console.log('📦 [uploadVideoResumable] Init response status:', initResponse.status);
+      console.log('📦 [uploadVideoResumable] Init response data:', JSON.stringify(initResponse.data, null, 2));
+
       if (!initResponse.data?.upload_session_id) {
+        console.error('❌ [uploadVideoResumable] ERROR - No upload_session_id in response');
         throw new Error('Failed to initialize upload session');
       }
 
       const sessionId = initResponse.data.upload_session_id;
-      console.log(`  🔑 Upload session created: ${sessionId}`);
+      console.log(`✅ [uploadVideoResumable] Upload session created: ${sessionId}`);
 
       // Step 2: Upload chunks (10MB each)
       const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
       const chunks = Math.ceil(fileSize / CHUNK_SIZE);
+      console.log('📦 [uploadVideoResumable] STEP 2: Uploading file in chunks');
+      console.log('📦 [uploadVideoResumable] Chunk size:', (CHUNK_SIZE / (1024 * 1024)).toFixed(2), 'MB');
+      console.log('📦 [uploadVideoResumable] Total chunks:', chunks);
+
       const fileHandle = fs.openSync(videoPath, 'r');
+      console.log('📦 [uploadVideoResumable] File opened for reading');
 
       for (let i = 0; i < chunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, fileSize);
         const chunkSize = end - start;
+        const chunkSizeMB = chunkSize / (1024 * 1024);
+
+        console.log(`📤 [uploadVideoResumable] Chunk ${i + 1}/${chunks}`);
+        console.log(`📤 [uploadVideoResumable]   Start offset: ${start} bytes`);
+        console.log(`📤 [uploadVideoResumable]   Chunk size: ${chunkSizeMB.toFixed(2)}MB (${chunkSize} bytes)`);
 
         const buffer = Buffer.alloc(chunkSize);
         fs.readSync(fileHandle, buffer, 0, chunkSize, start);
-
-        console.log(`  📤 Uploading chunk ${i + 1}/${chunks} (${(chunkSize / (1024 * 1024)).toFixed(2)}MB)`);
+        console.log(`📤 [uploadVideoResumable]   Buffer allocated and read`);
 
         const form = new FormData();
         form.append('video_file_chunk', buffer, {
@@ -1482,19 +1529,26 @@ class FacebookAPI {
         form.append('upload_phase', 'transfer');
         form.append('upload_session_id', sessionId);
         form.append('start_offset', start.toString());
+        console.log(`📤 [uploadVideoResumable]   FormData created, uploading chunk...`);
 
-        await axios.post(initUrl, form, {
+        const chunkResponse = await axios.post(initUrl, form, {
           headers: form.getHeaders(),
           maxContentLength: Infinity,
           maxBodyLength: Infinity,
           timeout: 120000 // 2 minutes per chunk
         });
+
+        console.log(`✅ [uploadVideoResumable]   Chunk ${i + 1}/${chunks} uploaded successfully`);
+        console.log(`✅ [uploadVideoResumable]   Response status: ${chunkResponse.status}`);
       }
 
       fs.closeSync(fileHandle);
+      console.log('📦 [uploadVideoResumable] File handle closed');
 
       // Step 3: Finalize upload
-      console.log(`  🔐 Finalizing upload...`);
+      console.log('📦 [uploadVideoResumable] STEP 3: Finalizing upload');
+      console.log('📦 [uploadVideoResumable] Sending finalize request with session ID:', sessionId);
+
       const finalizeResponse = await axios.post(initUrl, null, {
         params: {
           access_token: this.accessToken,
@@ -1504,8 +1558,12 @@ class FacebookAPI {
         timeout: 30000
       });
 
+      console.log('📦 [uploadVideoResumable] Finalize response status:', finalizeResponse.status);
+      console.log('📦 [uploadVideoResumable] Finalize response data:', JSON.stringify(finalizeResponse.data, null, 2));
+
       if (finalizeResponse.data?.id) {
-        console.log(`  ✅ Resumable upload completed! Video ID: ${finalizeResponse.data.id}`);
+        console.log(`✅ [uploadVideoResumable] RESUMABLE UPLOAD COMPLETED SUCCESSFULLY!`);
+        console.log(`✅ [uploadVideoResumable] Video ID: ${finalizeResponse.data.id}`);
         return finalizeResponse.data.id;
       }
 
@@ -1571,6 +1629,86 @@ class FacebookAPI {
       console.error(`  ❌ Compression upload error: ${error.message}`);
       // If compression fails, still try regular upload as last resort
       return await this.uploadVideo(videoPath);
+    }
+  }
+
+  /**
+   * NEW METHOD: Reliable video upload specifically for media upload route
+   * This method tries resumable upload FIRST for files > 100MB
+   * Falls back to standard upload for smaller files
+   * DOES NOT modify existing uploadVideo() behavior
+   * @param {string} videoPath - Path to video file
+   * @returns {Promise<string|null>} - Video ID or null on failure
+   */
+  async uploadVideoReliable(videoPath) {
+    console.log('🚀 [uploadVideoReliable] START - New reliable upload method for large videos');
+    console.log('🚀 [uploadVideoReliable] Video path:', videoPath);
+
+    try {
+      // Check file size
+      if (!fs.existsSync(videoPath)) {
+        console.error('🚀 [uploadVideoReliable] ERROR - File not found:', videoPath);
+        return null;
+      }
+
+      const stats = fs.statSync(videoPath);
+      const fileSizeInMB = stats.size / (1024 * 1024);
+      console.log('🚀 [uploadVideoReliable] File size:', fileSizeInMB.toFixed(2), 'MB');
+
+      // STRATEGY: Use resumable upload for files > 100MB
+      if (fileSizeInMB > 100) {
+        console.log('🚀 [uploadVideoReliable] File > 100MB - Using RESUMABLE upload method');
+        console.log('🚀 [uploadVideoReliable] Reason: Facebook standard upload has ~100-150MB limit');
+
+        try {
+          const videoId = await this.uploadVideoResumable(videoPath);
+          if (videoId) {
+            console.log('✅ [uploadVideoReliable] Resumable upload SUCCESSFUL');
+            console.log('✅ [uploadVideoReliable] Video ID:', videoId);
+            return videoId;
+          } else {
+            console.warn('⚠️ [uploadVideoReliable] Resumable upload returned null');
+          }
+        } catch (resumableError) {
+          console.error('❌ [uploadVideoReliable] Resumable upload FAILED');
+          console.error('❌ [uploadVideoReliable] Error:', resumableError.message);
+          console.error('❌ [uploadVideoReliable] HTTP Status:', resumableError.response?.status);
+
+          // Try standard upload as fallback
+          console.log('🔄 [uploadVideoReliable] FALLBACK: Trying standard upload anyway...');
+          try {
+            const videoId = await this.uploadVideo(videoPath);
+            if (videoId) {
+              console.log('✅ [uploadVideoReliable] Standard upload (fallback) SUCCESSFUL');
+              return videoId;
+            }
+          } catch (standardError) {
+            console.error('❌ [uploadVideoReliable] Standard upload (fallback) also FAILED');
+            console.error('❌ [uploadVideoReliable] Error:', standardError.message);
+          }
+        }
+      } else {
+        // File <= 100MB: Use standard upload (should work fine)
+        console.log('🚀 [uploadVideoReliable] File <= 100MB - Using STANDARD upload method');
+        const videoId = await this.uploadVideo(videoPath);
+        if (videoId) {
+          console.log('✅ [uploadVideoReliable] Standard upload SUCCESSFUL');
+          console.log('✅ [uploadVideoReliable] Video ID:', videoId);
+          return videoId;
+        } else {
+          console.error('❌ [uploadVideoReliable] Standard upload returned null');
+        }
+      }
+
+      // If all attempts failed
+      console.error('❌ [uploadVideoReliable] ALL upload attempts FAILED');
+      return null;
+
+    } catch (error) {
+      console.error('❌ [uploadVideoReliable] UNEXPECTED ERROR in uploadVideoReliable');
+      console.error('❌ [uploadVideoReliable] Error:', error.message);
+      console.error('❌ [uploadVideoReliable] Stack:', error.stack);
+      return null;
     }
   }
 

@@ -101,15 +101,29 @@ router.post('/upload', authenticate, upload.single('media'), async (req, res) =>
 
     let uploadResult;
     if (isVideo) {
-      // Upload video and get video ID
-      const videoId = await userFacebookApi.uploadVideo(req.file.path);
+      console.log('🎥 [media.js] VIDEO UPLOAD REQUEST DETECTED');
+      console.log('🎥 [media.js] File path:', req.file.path);
+      console.log('🎥 [media.js] File size:', (req.file.size / (1024 * 1024)).toFixed(2), 'MB');
+      console.log('🎥 [media.js] Using uploadVideoReliable() method for optimal handling');
+
+      // Use the new reliable upload method that handles large files
+      const videoId = await userFacebookApi.uploadVideoReliable(req.file.path);
+
+      console.log('🎥 [media.js] uploadVideoReliable() completed');
+      console.log('🎥 [media.js] Video ID result:', videoId);
+
+      if (!videoId) {
+        console.error('❌ [media.js] uploadVideoReliable() returned null');
+        throw new Error('Video upload failed - no video ID returned');
+      }
+
       uploadResult = {
         videoId: videoId,
         type: 'video',
         filename: req.file.filename,
         originalName: req.file.originalname
       };
-      console.log(`  ✅ Video uploaded successfully. Video ID: ${videoId}`);
+      console.log(`✅ [media.js] Video uploaded successfully. Video ID: ${videoId}`);
     } else if (isImage) {
       // Upload image and get image hash
       const imageHash = await userFacebookApi.uploadImage(req.file.path);
