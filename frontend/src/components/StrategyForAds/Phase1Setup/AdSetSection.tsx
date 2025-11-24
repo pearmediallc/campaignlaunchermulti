@@ -1261,22 +1261,25 @@ const AdSetSection: React.FC = () => {
             rules={{
               required: 'Number of ad sets is required',
               min: { value: 0, message: 'Minimum 0 ad sets' },
-              max: { value: 50, message: 'Maximum 50 ad sets' }
+              max: { value: 50, message: 'Maximum 50 ad sets (0-50)' }
             }}
-            render={({ field, fieldState: { error } }) => (
-              <TextField
-                {...field}
-                fullWidth
-                type="number"
-                label="Total Number of Ad Sets (including initial)"
-                inputProps={{ min: 0, max: 50, step: 1 }}
-                helperText={
-                  error?.message ||
-                  "Enter 0 for 1-1-1 structure only. Enter 1-50 for total ad sets (e.g., 50 = 1 initial + 49 duplicates)."
-                }
-                error={!!error}
-              />
-            )}
+            render={({ field, fieldState: { error } }) => {
+              const count = Number(field.value) || 0;
+              return (
+                <TextField
+                  {...field}
+                  fullWidth
+                  type="number"
+                  label={`Total Ad Sets to Create (0-50)${count > 0 ? ` → ${count === 1 ? '1 ad set only' : `1 initial + ${count - 1} duplicates`}` : ' → 1-1-1 only'}`}
+                  inputProps={{ min: 0, max: 50, step: 1 }}
+                  helperText={
+                    error?.message ||
+                    `${count === 0 ? '⚠️ 0 = Single 1-1-1 structure (no duplication)' : count === 1 ? '✓ Creates 1 ad set only (no duplication)' : `✓ Creates ${count} total ad sets: 1 initial + ${count - 1} copies`}`
+                  }
+                  error={!!error}
+                />
+              );
+            }}
           />
         </Box>
 
