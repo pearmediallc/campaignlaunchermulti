@@ -615,6 +615,25 @@ const AdSetSection: React.FC = () => {
         {/* Start and End Dates */}
         {scheduleType === 'scheduled' && (
           <>
+            {/* Timezone Info Alert */}
+            <Box sx={{ width: "100%" }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  <strong>⏰ Timezone:</strong> All dates/times use your Facebook Ad Account's timezone.
+                  <br />
+                  To check your account timezone, visit{' '}
+                  <a
+                    href="https://business.facebook.com/settings/ad-accounts"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'inherit', textDecoration: 'underline' }}
+                  >
+                    Ad Account Settings
+                  </a>
+                  .
+                </Typography>
+              </Alert>
+            </Box>
             <Box sx={{ width: "100%" }}>
               <Controller
                 name="adSetBudget.startDate"
@@ -626,7 +645,7 @@ const AdSetSection: React.FC = () => {
                     type="datetime-local"
                     label="Start Date & Time"
                     InputLabelProps={{ shrink: true }}
-                    helperText="Campaign start date and time"
+                    helperText="Campaign start date and time (in your ad account timezone)"
                   />
                 )}
               />
@@ -642,7 +661,7 @@ const AdSetSection: React.FC = () => {
                     type="datetime-local"
                     label="End Date & Time (Optional)"
                     InputLabelProps={{ shrink: true }}
-                    helperText="Leave empty to run continuously"
+                    helperText="Leave empty to run continuously (in your ad account timezone)"
                   />
                 )}
               />
