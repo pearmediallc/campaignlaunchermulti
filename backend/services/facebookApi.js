@@ -1494,7 +1494,9 @@ class FacebookAPI {
       }
 
       const sessionId = initResponse.data.upload_session_id;
+      const videoId = initResponse.data.video_id || initResponse.data.id; // ✅ FIX: Extract video ID from init response
       console.log(`✅ [uploadVideoResumable] Upload session created: ${sessionId}`);
+      console.log(`✅ [uploadVideoResumable] Video ID (handle): ${videoId}`);
 
       // Step 2: Upload chunks (10MB each)
       const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
@@ -1561,13 +1563,14 @@ class FacebookAPI {
       console.log('📦 [uploadVideoResumable] Finalize response status:', finalizeResponse.status);
       console.log('📦 [uploadVideoResumable] Finalize response data:', JSON.stringify(finalizeResponse.data, null, 2));
 
-      if (finalizeResponse.data?.id) {
+      // ✅ FIX: Check if finalize was successful (success: true or valid response status)
+      if (finalizeResponse.status === 200 && (finalizeResponse.data?.success === true || finalizeResponse.data?.success === undefined)) {
         console.log(`✅ [uploadVideoResumable] RESUMABLE UPLOAD COMPLETED SUCCESSFULLY!`);
-        console.log(`✅ [uploadVideoResumable] Video ID: ${finalizeResponse.data.id}`);
-        return finalizeResponse.data.id;
+        console.log(`✅ [uploadVideoResumable] Returning Video ID: ${videoId}`);
+        return videoId; // Return the video ID we captured from init response
       }
 
-      throw new Error('Failed to finalize upload');
+      throw new Error('Failed to finalize upload - finalize response not successful');
 
     } catch (error) {
       console.error(`  ❌ Resumable upload error: ${error.message}`);

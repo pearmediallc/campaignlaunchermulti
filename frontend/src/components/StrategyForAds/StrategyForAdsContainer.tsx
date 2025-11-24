@@ -509,7 +509,12 @@ const StrategyForAdsContainer: React.FC = () => {
         const adSetBudget = {
           ...workingCampaignData.adSetBudget,
           dailyBudget: workingCampaignData.adSetBudget.dailyBudget ? workingCampaignData.adSetBudget.dailyBudget : undefined,
-          lifetimeBudget: workingCampaignData.adSetBudget.lifetimeBudget ? workingCampaignData.adSetBudget.lifetimeBudget : undefined
+          lifetimeBudget: workingCampaignData.adSetBudget.lifetimeBudget ? workingCampaignData.adSetBudget.lifetimeBudget : undefined,
+          // ✅ FIX: Include schedule fields from form data
+          scheduleType: data.adSetBudget?.scheduleType || 'run_continuously',
+          startDate: data.adSetBudget?.startDate,
+          endDate: data.adSetBudget?.endDate,
+          dayparting: data.adSetBudget?.dayparting
         };
         formData.set('adSetBudget', JSON.stringify(adSetBudget));
       }
