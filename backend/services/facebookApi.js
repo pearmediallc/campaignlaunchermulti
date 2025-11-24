@@ -1211,7 +1211,23 @@ class FacebookAPI {
         } else if (adData.videoId || adData.mediaAssets?.videoId) {
           // Single video
           const videoId = adData.videoId || adData.mediaAssets?.videoId;
-          creative.asset_feed_spec.videos = [{ video_id: videoId }];
+
+          // ✅ FIX: Include video thumbnail for asset_feed_spec videos
+          const videoObject = { video_id: videoId };
+
+          // Get thumbnail from adData
+          const thumbnailSource = adData.videoThumbnail || adData.mediaAssets?.videoThumbnail;
+          if (thumbnailSource) {
+            // Check if it's a hash (32 hex chars) or URL
+            if (thumbnailSource.match(/^[a-f0-9]{32}$/i)) {
+              videoObject.thumbnail_hash = thumbnailSource;
+            } else {
+              videoObject.thumbnail_url = thumbnailSource;
+            }
+            console.log(`  ✅ Added video thumbnail to asset_feed_spec: ${thumbnailSource.substring(0, 50)}...`);
+          }
+
+          creative.asset_feed_spec.videos = [videoObject];
           creative.asset_feed_spec.ad_formats = ['SINGLE_VIDEO'];
         } else {
           // No media provided - Dynamic Creative requires media, throw error
@@ -3104,7 +3120,7 @@ class FacebookAPI {
           `${this.baseURL}/${originalAdSetId}/ads`,
           {
             params: {
-              fields: 'creative{object_story_spec,effective_object_story_id,asset_feed_spec,image_hash,video_id}',
+              fields: 'creative{object_story_spec{video_data{video_id,image_url,image_hash},link_data{image_hash,image_url}},effective_object_story_id,asset_feed_spec{videos{video_id,thumbnail_url,thumbnail_hash},images{hash,url}},image_hash,video_id}',
               access_token: this.accessToken,
               limit: 1
             }
@@ -3585,7 +3601,23 @@ class FacebookAPI {
                   // Add media to asset_feed_spec
                   if (variation.videoId || variation.videoHash) {
                     const videoId = variation.videoId || variation.videoHash;
-                    creative.asset_feed_spec.videos = [{ video_id: videoId }];
+
+                    // ✅ FIX: Include video thumbnail for asset_feed_spec videos
+                    const videoObject = { video_id: videoId };
+
+                    // Get thumbnail from variation or formData
+                    const thumbnailSource = variation.videoThumbnail || formData.videoThumbnail;
+                    if (thumbnailSource) {
+                      // Check if it's a hash (32 hex chars) or URL
+                      if (thumbnailSource.match(/^[a-f0-9]{32}$/i)) {
+                        videoObject.thumbnail_hash = thumbnailSource;
+                      } else {
+                        videoObject.thumbnail_url = thumbnailSource;
+                      }
+                      console.log(`  ✅ Added video thumbnail to asset_feed_spec: ${thumbnailSource.substring(0, 50)}...`);
+                    }
+
+                    creative.asset_feed_spec.videos = [videoObject];
                     console.log(`  ✅ Added uploaded video to asset_feed_spec: ${videoId}`);
                   } else if (variation.imageHash) {
                     creative.asset_feed_spec.images = [{ hash: variation.imageHash }];
@@ -3616,7 +3648,19 @@ class FacebookAPI {
                       creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
                     }
                   } else if (originalCreativeData?.video_data?.video_id) {
-                    creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
+                    // ✅ FIX: Include video thumbnail when copying original video
+                    const videoObject = { video_id: originalCreativeData.video_data.video_id };
+
+                    // Copy thumbnail from original creative if available
+                    if (originalCreativeData.video_data.image_url) {
+                      videoObject.thumbnail_url = originalCreativeData.video_data.image_url;
+                      console.log(`  ✅ Added original video thumbnail (URL) to asset_feed_spec`);
+                    } else if (originalCreativeData.video_data.image_hash) {
+                      videoObject.thumbnail_hash = originalCreativeData.video_data.image_hash;
+                      console.log(`  ✅ Added original video thumbnail (hash) to asset_feed_spec`);
+                    }
+
+                    creative.asset_feed_spec.videos = [videoObject];
                     console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
                   } else if (originalImageHash) {
                     // Use the original image hash we fetched earlier
@@ -3628,7 +3672,21 @@ class FacebookAPI {
                     console.log(`  ✅ Added image hash from formData to asset_feed_spec: ${formData.imageHash}`);
                   } else if (formData.videoId) {
                     // Fallback to formData video ID
-                    creative.asset_feed_spec.videos = [{ video_id: formData.videoId }];
+                    // ✅ FIX: Include video thumbnail when using formData video
+                    const videoObject = { video_id: formData.videoId };
+
+                    // Add thumbnail from formData if available
+                    if (formData.videoThumbnail) {
+                      // Check if it's a hash (32 hex chars) or URL
+                      if (formData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
+                        videoObject.thumbnail_hash = formData.videoThumbnail;
+                      } else {
+                        videoObject.thumbnail_url = formData.videoThumbnail;
+                      }
+                      console.log(`  ✅ Added video thumbnail to asset_feed_spec`);
+                    }
+
+                    creative.asset_feed_spec.videos = [videoObject];
                     console.log(`  ✅ Added video ID from formData to asset_feed_spec: ${formData.videoId}`);
                   } else {
                     console.error(`  ❌ No media (image hash or video ID) available for variation for Ad Set ${i + 1}`);
@@ -3672,7 +3730,23 @@ class FacebookAPI {
                   // Add media to asset_feed_spec
                   if (variation.videoId || variation.videoHash) {
                     const videoId = variation.videoId || variation.videoHash;
-                    creative.asset_feed_spec.videos = [{ video_id: videoId }];
+
+                    // ✅ FIX: Include video thumbnail for asset_feed_spec videos
+                    const videoObject = { video_id: videoId };
+
+                    // Get thumbnail from variation or formData
+                    const thumbnailSource = variation.videoThumbnail || formData.videoThumbnail;
+                    if (thumbnailSource) {
+                      // Check if it's a hash (32 hex chars) or URL
+                      if (thumbnailSource.match(/^[a-f0-9]{32}$/i)) {
+                        videoObject.thumbnail_hash = thumbnailSource;
+                      } else {
+                        videoObject.thumbnail_url = thumbnailSource;
+                      }
+                      console.log(`  ✅ Added video thumbnail to asset_feed_spec: ${thumbnailSource.substring(0, 50)}...`);
+                    }
+
+                    creative.asset_feed_spec.videos = [videoObject];
                     console.log(`  ✅ Added uploaded video to asset_feed_spec: ${videoId}`);
                   } else if (variation.imageHash) {
                     creative.asset_feed_spec.images = [{ hash: variation.imageHash }];
@@ -3703,7 +3777,19 @@ class FacebookAPI {
                       creative.asset_feed_spec.ad_formats = ['SINGLE_IMAGE'];
                     }
                   } else if (originalCreativeData?.video_data?.video_id) {
-                    creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
+                    // ✅ FIX: Include video thumbnail when copying original video
+                    const videoObject = { video_id: originalCreativeData.video_data.video_id };
+
+                    // Copy thumbnail from original creative if available
+                    if (originalCreativeData.video_data.image_url) {
+                      videoObject.thumbnail_url = originalCreativeData.video_data.image_url;
+                      console.log(`  ✅ Added original video thumbnail (URL) to asset_feed_spec`);
+                    } else if (originalCreativeData.video_data.image_hash) {
+                      videoObject.thumbnail_hash = originalCreativeData.video_data.image_hash;
+                      console.log(`  ✅ Added original video thumbnail (hash) to asset_feed_spec`);
+                    }
+
+                    creative.asset_feed_spec.videos = [videoObject];
                     console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
                   } else if (originalImageHash) {
                     creative.asset_feed_spec.images = [{ hash: originalImageHash }];
@@ -4039,12 +4125,38 @@ class FacebookAPI {
                 hasMedia = true;
               } else if (originalCreativeData?.video_data?.video_id) {
                 // Single video
-                creative.asset_feed_spec.videos = [{ video_id: originalCreativeData.video_data.video_id }];
+                // ✅ FIX: Include video thumbnail when copying original video
+                const videoObject = { video_id: originalCreativeData.video_data.video_id };
+
+                // Copy thumbnail from original creative if available
+                if (originalCreativeData.video_data.image_url) {
+                  videoObject.thumbnail_url = originalCreativeData.video_data.image_url;
+                  console.log(`  ✅ Added original video thumbnail (URL) to asset_feed_spec`);
+                } else if (originalCreativeData.video_data.image_hash) {
+                  videoObject.thumbnail_hash = originalCreativeData.video_data.image_hash;
+                  console.log(`  ✅ Added original video thumbnail (hash) to asset_feed_spec`);
+                }
+
+                creative.asset_feed_spec.videos = [videoObject];
                 adFormat = 'SINGLE_VIDEO';
                 hasMedia = true;
                 console.log(`  ✅ Added original video to asset_feed_spec: ${originalCreativeData.video_data.video_id}`);
               } else if (formData.videoId) {
-                creative.asset_feed_spec.videos = [{ video_id: formData.videoId }];
+                // ✅ FIX: Include video thumbnail when using formData video
+                const videoObject = { video_id: formData.videoId };
+
+                // Add thumbnail from formData if available
+                if (formData.videoThumbnail) {
+                  // Check if it's a hash (32 hex chars) or URL
+                  if (formData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
+                    videoObject.thumbnail_hash = formData.videoThumbnail;
+                  } else {
+                    videoObject.thumbnail_url = formData.videoThumbnail;
+                  }
+                  console.log(`  ✅ Added video thumbnail to asset_feed_spec`);
+                }
+
+                creative.asset_feed_spec.videos = [videoObject];
                 adFormat = 'SINGLE_VIDEO';
                 hasMedia = true;
                 console.log(`  ✅ Added video from formData to asset_feed_spec: ${formData.videoId}`);
