@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -31,6 +32,9 @@ const Strategy150Container: React.FC = () => {
   // Tab management
   const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create');
 
+  // Get URL location for import detection
+  const location = useLocation();
+
   // Existing state for campaign creation
   const [phase, setPhase] = useState<Strategy150Phase>('setup');
   const [activeStep, setActiveStep] = useState(0);
@@ -41,6 +45,108 @@ const Strategy150Container: React.FC = () => {
   const [skippedFields, setSkippedFields] = useState<any>(null);
   const [fallbackUsed, setFallbackUsed] = useState(false);
 
+  // State for imported ads from Ad Scraper
+  const [importedAdsData, setImportedAdsData] = useState<any>(null);
+
+  // ===== AD SCRAPER IMPORT INTEGRATION =====
+  // Detect import from Ad Scraper and fetch ads
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const importSessionId = searchParams.get('import');
+
+    if (importSessionId && phase === 'setup' && !importedAdsData) {
+      console.log('🔍 [Strategy 1-50-1] Detected Ad Scraper import session:', importSessionId);
+      fetchAdsFromScraper(importSessionId);
+    }
+  }, [location.search, phase, importedAdsData]);
+
+  const fetchAdsFromScraper = async (sessionId: string) => {
+    try {
+      console.log('📥 [Strategy 1-50-1] Fetching ads from Ad Scraper session:', sessionId);
+
+      // Call Ad Scraper API to get ads
+      const response = await fetch(`https://facebookswipefile-443507027642.us-central1.run.app/api/launcher-import/${sessionId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error('❌ [Strategy 1-50-1] Failed to fetch ads from Ad Scraper:', response.status, response.statusText);
+        setError(`Failed to import ads from Ad Scraper: ${response.statusText}`);
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.ads && result.ads.length > 0) {
+        console.log(`✅ [Strategy 1-50-1] Successfully fetched ${result.ads.length} ads from Ad Scraper`);
+        console.log('📦 Ads data:', result.ads);
+
+        // Store imported ads data for form auto-population
+        setImportedAdsData(result);
+
+        // Download media files and convert to File objects using proxy
+        const firstAd = result.ads[0];
+        if (firstAd.imageUrl || firstAd.videoUrl) {
+          console.log('📸 Downloading media via proxy...');
+          await downloadAndConvertMedia(sessionId, 0, result);
+        }
+
+      } else {
+        console.error('❌ [Strategy 1-50-1] No ads found in session:', result);
+        setError('Failed to import ads: Session not found or expired');
+      }
+    } catch (error: any) {
+      console.error('❌ [Strategy 1-50-1] Error fetching ads from Ad Scraper:', error);
+      setError(`Failed to import ads: ${error.message}`);
+    }
+  };
+
+  const downloadAndConvertMedia = async (sessionId: string, adIndex: number, fullResult: any) => {
+    try {
+      const ad = fullResult.ads[adIndex];
+      const isVideo = !!ad.videoUrl;
+
+      console.log(`📥 Downloading ${isVideo ? 'video' : 'image'} via proxy for session ${sessionId}, ad ${adIndex}`);
+
+      // Use proxy endpoint to bypass CORS
+      const proxyUrl = `https://facebookswipefile-443507027642.us-central1.run.app/api/proxy-media/${sessionId}/${adIndex}`;
+      const response = await fetch(proxyUrl);
+
+      if (!response.ok) {
+        console.error('❌ Failed to download media via proxy:', response.status);
+        setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually (proxy download failed).`);
+        return;
+      }
+
+      const blob = await response.blob();
+
+      // Create File object from blob
+      const fileName = isVideo ? 'imported-video.mp4' : 'imported-image.jpg';
+      const mimeType = blob.type || (isVideo ? 'video/mp4' : 'image/jpeg');
+      const file = new File([blob], fileName, { type: mimeType });
+
+      console.log('✅ Media file downloaded via proxy and converted:', file);
+
+      // Update imported ads data with File object
+      const updatedResult = {
+        ...fullResult,
+        ads: fullResult.ads.map((a: any, idx: number) =>
+          idx === adIndex ? { ...a, mediaFile: file } : a
+        )
+      };
+
+      setImportedAdsData(updatedResult);
+      setError(`✅ Successfully imported ${fullResult.ads.length} ad(s) from Ad Scraper with media!`);
+
+    } catch (error: any) {
+      console.error('❌ Error downloading media via proxy:', error);
+      setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually.`);
+    }
+  };
+  // ===== END AD SCRAPER IMPORT INTEGRATION =====
 
   const getPhaseComponent = () => {
     switch (phase) {
@@ -49,6 +155,7 @@ const Strategy150Container: React.FC = () => {
           <Phase1Setup
             onSubmit={handlePhase1Submit}
             error={error}
+            importedAdsData={importedAdsData}
           />
         );
       case 'creating':

@@ -24,9 +24,10 @@ import { useFacebookResources } from '../../../hooks/useFacebookResources';
 interface Phase1SetupProps {
   onSubmit: (data: Strategy150FormData) => void;
   error?: string;
+  importedAdsData?: any; // Data from Ad Scraper import
 }
 
-const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
+const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsData }) => {
   const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<Strategy150FormData | null>(null);
@@ -145,6 +146,72 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error }) => {
 
     loadUserDefaultTemplate();
   }, []);
+
+  // ===== AD SCRAPER IMPORT AUTO-POPULATION =====
+  // Auto-populate form fields when ads are imported from Ad Scraper
+  useEffect(() => {
+    if (importedAdsData && importedAdsData.ads && importedAdsData.ads.length > 0 && !loadingTemplate) {
+      const firstAd = importedAdsData.ads[0];
+
+      console.log('🎨 [Strategy 1-50-1] Auto-populating form with imported ad data:', firstAd);
+
+      // Populate text fields
+      if (firstAd.primaryText) {
+        methods.setValue('primaryText', firstAd.primaryText, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set primaryText:', firstAd.primaryText);
+      }
+
+      if (firstAd.headline) {
+        methods.setValue('headline', firstAd.headline, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set headline:', firstAd.headline);
+      }
+
+      if (firstAd.description) {
+        methods.setValue('description', firstAd.description, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set description:', firstAd.description);
+      }
+
+      if (firstAd.url) {
+        methods.setValue('url', firstAd.url, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set url:', firstAd.url);
+      }
+
+      if (firstAd.displayLink) {
+        methods.setValue('displayLink', firstAd.displayLink, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set displayLink:', firstAd.displayLink);
+      }
+
+      if (firstAd.callToAction) {
+        methods.setValue('callToAction', firstAd.callToAction, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set callToAction:', firstAd.callToAction);
+      }
+
+      // Set URL type based on what was imported
+      if (firstAd.urlType) {
+        methods.setValue('urlType', firstAd.urlType, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Set urlType:', firstAd.urlType);
+      }
+
+      // Handle media file if it was downloaded successfully
+      if (firstAd.mediaFile) {
+        const isVideo = firstAd.mediaFile.type.startsWith('video/');
+        methods.setValue('mediaType', isVideo ? 'single_video' : 'single_image', { shouldValidate: true, shouldDirty: true });
+
+        if (isVideo) {
+          methods.setValue('video', firstAd.mediaFile, { shouldValidate: true, shouldDirty: true });
+          console.log('  ✅ Set video file:', firstAd.mediaFile.name);
+        } else {
+          methods.setValue('image', firstAd.mediaFile, { shouldValidate: true, shouldDirty: true });
+          console.log('  ✅ Set image file:', firstAd.mediaFile.name);
+        }
+      } else if (firstAd.imageUrl || firstAd.videoUrl) {
+        console.log('  ℹ️  Media URL available but file not downloaded - user will need to upload manually');
+      }
+
+      console.log('✅ [Strategy 1-50-1] Form auto-population complete!');
+    }
+  }, [importedAdsData, loadingTemplate, methods]);
+  // ===== END AD SCRAPER IMPORT AUTO-POPULATION =====
 
   // Deep merge function for nested objects
   const deepMerge = (target: any, source: any): any => {
