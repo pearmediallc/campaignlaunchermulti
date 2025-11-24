@@ -89,8 +89,8 @@ const StrategyForAllContainer: React.FC = () => {
 
         const firstAd = result.ads[0];
         if (firstAd.imageUrl || firstAd.videoUrl) {
-          console.log('📸 Downloading media from URL...');
-          await downloadAndConvertMedia(firstAd, result);
+          console.log('📸 Downloading media via proxy...');
+          await downloadAndConvertMedia(sessionId, 0, result);
         }
 
       } else {
@@ -103,35 +103,37 @@ const StrategyForAllContainer: React.FC = () => {
     }
   };
 
-  const downloadAndConvertMedia = async (ad: any, fullResult: any) => {
+  const downloadAndConvertMedia = async (sessionId: string, adIndex: number, fullResult: any) => {
     try {
-      const mediaUrl = ad.imageUrl || ad.videoUrl;
+      const ad = fullResult.ads[adIndex];
       const isVideo = !!ad.videoUrl;
 
-      console.log(`📥 Downloading ${isVideo ? 'video' : 'image'} from:`, mediaUrl);
+      console.log(`📥 Downloading ${isVideo ? 'video' : 'image'} via proxy for session ${sessionId}, ad ${adIndex}`);
 
-      const response = await fetch(mediaUrl, {
-        mode: 'cors',
-        credentials: 'omit'
-      });
+      // Use proxy endpoint to bypass CORS
+      const proxyUrl = `https://facebookswipefile-443507027642.us-central1.run.app/api/proxy-media/${sessionId}/${adIndex}`;
+      const response = await fetch(proxyUrl);
 
       if (!response.ok) {
-        console.error('❌ Failed to download media:', response.status);
-        setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually (direct download not available).`);
+        console.error('❌ Failed to download media via proxy:', response.status);
+        setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually (proxy download failed).`);
         return;
       }
 
       const blob = await response.blob();
+
+      // Create File object from blob
       const fileName = isVideo ? 'imported-video.mp4' : 'imported-image.jpg';
-      const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+      const mimeType = blob.type || (isVideo ? 'video/mp4' : 'image/jpeg');
       const file = new File([blob], fileName, { type: mimeType });
 
-      console.log('✅ Media file downloaded and converted:', file);
+      console.log('✅ Media file downloaded via proxy and converted:', file);
 
+      // Update imported ads data with File object
       const updatedResult = {
         ...fullResult,
         ads: fullResult.ads.map((a: any, idx: number) =>
-          idx === 0 ? { ...a, mediaFile: file } : a
+          idx === adIndex ? { ...a, mediaFile: file } : a
         )
       };
 
@@ -139,7 +141,7 @@ const StrategyForAllContainer: React.FC = () => {
       setError(`✅ Successfully imported ${fullResult.ads.length} ad(s) from Ad Scraper with media!`);
 
     } catch (error: any) {
-      console.error('❌ Error downloading media:', error);
+      console.error('❌ Error downloading media via proxy:', error);
       setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually.`);
     }
   };
