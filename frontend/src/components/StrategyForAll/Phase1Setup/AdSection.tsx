@@ -103,6 +103,9 @@ const AdSection: React.FC = () => {
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
 
+  // Note: Dynamic text variations not supported in Strategy For All
+  // (those fields exist in StrategyForAds only)
+
   // Auto-select saved page or first available page
   useEffect(() => {
     if (resources.pages.length > 0 && !watch('facebookPage')) {
