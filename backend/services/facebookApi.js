@@ -232,30 +232,11 @@ class FacebookAPI {
     try {
       const url = `${this.baseURL}/act_${this.adAccountId}/adsets`;
 
-      // Auto-fetch pixel ID if needed for website conversions
+      // REMOVED: Auto-fetch pixel logic that was overriding user's selection
+      // Pixel must be explicitly selected by user via resource selector
       if (adSetData.conversionLocation === 'website' && !this.pixelId) {
-        console.log('🔍 Pixel ID not provided, attempting to fetch from ad account...');
-        try {
-          const pixelsUrl = `${this.baseURL}/act_${this.adAccountId}/adspixels`;
-          const pixelsResponse = await axios.get(pixelsUrl, {
-            params: {
-              access_token: this.accessToken,
-              fields: 'id,name,code,is_created_by_business',
-              limit: 10
-            }
-          });
-
-          if (pixelsResponse.data.data && pixelsResponse.data.data.length > 0) {
-            // Use the first available pixel
-            this.pixelId = pixelsResponse.data.data[0].id;
-            console.log(`✅ Auto-fetched pixel: ${pixelsResponse.data.data[0].name} (${this.pixelId})`);
-          } else {
-            console.warn('⚠️ No pixels found for this ad account - proceeding without pixel');
-          }
-        } catch (pixelFetchError) {
-          console.error('❌ Failed to fetch pixels:', pixelFetchError.message);
-          console.log('🆗 Proceeding without pixel ID - may need manual configuration');
-        }
+        console.log('⚠️ No pixel selected - campaign will be created without conversion tracking');
+        console.log('   User should select a pixel via the resource selector for conversion tracking');
       }
 
       console.log('📋 AdSet Configuration:');

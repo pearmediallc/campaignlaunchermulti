@@ -344,8 +344,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // NOTE: Don't validate selectedAdAccount/selectedPage here yet - they might come from active resource config
     // Validation will happen after checking UserResourceConfig
 
-    // Get pixel ID - either from selected pixel or fetch from ad account
+    // Get pixel ID - ONLY from user's selected pixel (NO auto-fetch)
     let pixelId = facebookAuth.selectedPixel?.id;
+    console.log('🔍 PIXEL SELECTION DEBUG:');
+    console.log('  - User selected pixel:', facebookAuth.selectedPixel?.id || 'NONE');
+    console.log('  - Pixel from form:', req.body.pixel || 'NONE');
+    console.log('  - Manual pixel entry:', req.body.manualPixelId || 'NONE');
 
     // Check if token exists and decrypt it
     if (!facebookAuth.accessToken) {
@@ -371,28 +375,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       });
     }
 
-    // If no pixel selected, fetch the ad account's pixels
-    if (!pixelId && req.body.conversionLocation === 'website') {
-      try {
-        const axios = require('axios');
-        const pixelsResponse = await axios.get(
-          `https://graph.facebook.com/v18.0/${facebookAuth.selectedAdAccount.id}/adspixels`,
-          {
-            params: {
-              access_token: decryptedToken,
-              fields: 'id,name,code,is_created_by_business'
-            }
-          }
-        );
-
-        if (pixelsResponse.data.data && pixelsResponse.data.data.length > 0) {
-          pixelId = pixelsResponse.data.data[0].id;
-          console.log(`Using ad account's pixel: ${pixelsResponse.data.data[0].name} (${pixelId})`);
-        }
-      } catch (error) {
-        console.log('Could not fetch pixels for ad account:', error.message);
-      }
-    }
+    // REMOVED: Auto-fetch logic that was overriding user's pixel selection
+    // Users must explicitly select a pixel via the resource selector
 
     // Get userId safely from multiple possible sources
     const userId = req.user?.id || req.userId || req.user;
@@ -403,12 +387,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     selectedAdAccountId = activeResources.selectedAdAccountId;  // No 'let' since already declared at top
     let selectedPageId = activeResources.selectedPageId;
-    let selectedPixelId = activeResources.selectedPixelId || pixelId;
+    let selectedPixelId = activeResources.selectedPixelId;  // ONLY use user's selection, NO fallback
 
     console.log('  ✓ Source:', activeResources.source);
     console.log('  ✓ Ad Account:', activeResources.selectedAdAccount?.name || selectedAdAccountId);
     console.log('  ✓ Page:', activeResources.selectedPage?.name || selectedPageId);
     console.log('  ✓ Pixel:', activeResources.selectedPixel?.name || selectedPixelId || 'None');
+    console.log('  🔍 Final pixel to use:', selectedPixelId || 'NONE (no conversion tracking)');
 
     // Override with request body if provided (for backward compatibility)
     if (req.body.selectedPageId) {
@@ -434,7 +419,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       accessToken: decryptedToken,
       adAccountId: (selectedAdAccountId || facebookAuth.selectedAdAccount.id).replace('act_', ''),
       pageId: selectedPageId || facebookAuth.selectedPage.id,
-      pixelId: pixelId
+      pixelId: selectedPixelId  // Use ONLY user's selected pixel
     });
 
     // Handle media files - uploadSingle uses .any() so files are in req.files array
@@ -520,7 +505,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
       // Ad set level fields
       performanceGoal: req.body.performanceGoal || 'maximize_conversions',
-      pixel: req.body.pixel || pixelId, // Use provided pixel or fallback to selected
+      pixel: req.body.pixel || selectedPixelId, // Use form pixel or user's selected pixel ONLY
       manualPixelId: req.body.manualPixelId, // For manual pixel entry
       conversionEvent: req.body.conversionEvent || 'Lead',
       attributionSetting: req.body.attributionSetting || '1_day_click_1_day_view',

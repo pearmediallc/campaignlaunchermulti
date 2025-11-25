@@ -362,13 +362,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // NOTE: Don't validate selectedAdAccount/selectedPage here yet - they might come from active resource config
     // Validation will happen after checking UserResourceConfig
 
-    // Get pixel ID - prioritize form submission, then selected pixel, then fetch from ad account
+    // Get pixel ID - ONLY from user's explicit selection (NO auto-fetch)
     let pixelId = req.body.pixel || facebookAuth.selectedPixel?.id;
-    console.log('🔍 Pixel selection:', {
-      fromForm: req.body.pixel || 'Not provided',
-      fromAuth: facebookAuth.selectedPixel?.id || 'Not set',
-      usingPixel: pixelId || 'Will fetch from ad account'
-    });
+    console.log('🔍 PIXEL SELECTION DEBUG:');
+    console.log('  - Pixel from form:', req.body.pixel || 'NONE');
+    console.log('  - User selected pixel:', facebookAuth.selectedPixel?.id || 'NONE');
+    console.log('  - Using pixel:', pixelId || 'NONE (no conversion tracking)');
 
     // Check if token exists and decrypt it
     if (!facebookAuth.accessToken) {
@@ -394,28 +393,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       });
     }
 
-    // If no pixel selected, fetch the ad account's pixels
-    if (!pixelId && req.body.conversionLocation === 'website') {
-      try {
-        const axios = require('axios');
-        const pixelsResponse = await axios.get(
-          `https://graph.facebook.com/v18.0/${facebookAuth.selectedAdAccount.id}/adspixels`,
-          {
-            params: {
-              access_token: decryptedToken,
-              fields: 'id,name,code,is_created_by_business'
-            }
-          }
-        );
-
-        if (pixelsResponse.data.data && pixelsResponse.data.data.length > 0) {
-          pixelId = pixelsResponse.data.data[0].id;
-          console.log(`Using ad account's pixel: ${pixelsResponse.data.data[0].name} (${pixelId})`);
-        }
-      } catch (error) {
-        console.log('Could not fetch pixels for ad account:', error.message);
-      }
-    }
+    // REMOVED: Auto-fetch logic that was overriding user's pixel selection
+    // Users must explicitly select a pixel via the resource selector
 
     // Get userId safely from multiple possible sources
     const userId = req.user?.id || req.userId || req.user;
@@ -426,7 +405,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     selectedAdAccountId = activeResources.selectedAdAccountId;
     selectedPageId = activeResources.selectedPageId;
-    selectedPixelId = activeResources.selectedPixelId || pixelId;
+    selectedPixelId = activeResources.selectedPixelId;  // ONLY use user's selection, NO fallback
 
     console.log('  ✓ Source:', activeResources.source);
     console.log('  ✓ Ad Account:', activeResources.selectedAdAccount?.name || selectedAdAccountId);
