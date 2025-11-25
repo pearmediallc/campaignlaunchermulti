@@ -1025,12 +1025,34 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         // ============================================================
         console.log('\n🎯 ========== DEFICIT RECOVERY PHASE ==========');
 
-        const currentCount = 1 + duplicatedAdSets.length; // 1 original + duplicates
+        // ✅ FIX: Query Facebook for ACTUAL ad set count to avoid duplicates
+        // Problem: duplicatedAdSets.length only counts successful ad+adset pairs
+        // If ad creation fails but ad set succeeded, we get wrong count
+        let currentCount = 1 + duplicatedAdSets.length; // Fallback count
+
+        try {
+          const axios = require('axios');
+          const actualAdSetsResponse = await axios.get(
+            `https://graph.facebook.com/v18.0/${result.campaign.id}/adsets`,
+            {
+              params: {
+                access_token: decryptedToken,
+                fields: 'id,name',
+                limit: 100
+              }
+            }
+          );
+          currentCount = actualAdSetsResponse.data?.data?.length || currentCount;
+          console.log(`📊 Actual ad sets on Facebook: ${currentCount} (queried from API)`);
+        } catch (countError) {
+          console.warn(`⚠️ Could not query Facebook for ad set count, using calculated count: ${currentCount}`);
+        }
+
         const targetCount = targetAdSetCount;
         const deficit = targetCount - currentCount;
 
         console.log(`📊 Target: ${targetCount} ad sets`);
-        console.log(`📊 Current: ${currentCount} ad sets`);
+        console.log(`📊 Current: ${currentCount} ad sets (verified from Facebook)`);
         console.log(`📊 Deficit: ${deficit} ad sets`);
 
         if (deficit > 0) {

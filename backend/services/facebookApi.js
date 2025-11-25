@@ -269,8 +269,10 @@ class FacebookAPI {
       console.log('  - Optimization Goal:', this.getOptimizationGoal ? 'Will be calculated' : 'Not set');
       console.log('  - Dynamic Creative:', adSetData.dynamicTextEnabled ? 'ENABLED' : 'DISABLED');
 
+      // ✅ FIX: Use custom name if provided, otherwise default to "AdSet Main"
+      // This allows duplicates to have "AdSet 2", "AdSet 3", etc. while initial keeps "AdSet Main"
       let params = {
-        name: `[Launcher] ${adSetData.campaignName} - AdSet Main`,
+        name: adSetData.adSetName || adSetData.name || `[Launcher] ${adSetData.campaignName} - AdSet Main`,
         campaign_id: adSetData.campaignId,
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
