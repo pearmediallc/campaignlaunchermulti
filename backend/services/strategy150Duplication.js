@@ -418,6 +418,11 @@ class Strategy150DuplicationService {
 
       try {
         console.log(`⏳ Creating Ad ${i + 1}/${adSets.length} for AdSet ${adSet.id}...`);
+        console.log(`🔍 DEBUG - Ad creative data:`, {
+          post_id: postId,
+          page_id: this.pageId,
+          post_id_format: postId?.includes('_') ? 'CORRECT (page_id_post_id)' : 'WRONG (missing page_id prefix)'
+        });
 
         const response = await axios.post(
           `${this.baseURL}/act_${this.adAccountId}/ads`,
