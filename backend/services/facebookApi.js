@@ -682,15 +682,38 @@ class FacebookAPI {
         const startDateSource = adSetData.adSetBudget?.startDate || adSetData.schedule?.startTime || adSetData.schedule?.startDate;
         const endDateSource = adSetData.adSetBudget?.endDate || adSetData.schedule?.endTime || adSetData.schedule?.endDate;
 
-        if (startDateSource) {
-          const startDate = new Date(startDateSource);
-          params.start_time = Math.floor(startDate.getTime() / 1000);
-          console.log('📅 Schedule Start Time:', startDateSource, '→ Unix:', params.start_time);
-        }
-        if (endDateSource) {
-          const endDate = new Date(endDateSource);
-          params.end_time = Math.floor(endDate.getTime() / 1000);
-          console.log('📅 Schedule End Time:', endDateSource, '→ Unix:', params.end_time);
+        if (startDateSource || endDateSource) {
+          // ✅ FIX: Fetch ad account timezone for proper conversion
+          let adAccountTimezone = 'America/New_York'; // Default fallback
+          try {
+            const adAccountResponse = await axios.get(
+              `${this.baseURL}/act_${this.adAccountId}`,
+              {
+                params: {
+                  fields: 'timezone_name',
+                  access_token: this.accessToken
+                }
+              }
+            );
+            adAccountTimezone = adAccountResponse.data.timezone_name || 'America/New_York';
+            console.log(`  🌍 Ad account timezone: ${adAccountTimezone}`);
+          } catch (tzError) {
+            console.warn(`  ⚠️ Could not fetch ad account timezone, using default: ${adAccountTimezone}`);
+          }
+
+          const moment = require('moment-timezone');
+
+          if (startDateSource) {
+            // Parse datetime string as if it's in the ad account's timezone
+            const startInAdAccountTz = moment.tz(startDateSource, adAccountTimezone);
+            params.start_time = startInAdAccountTz.unix();
+            console.log(`📅 Schedule Start Time: ${startDateSource} (${adAccountTimezone}) → Unix: ${params.start_time}`);
+          }
+          if (endDateSource) {
+            const endInAdAccountTz = moment.tz(endDateSource, adAccountTimezone);
+            params.end_time = endInAdAccountTz.unix();
+            console.log(`📅 Schedule End Time: ${endDateSource} (${adAccountTimezone}) → Unix: ${params.end_time}`);
+          }
         }
       }
 
@@ -3205,6 +3228,8 @@ class FacebookAPI {
 
       for (let i = 0; i < count; i++) {
         let newName = `Ad Set Copy ${i + 1}`; // Default fallback - accessible in catch block
+        let newAdSetData = {}; // ✅ FIX: Declare outside try block to prevent ReferenceError in catch block
+
         try {
           console.log(`  Creating copy ${i + 1} of ${count}...`);
 
@@ -3276,7 +3301,8 @@ class FacebookAPI {
             ? originalAdSet.name.replace(/AdSet \d+$/, `AdSet ${newNumber}`)
             : `${originalAdSet.name} ${i + 1}`;
 
-          const newAdSetData = {
+          // ✅ FIX: Build newAdSetData object (assign, not declare with const)
+          newAdSetData = {
             name: newName,
             campaign_id: campaignId,
             targeting: JSON.stringify(cleanedTargeting),  // Must be stringified for Facebook API
@@ -3329,21 +3355,43 @@ class FacebookAPI {
             newAdSetData.daily_spend_cap = originalAdSet.daily_spend_cap;
           }
 
-          // ✅ FIX: Apply schedule to ALL duplicated ad sets (from formData)
+          // ✅ FIX: Apply schedule to ALL duplicated ad sets with TIMEZONE CONVERSION
           if (formData?.adSetBudget) {
             const startDateSource = formData.adSetBudget.startDate;
             const endDateSource = formData.adSetBudget.endDate;
 
+            // Fetch ad account timezone to ensure proper conversion
+            let adAccountTimezone = 'America/New_York'; // Default fallback
+            try {
+              const adAccountResponse = await axios.get(
+                `${this.baseURL}/act_${campaignAccountId}`,
+                {
+                  params: {
+                    fields: 'timezone_name',
+                    access_token: this.accessToken
+                  }
+                }
+              );
+              adAccountTimezone = adAccountResponse.data.timezone_name || 'America/New_York';
+              console.log(`  🌍 Ad account timezone: ${adAccountTimezone}`);
+            } catch (tzError) {
+              console.warn(`  ⚠️ Could not fetch ad account timezone, using default: ${adAccountTimezone}`);
+            }
+
             if (startDateSource) {
-              const startDate = new Date(startDateSource);
-              newAdSetData.start_time = Math.floor(startDate.getTime() / 1000);
-              console.log(`  📅 Applied start_time to duplicated ad set ${i + 1}: ${startDateSource} → Unix: ${newAdSetData.start_time}`);
+              // Parse datetime string as if it's in the ad account's timezone
+              // User enters "2025-11-25T00:00" meaning 00:00 in ad account timezone
+              const moment = require('moment-timezone');
+              const startInAdAccountTz = moment.tz(startDateSource, adAccountTimezone);
+              newAdSetData.start_time = startInAdAccountTz.unix();
+              console.log(`  📅 Applied start_time to duplicated ad set ${i + 1}: ${startDateSource} (${adAccountTimezone}) → Unix: ${newAdSetData.start_time}`);
             }
 
             if (endDateSource) {
-              const endDate = new Date(endDateSource);
-              newAdSetData.end_time = Math.floor(endDate.getTime() / 1000);
-              console.log(`  📅 Applied end_time to duplicated ad set ${i + 1}: ${endDateSource} → Unix: ${newAdSetData.end_time}`);
+              const moment = require('moment-timezone');
+              const endInAdAccountTz = moment.tz(endDateSource, adAccountTimezone);
+              newAdSetData.end_time = endInAdAccountTz.unix();
+              console.log(`  📅 Applied end_time to duplicated ad set ${i + 1}: ${endDateSource} (${adAccountTimezone}) → Unix: ${newAdSetData.end_time}`);
             }
           }
 

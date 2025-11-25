@@ -37,6 +37,7 @@
     "metascraper-image": "^5.49.1",
     "metascraper-publisher": "^5.49.1",
     "metascraper-title": "^5.49.1",
+    "moment-timezone": "^0.6.0",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.14.3",
     "openai": "^6.9.1",
