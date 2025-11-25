@@ -168,10 +168,12 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
   // ===== AD SCRAPER IMPORT AUTO-POPULATION =====
   useEffect(() => {
     if (importedAdsData && importedAdsData.ads && importedAdsData.ads.length > 0 && !loadingTemplate) {
-      const firstAd = importedAdsData.ads[0];
+      const ads = importedAdsData.ads;
+      const firstAd = ads[0];
 
-      console.log('🎨 [Strategy For Ads] Auto-populating form with imported ad data:', firstAd);
+      console.log(`🎨 [Strategy For Ads] Auto-populating with ${ads.length} imported ads`);
 
+      // === MAIN AD (Ad #1) ===
       if (firstAd.primaryText) {
         methods.setValue('primaryText', firstAd.primaryText, { shouldValidate: true, shouldDirty: true });
         console.log('  ✅ Set primaryText:', firstAd.primaryText);
@@ -207,6 +209,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
         console.log('  ✅ Set urlType:', firstAd.urlType);
       }
 
+      // Main media (from ad #1)
       if (firstAd.mediaFile) {
         const isVideo = firstAd.mediaFile.type.startsWith('video/');
         methods.setValue('mediaType', isVideo ? 'single_video' : 'single_image', { shouldValidate: true, shouldDirty: true });
@@ -218,11 +221,52 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
           methods.setValue('image', firstAd.mediaFile, { shouldValidate: true, shouldDirty: true });
           console.log('  ✅ Set image file:', firstAd.mediaFile.name);
         }
-      } else if (firstAd.imageUrl || firstAd.videoUrl) {
-        console.log('  ℹ️  Media URL available but file not downloaded - user will need to upload manually');
       }
 
-      console.log('✅ [Strategy For Ads] Form auto-population complete!');
+      // === DYNAMIC TEXT VARIATIONS (Ads #2-6) ===
+      if (ads.length > 1) {
+        // Enable dynamic text
+        methods.setValue('dynamicTextEnabled', true, { shouldValidate: true });
+        console.log('  ✅ Enabled dynamicTextEnabled');
+
+        // Primary text variations (ads 2-6, max 5)
+        const primaryVariations = ads.slice(1, 6)
+          .map(ad => ad.primaryText || '')
+          .filter(text => text.trim().length > 0);
+
+        // Headline variations (ads 2-6, max 5)
+        const headlineVariations = ads.slice(1, 6)
+          .map(ad => ad.headline || '')
+          .filter(headline => headline.trim().length > 0);
+
+        if (primaryVariations.length > 0) {
+          methods.setValue('primaryTextVariations', primaryVariations, { shouldValidate: true });
+          console.log(`  ✅ Set ${primaryVariations.length} primary text variations`);
+        }
+
+        if (headlineVariations.length > 0) {
+          methods.setValue('headlineVariations', headlineVariations, { shouldValidate: true });
+          console.log(`  ✅ Set ${headlineVariations.length} headline variations`);
+        }
+      }
+
+      // === DYNAMIC CREATIVE (All Media from All Ads) ===
+      const allMediaFiles = ads
+        .map(ad => ad.mediaFile)
+        .filter(file => file !== null && file !== undefined);
+
+      if (allMediaFiles.length > 1) {
+        // Enable dynamic creative
+        methods.setValue('dynamicCreativeEnabled', true, { shouldValidate: true });
+        console.log('  ✅ Enabled dynamicCreativeEnabled');
+
+        // Set all media files (limit 10)
+        const mediaToSet = allMediaFiles.slice(0, 10);
+        methods.setValue('dynamicMediaFiles', mediaToSet, { shouldValidate: true });
+        console.log(`  ✅ Set ${mediaToSet.length} media files for dynamic creative`);
+      }
+
+      console.log(`✅ [Strategy For Ads] Successfully imported ${ads.length} ads with dynamic features enabled!`);
     }
   }, [importedAdsData, loadingTemplate, methods]);
   // ===== END AD SCRAPER IMPORT AUTO-POPULATION =====
