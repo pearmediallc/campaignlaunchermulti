@@ -136,10 +136,11 @@ const AdSection: React.FC = () => {
   // REMOVED the problematic syncing effect that was causing infinite loops
   // Instead, we'll update form values directly in the onChange handlers
 
-  // Watch for template loading - sync form data to local state ONCE
+  // Watch for template loading AND Ad Scraper import - sync form data to local state
   useEffect(() => {
-    // Only sync from form to local state when template loads
-    // This should only happen once when a template is selected
+    // Sync from form to local state when:
+    // 1. Template loads
+    // 2. Ad Scraper import populates form data
     if (formDynamicTextEnabled !== undefined) {
       setEnableDynamicVariations(formDynamicTextEnabled);
     }
@@ -151,7 +152,7 @@ const AdSection: React.FC = () => {
     if (formHeadlineVariations && formHeadlineVariations.length > 0) {
       setHeadlineVariations(formHeadlineVariations);
     }
-  }, []); // Empty deps - only run once on mount/template load
+  }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]); // Watch form values for changes
 
   // Auto-select saved page or first available page
   useEffect(() => {
