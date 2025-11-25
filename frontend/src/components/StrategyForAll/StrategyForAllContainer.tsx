@@ -85,13 +85,17 @@ const StrategyForAllContainer: React.FC = () => {
         console.log(`✅ [Strategy For All] Successfully fetched ${result.ads.length} ads from Ad Scraper`);
         console.log('📦 Ads data:', result.ads);
 
-        setImportedAdsData(result);
+        // Download ALL media files via proxy (Strategy For All uses only first ad)
+        console.log(`📥 Downloading media for ${result.ads.length} ad(s)...`);
+        const adsWithMedia = await downloadAllMediaViaProxy(sessionId, result.ads);
 
-        const firstAd = result.ads[0];
-        if (firstAd.imageUrl || firstAd.videoUrl) {
-          console.log('📸 Downloading media via proxy...');
-          await downloadAndConvertMedia(sessionId, 0, result);
-        }
+        // Store imported ads data with downloaded media
+        setImportedAdsData({
+          ...result,
+          ads: adsWithMedia
+        });
+
+        setError(`✅ Successfully imported ${result.ads.length} ad(s) from Ad Scraper with media!`);
 
       } else {
         console.error('❌ [Strategy For All] No ads found in session:', result);
@@ -103,47 +107,50 @@ const StrategyForAllContainer: React.FC = () => {
     }
   };
 
-  const downloadAndConvertMedia = async (sessionId: string, adIndex: number, fullResult: any) => {
+  // Helper: Download single media file via proxy
+  const downloadMediaViaProxy = async (sessionId: string, adIndex: number): Promise<File | null> => {
     try {
-      const ad = fullResult.ads[adIndex];
-      const isVideo = !!ad.videoUrl;
-
-      console.log(`📥 Downloading ${isVideo ? 'video' : 'image'} via proxy for session ${sessionId}, ad ${adIndex}`);
-
-      // Use proxy endpoint to bypass CORS
       const proxyUrl = `https://facebookswipefile-443507027642.us-central1.run.app/api/proxy-media/${sessionId}/${adIndex}`;
       const response = await fetch(proxyUrl);
 
       if (!response.ok) {
-        console.error('❌ Failed to download media via proxy:', response.status);
-        setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually (proxy download failed).`);
-        return;
+        console.error(`❌ Failed proxy download for ad ${adIndex + 1}: HTTP ${response.status}`);
+        return null;
       }
 
       const blob = await response.blob();
+      const isVideo = blob.type.startsWith('video/');
+      const fileName = isVideo ? `imported-ad-${adIndex + 1}.mp4` : `imported-ad-${adIndex + 1}.jpg`;
+      const file = new File([blob], fileName, { type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg') });
 
-      // Create File object from blob
-      const fileName = isVideo ? 'imported-video.mp4' : 'imported-image.jpg';
-      const mimeType = blob.type || (isVideo ? 'video/mp4' : 'image/jpeg');
-      const file = new File([blob], fileName, { type: mimeType });
-
-      console.log('✅ Media file downloaded via proxy and converted:', file);
-
-      // Update imported ads data with File object
-      const updatedResult = {
-        ...fullResult,
-        ads: fullResult.ads.map((a: any, idx: number) =>
-          idx === adIndex ? { ...a, mediaFile: file } : a
-        )
-      };
-
-      setImportedAdsData(updatedResult);
-      setError(`✅ Successfully imported ${fullResult.ads.length} ad(s) from Ad Scraper with media!`);
-
+      console.log(`✅ Downloaded media for ad ${adIndex + 1}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+      return file;
     } catch (error: any) {
-      console.error('❌ Error downloading media via proxy:', error);
-      setError(`✅ Imported ${fullResult.ads.length} ad(s) from Ad Scraper! Note: Please upload media files manually.`);
+      console.error(`❌ Error downloading media for ad ${adIndex + 1}:`, error);
+      return null;
     }
+  };
+
+  // Helper: Download ALL media files for all ads
+  const downloadAllMediaViaProxy = async (sessionId: string, ads: any[]): Promise<any[]> => {
+    const adsWithMedia = [];
+
+    for (let i = 0; i < ads.length; i++) {
+      const ad = ads[i];
+
+      if (ad.imageUrl || ad.videoUrl) {
+        const mediaFile = await downloadMediaViaProxy(sessionId, i);
+        adsWithMedia.push({ ...ad, mediaFile });
+      } else {
+        // No media for this ad
+        adsWithMedia.push(ad);
+      }
+    }
+
+    const successCount = adsWithMedia.filter(ad => ad.mediaFile).length;
+    console.log(`✅ Successfully downloaded ${successCount}/${ads.length} media files`);
+
+    return adsWithMedia;
   };
   // ===== END AD SCRAPER IMPORT INTEGRATION =====
 

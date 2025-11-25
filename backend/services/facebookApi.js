@@ -1545,8 +1545,8 @@ class FacebookAPI {
       console.log(`✅ [uploadVideoResumable] Upload session created: ${sessionId}`);
       console.log(`✅ [uploadVideoResumable] Video ID (handle): ${videoId}`);
 
-      // Step 2: Upload chunks (10MB each)
-      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+      // Step 2: Upload chunks (50MB each for optimal speed)
+      const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks
       const chunks = Math.ceil(fileSize / CHUNK_SIZE);
       console.log('📦 [uploadVideoResumable] STEP 2: Uploading file in chunks');
       console.log('📦 [uploadVideoResumable] Chunk size:', (CHUNK_SIZE / (1024 * 1024)).toFixed(2), 'MB');
