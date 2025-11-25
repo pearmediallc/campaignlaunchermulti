@@ -207,56 +207,8 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
         console.log('  ℹ️  Media URL available but file not downloaded - user will need to upload manually');
       }
 
-      // === DYNAMIC TEXT VARIATIONS (Ads #2-6) ===
-      if (ads.length > 1) {
-        console.log(`📝 [Strategy For All] Processing ${ads.length - 1} additional ads for dynamic text variations`);
-
-        methods.setValue('dynamicTextEnabled', true, { shouldValidate: true, shouldDirty: true });
-        console.log('  ✅ Enabled dynamic text variations');
-
-        // Extract primary text variations (ads 2-6, max 5 variations)
-        const primaryVariations = ads.slice(1, 6)
-          .map(ad => ad.primaryText || '')
-          .filter(text => text.trim().length > 0);
-
-        // Extract headline variations (ads 2-6, max 5 variations)
-        const headlineVariations = ads.slice(1, 6)
-          .map(ad => ad.headline || '')
-          .filter(headline => headline.trim().length > 0);
-
-        if (primaryVariations.length > 0) {
-          methods.setValue('primaryTextVariations', primaryVariations, { shouldValidate: true, shouldDirty: true });
-          console.log(`  ✅ Set ${primaryVariations.length} primary text variations`);
-        }
-
-        if (headlineVariations.length > 0) {
-          methods.setValue('headlineVariations', headlineVariations, { shouldValidate: true, shouldDirty: true });
-          console.log(`  ✅ Set ${headlineVariations.length} headline variations`);
-        }
-      }
-
-      // === DYNAMIC CREATIVE (All Media from All Ads) ===
-      const allMediaFiles = ads
-        .map(ad => ad.mediaFile)
-        .filter(file => file !== null && file !== undefined);
-
-      if (allMediaFiles.length > 1) {
-        console.log(`🎬 [Strategy For All] Processing ${allMediaFiles.length} media files for dynamic creative`);
-
-        methods.setValue('dynamicCreativeEnabled', true, { shouldValidate: true, shouldDirty: true });
-        console.log('  ✅ Enabled dynamic creative');
-
-        // Facebook allows up to 10 images/videos in dynamic creative
-        const mediaToSet = allMediaFiles.slice(0, 10);
-        methods.setValue('dynamicMediaFiles', mediaToSet, { shouldValidate: true, shouldDirty: true });
-        console.log(`  ✅ Set ${mediaToSet.length} media files for dynamic creative`);
-
-        // Change media type to carousel when using dynamic creative
-        methods.setValue('mediaType', 'carousel', { shouldValidate: true, shouldDirty: true });
-        console.log('  ✅ Changed media type to carousel');
-      }
-
-      console.log('✅ [Strategy For All] Multi-ad form auto-population complete!');
+      // Note: Strategy For All only uses first ad data (no dynamic variations support)
+      console.log('✅ [Strategy For All] Form auto-population complete!');
     }
   }, [importedAdsData, loadingTemplate, methods]);
   // ===== END AD SCRAPER IMPORT AUTO-POPULATION =====
