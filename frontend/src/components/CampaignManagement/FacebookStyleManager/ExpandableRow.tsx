@@ -447,14 +447,14 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                                 <TableCell sx={{ fontSize: '12px' }}>
                                   <EnhancedStatusChip item={adset} showEffectiveStatus showLearningPhase />
                                 </TableCell>
-                                <TableCell sx={{ fontSize: '12px' }}>{formatBudget(adset.daily_budget)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatNumber(adset.metrics?.results)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatNumber(adset.metrics?.reach)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatNumber(adset.metrics?.impressions)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatCurrency(adset.metrics?.cost_per_result)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatCurrency(adset.metrics?.spend)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatPercentage(adset.metrics?.ctr)}</TableCell>
-                                <TableCell sx={{ fontSize: '12px', textAlign: 'right' }}>{formatCurrency(adset.metrics?.cpm)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>{formatBudget(adset.daily_budget)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatNumber(adset.metrics?.results)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatNumber(adset.metrics?.reach)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatNumber(adset.metrics?.impressions)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatCurrency(adset.metrics?.cost_per_result)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatCurrency(adset.metrics?.spend)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatPercentage(adset.metrics?.ctr)}</TableCell>
+                                <TableCell sx={{ fontSize: '12px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatCurrency(adset.metrics?.cpm)}</TableCell>
                               </TableRow>
 
                               {/* Nested Ads for this Ad Set */}
@@ -488,14 +488,14 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                                                   <TableCell sx={{ fontSize: '11px' }}>
                                                     <EnhancedStatusChip item={ad} showEffectiveStatus showLearningPhase={false} />
                                                   </TableCell>
-                                                  <TableCell sx={{ fontSize: '11px' }}>—</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatNumber(ad.metrics?.results)}</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatNumber(ad.metrics?.reach)}</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatNumber(ad.metrics?.impressions)}</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatCurrency(ad.metrics?.cost_per_result)}</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatCurrency(ad.metrics?.spend)}</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatPercentage(ad.metrics?.ctr)}</TableCell>
-                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right' }}>{formatCurrency(ad.metrics?.cpm)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>—</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatNumber(ad.metrics?.results)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatNumber(ad.metrics?.reach)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatNumber(ad.metrics?.impressions)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatCurrency(ad.metrics?.cost_per_result)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatCurrency(ad.metrics?.spend)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatPercentage(ad.metrics?.ctr)}</TableCell>
+                                                  <TableCell sx={{ fontSize: '11px', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>{formatCurrency(ad.metrics?.cpm)}</TableCell>
                                                 </TableRow>
                                               ))}
                                             </TableBody>
@@ -532,10 +532,10 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
                             <TableCell>
                               <EnhancedStatusChip item={ad} showEffectiveStatus showLearningPhase={false} />
                             </TableCell>
-                            <TableCell sx={{ fontSize: '13px' }}>
+                            <TableCell sx={{ fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>
                               {formatNumber(ad.metrics?.impressions)}
                             </TableCell>
-                            <TableCell sx={{ fontSize: '13px' }}>
+                            <TableCell sx={{ fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>
                               {formatCurrency(ad.metrics?.spend)}
                             </TableCell>
                           </TableRow>
