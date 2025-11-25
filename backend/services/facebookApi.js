@@ -2510,7 +2510,7 @@ class FacebookAPI {
           if (variation.mediaType && variation.mediaType !== campaignData.mediaType) {
             // Upload variation-specific media if different from main
             if (variation.mediaType === 'video' && variation.videoPath) {
-              const videoId = await this.uploadVideo(variation.videoPath);
+              const videoId = await this.uploadVideoSmart(variation.videoPath);
               if (videoId) variationMediaAssets = { videoId };
             } else if (variation.mediaType === 'single_image' && variation.imagePath) {
               const imageHash = await this.uploadImage(variation.imagePath);
@@ -2771,7 +2771,7 @@ class FacebookAPI {
         try {
           console.log('🎬 Starting video upload...');
           console.log('  Video path:', campaignData.videoPath);
-          const videoId = await this.uploadVideo(campaignData.videoPath);
+          const videoId = await this.uploadVideoSmart(campaignData.videoPath);
           if (videoId) {
             mediaAssets.videoId = videoId;
             console.log('✅ Video uploaded successfully with ID:', videoId);
