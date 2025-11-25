@@ -2961,14 +2961,17 @@ class FacebookAPI {
         if (creative) {
           console.log('  ✅ Creative data retrieved:', JSON.stringify(creative, null, 2));
 
-          // Try multiple possible fields
-          const postId = creative.effective_object_story_id ||
-                        creative.object_story_id ||
-                        creative.object_story_spec?.page_id;
+          // Try to get actual post ID (must be in page_id_post_id format)
+          const postId = creative.effective_object_story_id || creative.object_story_id;
 
           if (postId) {
-            console.log(`  ✅ Post ID found via Method 1: ${postId}`);
-            return postId;
+            // Validate post ID format (should contain underscore: page_id_post_id)
+            if (postId.includes('_')) {
+              console.log(`  ✅ Post ID found via Method 1: ${postId}`);
+              return postId;
+            } else {
+              console.log(`  ⚠️ Invalid post ID format (missing underscore): ${postId}`);
+            }
           }
         }
         console.log('  ⚠️ Method 1: No post ID in creative data');
@@ -3002,9 +3005,11 @@ class FacebookAPI {
           const postId = creativeResponse.data.effective_object_story_id ||
                         creativeResponse.data.object_story_id;
 
-          if (postId) {
+          if (postId && postId.includes('_')) {
             console.log(`  ✅ Post ID found via Method 2: ${postId}`);
             return postId;
+          } else if (postId) {
+            console.log(`  ⚠️ Invalid post ID format (missing underscore): ${postId}`);
           }
         }
         console.log('  ⚠️ Method 2: No post ID found in creative');
