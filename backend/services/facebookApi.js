@@ -3306,14 +3306,20 @@ class FacebookAPI {
           }
 
           // Create new ad set with same settings including attribution
-          // Extract number from original name if it exists (e.g., "AdSet 1" -> 1)
-          // If creating multiple copies, increment the number sequentially
-          const nameMatch = originalAdSet.name.match(/AdSet (\d+)$/);
-          const baseNumber = nameMatch ? parseInt(nameMatch[1]) : 1;
-          const newNumber = baseNumber + i;
-          newName = originalAdSet.name.includes('AdSet')
-            ? originalAdSet.name.replace(/AdSet \d+$/, `AdSet ${newNumber}`)
-            : `${originalAdSet.name} ${i + 1}`;
+          // Handle naming: Replace "Main" with incremental numbers (AdSet 2, AdSet 3, etc.)
+          if (originalAdSet.name.includes('AdSet Main')) {
+            // Original is "AdSet Main" - replace with "AdSet 2", "AdSet 3", etc.
+            newName = originalAdSet.name.replace('AdSet Main', `AdSet ${i + 2}`);
+          } else if (originalAdSet.name.match(/AdSet (\d+)$/)) {
+            // Original is "AdSet N" - increment from that number
+            const nameMatch = originalAdSet.name.match(/AdSet (\d+)$/);
+            const baseNumber = parseInt(nameMatch[1]);
+            const newNumber = baseNumber + i;
+            newName = originalAdSet.name.replace(/AdSet \d+$/, `AdSet ${newNumber}`);
+          } else {
+            // Fallback: just append number
+            newName = `${originalAdSet.name} ${i + 1}`;
+          }
 
           // ✅ FIX: Build newAdSetData object (assign, not declare with const)
           newAdSetData = {
