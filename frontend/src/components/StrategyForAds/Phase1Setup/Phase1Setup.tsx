@@ -231,13 +231,13 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
 
         // Primary text variations (ads 2-6, max 5)
         const primaryVariations = ads.slice(1, 6)
-          .map(ad => ad.primaryText || '')
-          .filter(text => text.trim().length > 0);
+          .map((ad: any) => ad.primaryText || '')
+          .filter((text: string) => text.trim().length > 0);
 
         // Headline variations (ads 2-6, max 5)
         const headlineVariations = ads.slice(1, 6)
-          .map(ad => ad.headline || '')
-          .filter(headline => headline.trim().length > 0);
+          .map((ad: any) => ad.headline || '')
+          .filter((headline: string) => headline.trim().length > 0);
 
         if (primaryVariations.length > 0) {
           methods.setValue('primaryTextVariations', primaryVariations, { shouldValidate: true });
@@ -252,8 +252,8 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
 
       // === DYNAMIC CREATIVE (All Media from All Ads) ===
       const allMediaFiles = ads
-        .map(ad => ad.mediaFile)
-        .filter(file => file !== null && file !== undefined);
+        .map((ad: any) => ad.mediaFile)
+        .filter((file: any) => file !== null && file !== undefined);
 
       if (allMediaFiles.length > 1) {
         // Enable dynamic creative
