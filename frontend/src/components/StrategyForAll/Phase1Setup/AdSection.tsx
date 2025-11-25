@@ -103,8 +103,28 @@ const AdSection: React.FC = () => {
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
 
-  // Note: Dynamic text variations not supported in Strategy For All
-  // (those fields exist in StrategyForAds only)
+  // Watch form values for Ad Scraper import
+  const formDynamicTextEnabled = watch('dynamicTextEnabled');
+  const formPrimaryVariations = watch('primaryTextVariations');
+  const formHeadlineVariations = watch('headlineVariations');
+
+  // Sync form data to local state when Ad Scraper import populates the form
+  useEffect(() => {
+    if (formDynamicTextEnabled !== undefined && formDynamicTextEnabled !== enableDynamicVariations) {
+      setEnableDynamicVariations(formDynamicTextEnabled);
+      console.log('🔄 [Strategy For All] Synced dynamicTextEnabled from form:', formDynamicTextEnabled);
+    }
+
+    if (formPrimaryVariations && formPrimaryVariations.length > 0) {
+      setPrimaryTextVariations(formPrimaryVariations);
+      console.log('🔄 [Strategy For All] Synced primary text variations from form:', formPrimaryVariations.length);
+    }
+
+    if (formHeadlineVariations && formHeadlineVariations.length > 0) {
+      setHeadlineVariations(formHeadlineVariations);
+      console.log('🔄 [Strategy For All] Synced headline variations from form:', formHeadlineVariations.length);
+    }
+  }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]);
 
   // Auto-select saved page or first available page
   useEffect(() => {

@@ -105,6 +105,15 @@ export interface StrategyForAllFormData {
   callToAction?: string;
   displayLink?: string;
 
+  // Dynamic Text Variations (Facebook's Multiple Text Options)
+  dynamicTextEnabled?: boolean;
+  primaryTextVariations?: string[];
+  headlineVariations?: string[];
+
+  // Dynamic Creative (Multiple Media)
+  dynamicCreativeEnabled?: boolean;
+  dynamicMediaFiles?: File[];
+
   // Media fields
   mediaType?: 'single_image' | 'single_video' | 'carousel';
   mediaFiles?: File[];
