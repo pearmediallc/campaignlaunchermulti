@@ -148,13 +148,15 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
     loadUserDefaultTemplate();
   }, []);
 
-  // ===== AD SCRAPER IMPORT AUTO-POPULATION =====
+  // ===== AD SCRAPER IMPORT AUTO-POPULATION (MULTI-AD SUPPORT) =====
   useEffect(() => {
     if (importedAdsData && importedAdsData.ads && importedAdsData.ads.length > 0 && !loadingTemplate) {
-      const firstAd = importedAdsData.ads[0];
+      const ads = importedAdsData.ads;
+      const firstAd = ads[0];
 
-      console.log('🎨 [Strategy For All] Auto-populating form with imported ad data:', firstAd);
+      console.log(`🎨 [Strategy For All] Auto-populating with ${ads.length} imported ads`);
 
+      // === MAIN AD (Ad #1) ===
       if (firstAd.primaryText) {
         methods.setValue('primaryText', firstAd.primaryText, { shouldValidate: true, shouldDirty: true });
         console.log('  ✅ Set primaryText:', firstAd.primaryText);
@@ -205,7 +207,56 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
         console.log('  ℹ️  Media URL available but file not downloaded - user will need to upload manually');
       }
 
-      console.log('✅ [Strategy For All] Form auto-population complete!');
+      // === DYNAMIC TEXT VARIATIONS (Ads #2-6) ===
+      if (ads.length > 1) {
+        console.log(`📝 [Strategy For All] Processing ${ads.length - 1} additional ads for dynamic text variations`);
+
+        methods.setValue('dynamicTextEnabled', true, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Enabled dynamic text variations');
+
+        // Extract primary text variations (ads 2-6, max 5 variations)
+        const primaryVariations = ads.slice(1, 6)
+          .map(ad => ad.primaryText || '')
+          .filter(text => text.trim().length > 0);
+
+        // Extract headline variations (ads 2-6, max 5 variations)
+        const headlineVariations = ads.slice(1, 6)
+          .map(ad => ad.headline || '')
+          .filter(headline => headline.trim().length > 0);
+
+        if (primaryVariations.length > 0) {
+          methods.setValue('primaryTextVariations', primaryVariations, { shouldValidate: true, shouldDirty: true });
+          console.log(`  ✅ Set ${primaryVariations.length} primary text variations`);
+        }
+
+        if (headlineVariations.length > 0) {
+          methods.setValue('headlineVariations', headlineVariations, { shouldValidate: true, shouldDirty: true });
+          console.log(`  ✅ Set ${headlineVariations.length} headline variations`);
+        }
+      }
+
+      // === DYNAMIC CREATIVE (All Media from All Ads) ===
+      const allMediaFiles = ads
+        .map(ad => ad.mediaFile)
+        .filter(file => file !== null && file !== undefined);
+
+      if (allMediaFiles.length > 1) {
+        console.log(`🎬 [Strategy For All] Processing ${allMediaFiles.length} media files for dynamic creative`);
+
+        methods.setValue('dynamicCreativeEnabled', true, { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Enabled dynamic creative');
+
+        // Facebook allows up to 10 images/videos in dynamic creative
+        const mediaToSet = allMediaFiles.slice(0, 10);
+        methods.setValue('dynamicMediaFiles', mediaToSet, { shouldValidate: true, shouldDirty: true });
+        console.log(`  ✅ Set ${mediaToSet.length} media files for dynamic creative`);
+
+        // Change media type to carousel when using dynamic creative
+        methods.setValue('mediaType', 'carousel', { shouldValidate: true, shouldDirty: true });
+        console.log('  ✅ Changed media type to carousel');
+      }
+
+      console.log('✅ [Strategy For All] Multi-ad form auto-population complete!');
     }
   }, [importedAdsData, loadingTemplate, methods]);
   // ===== END AD SCRAPER IMPORT AUTO-POPULATION =====
