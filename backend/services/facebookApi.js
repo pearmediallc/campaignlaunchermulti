@@ -1448,46 +1448,39 @@ class FacebookAPI {
       }
 
       // ATTEMPT 1: Try normal upload first (existing method)
-      let videoId = null;
+      console.log(`  🚀 Attempting standard upload...`);
+      const videoId = await this.uploadVideo(videoPath);
+      if (videoId) {
+        console.log(`  ✅ Standard upload successful!`);
+        // Cache for future use (fire and forget)
+        this.saveToMediaCache(videoPath, videoId, 'video').catch(() => {});
+        return videoId;
+      }
+
+      // ATTEMPT 2: Standard upload failed/returned null - try resumable upload
+      console.log(`  ⚠️ Standard upload failed (413 or returned null), trying resumable upload...`);
       try {
-        console.log(`  🚀 Attempting standard upload...`);
-        videoId = await this.uploadVideo(videoPath);
-        if (videoId) {
-          console.log(`  ✅ Standard upload successful!`);
-          // Cache for future use (fire and forget)
-          this.saveToMediaCache(videoPath, videoId, 'video').catch(() => {});
-          return videoId;
+        const resumableId = await this.uploadVideoResumable(videoPath);
+        if (resumableId) {
+          console.log(`  ✅ Resumable upload successful!`);
+          // Cache for future use
+          this.saveToMediaCache(videoPath, resumableId, 'video').catch(() => {});
+          return resumableId;
         }
-      } catch (error) {
-        console.log(`  ⚠️ Standard upload failed: ${error.message}`);
+      } catch (resumableError) {
+        console.log(`  ⚠️ Resumable upload failed: ${resumableError.message}`);
+      }
 
-        // Check if it's a size issue (413 error)
-        if (error.response?.status === 413 || error.message?.includes('too large')) {
-          console.log(`  🔄 Video too large for standard upload, trying resumable upload...`);
-
-          // ATTEMPT 2: Try resumable upload for large files
-          try {
-            const videoId = await this.uploadVideoResumable(videoPath);
-            if (videoId) {
-              console.log(`  ✅ Resumable upload successful!`);
-              return videoId;
-            }
-          } catch (resumableError) {
-            console.log(`  ⚠️ Resumable upload failed: ${resumableError.message}`);
-            console.log(`  🔄 Attempting compressed upload as last resort...`);
-
-            // ATTEMPT 3: Compress and upload
-            try {
-              const compressedId = await this.uploadVideoWithCompression(videoPath);
-              if (compressedId) {
-                console.log(`  ✅ Compressed upload successful!`);
-                return compressedId;
-              }
-            } catch (compressError) {
-              console.error(`  ❌ All upload methods failed: ${compressError.message}`);
-            }
-          }
+      // ATTEMPT 3: Both failed - try compression as last resort
+      console.log(`  🔄 Attempting compressed upload as last resort...`);
+      try {
+        const compressedId = await this.uploadVideoWithCompression(videoPath);
+        if (compressedId) {
+          console.log(`  ✅ Compressed upload successful!`);
+          return compressedId;
         }
+      } catch (compressError) {
+        console.error(`  ❌ Compressed upload failed: ${compressError.message}`);
       }
 
       // If we get here, all attempts failed
