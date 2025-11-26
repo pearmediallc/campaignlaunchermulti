@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Box,
   TextField,
@@ -114,52 +114,68 @@ const AdSection: React.FC = () => {
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
 
-  // Sync dynamic text variations to form data
-  // Only sync when enableDynamicVariations changes, not when variations change
+  // Use ref to track if we're currently syncing from form (to prevent circular updates)
+  const isSyncingFromFormRef = useRef(false);
+
+  // Sync local state -> form data when user toggles the checkbox
+  // This useEffect only runs when user manually changes enableDynamicVariations
   useEffect(() => {
-    console.log('🎨 Dynamic Text Enable State Changed:', {
+    // Skip if we're syncing from form to avoid circular updates
+    if (isSyncingFromFormRef.current) {
+      console.log('ℹ️  Skipping local->form sync (form->local sync in progress)');
+      return;
+    }
+
+    console.log('🎨 User toggled dynamic text checkbox:', {
       enableDynamicVariations,
       formDynamicTextEnabled
     });
 
     if (enableDynamicVariations) {
-      console.log('✅ Enabling dynamic text variations in form');
+      console.log('✅ User enabled dynamic text variations');
       setValue('dynamicTextEnabled', true);
-      // Don't set the variations here - let them be controlled by the input handlers
     } else {
-      // Only clear if user is actively disabling an already-enabled feature
-      // Don't clear during mount or during Ad Scraper import when form is being populated
-      if (formDynamicTextEnabled === true) {
-        console.log('❌ User disabled dynamic text variations - clearing data');
-        setValue('dynamicTextEnabled', false);
-        setValue('primaryTextVariations', []);
-        setValue('headlineVariations', []);
-      } else {
-        console.log('ℹ️  Dynamic text not enabled in form - skipping clear (initial state or import in progress)');
-      }
+      console.log('❌ User disabled dynamic text variations - clearing data');
+      setValue('dynamicTextEnabled', false);
+      setValue('primaryTextVariations', []);
+      setValue('headlineVariations', []);
     }
-  }, [enableDynamicVariations, formDynamicTextEnabled, setValue]);
+  }, [enableDynamicVariations, setValue]);
 
-  // REMOVED the problematic syncing effect that was causing infinite loops
-  // Instead, we'll update form values directly in the onChange handlers
-
-  // Watch for template loading AND Ad Scraper import - sync form data to local state
+  // Sync form data -> local state for template loading and Ad Scraper import
+  // This runs when form values change from external sources (not from user clicking checkbox)
   useEffect(() => {
-    // Sync from form to local state when:
-    // 1. Template loads
-    // 2. Ad Scraper import populates form data
-    if (formDynamicTextEnabled !== undefined) {
+    // Set the ref to prevent the other useEffect from running during this sync
+    isSyncingFromFormRef.current = true;
+
+    console.log('🔄 Syncing form -> local state:', {
+      formDynamicTextEnabled,
+      formPrimaryVariations: formPrimaryVariations?.length,
+      formHeadlineVariations: formHeadlineVariations?.length
+    });
+
+    // Sync toggle state
+    if (formDynamicTextEnabled !== undefined && formDynamicTextEnabled !== enableDynamicVariations) {
       setEnableDynamicVariations(formDynamicTextEnabled);
+      console.log('  ✅ Synced dynamicTextEnabled:', formDynamicTextEnabled);
     }
 
+    // Sync variations
     if (formPrimaryVariations && formPrimaryVariations.length > 0) {
       setPrimaryTextVariations(formPrimaryVariations);
+      console.log('  ✅ Synced primary text variations:', formPrimaryVariations.length);
     }
 
     if (formHeadlineVariations && formHeadlineVariations.length > 0) {
       setHeadlineVariations(formHeadlineVariations);
+      console.log('  ✅ Synced headline variations:', formHeadlineVariations.length);
     }
-  }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]); // Watch form values for changes
+
+    // Reset the ref after a brief delay to allow React to finish rendering
+    setTimeout(() => {
+      isSyncingFromFormRef.current = false;
+    }, 0);
+  }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]);
 
   // Auto-select saved page or first available page
   useEffect(() => {
