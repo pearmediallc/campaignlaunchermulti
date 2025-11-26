@@ -4512,6 +4512,16 @@ class FacebookAPI {
       return 'QUALITY_CALL';
     }
 
+    // CRITICAL: Check if pixel is available for conversion tracking
+    // OFFSITE_CONVERSIONS requires a pixel - if missing, fall back to LINK_CLICKS
+    const hasPixel = this.pixelId && this.pixelId !== 'NONE';
+
+    if (!hasPixel) {
+      console.log('⚠️ No pixel available - using LINK_CLICKS instead of OFFSITE_CONVERSIONS');
+      console.log('   To use conversion tracking, select a pixel in the resource selector');
+      return 'LINK_CLICKS';
+    }
+
     // For OUTCOME_LEADS objective
     if (adSetData.performanceGoal === 'maximize_conversions') {
       return 'OFFSITE_CONVERSIONS';
