@@ -1019,7 +1019,7 @@ const StatusEnhancer = require('../services/statusEnhancer');
  * GET /api/auth/facebook/enhanced-status/:objectType/:objectId
  * Get enhanced status for a single campaign/adset/ad
  */
-router.get('/enhanced-status/:objectType/:objectId', authenticateToken, async (req, res) => {
+router.get('/enhanced-status/:objectType/:objectId', authenticate, async (req, res) => {
   try {
     const { objectType, objectId } = req.params;
     const { accessToken } = req.body;
@@ -1058,7 +1058,7 @@ router.get('/enhanced-status/:objectType/:objectId', authenticateToken, async (r
  * Get enhanced status for multiple objects (campaigns/adsets/ads)
  * Body: { accessToken, objects: [{ id, type }] }
  */
-router.post('/enhanced-status/batch', authenticateToken, async (req, res) => {
+router.post('/enhanced-status/batch', authenticate, async (req, res) => {
   try {
     const { accessToken, objects } = req.body;
 
