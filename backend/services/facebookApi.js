@@ -550,17 +550,25 @@ class FacebookAPI {
 
         if (stateList && stateList.length > 0) {
           console.log(`📍 Processing ${stateList.length} states/regions:`, stateList);
-          // Facebook API uses 'regions' for states with numeric IDs
+          // Facebook API expects 'regions' as array of objects with 'key' property
+          // Input can be either state codes (AL, CA) or region IDs (3843, 3844)
           targeting.geo_locations.regions = stateList.map(state => {
+            // Check if input is already a region ID (numeric string like "3843")
+            if (/^\d+$/.test(state)) {
+              console.log(`  ✅ Using region ID directly: ${state}`);
+              return { key: state }; // Already a region ID, use as-is
+            }
+
+            // Otherwise, lookup state code in map (AL → 3843)
             const regionId = this.stateToRegionId[state];
             if (regionId) {
               console.log(`  ✅ ${state} → Region ID: ${regionId}`);
               return { key: regionId };
             } else {
-              console.warn(`  ⚠️ Unknown state code: ${state}, using fallback`);
-              return { key: `US:${state}` }; // Fallback for unknown states
+              console.warn(`  ⚠️ Unknown state code: ${state}, skipping`);
+              return null;
             }
-          });
+          }).filter(region => region !== null); // Remove any null entries
         }
         if (adSetData.targeting.locations.cities && adSetData.targeting.locations.cities.length > 0) {
           // Cities should be in Facebook's city key format
@@ -789,8 +797,11 @@ class FacebookAPI {
           campaignId: adSetData.campaignId,
           campaignName: adSetData.campaignName,
           budgetType: adSetData.budgetType || 'daily',
-          dailyBudget: adSetData.dailyBudget || 50,
-          lifetimeBudget: adSetData.lifetimeBudget,
+          // CRITICAL: Only add ad set budget if one was provided
+          // When CBO is enabled, adSetData.dailyBudget will be undefined
+          // Adding a budget here would conflict with campaign-level budget
+          ...(adSetData.dailyBudget !== undefined && { dailyBudget: adSetData.dailyBudget }),
+          ...(adSetData.lifetimeBudget !== undefined && { lifetimeBudget: adSetData.lifetimeBudget }),
           targeting: {
             locations: { countries: ['US'] },
             ageMin: 18,
