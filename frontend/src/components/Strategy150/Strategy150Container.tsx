@@ -52,7 +52,7 @@ const Strategy150Container: React.FC = () => {
   // Helper: Download single media file via proxy
   const downloadMediaViaProxy = async (sessionId: string, adIndex: number): Promise<File | null> => {
     try {
-      const proxyUrl = `https://facebookswipefile-443507027642.us-central1.run.app/api/proxy-media/${sessionId}/${adIndex}`;
+      const proxyUrl = `https://facebookswipefile-2gxnqoptoa-uc.a.run.app/api/proxy-media/${sessionId}/${adIndex}`;
       const response = await fetch(proxyUrl);
 
       if (!response.ok) {
@@ -111,7 +111,7 @@ const Strategy150Container: React.FC = () => {
       console.log('📥 [Strategy 1-50-1] Fetching ads from Ad Scraper session:', sessionId);
 
       // Call Ad Scraper API to get ads
-      const response = await fetch(`https://facebookswipefile-443507027642.us-central1.run.app/api/launcher-import/${sessionId}`, {
+      const response = await fetch(`https://facebookswipefile-2gxnqoptoa-uc.a.run.app/api/launcher-import/${sessionId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
