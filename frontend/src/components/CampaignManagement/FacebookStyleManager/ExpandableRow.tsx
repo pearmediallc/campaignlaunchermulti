@@ -33,6 +33,13 @@ import {
 import InlineEdit from './InlineEdit';
 import EnhancedStatusChip from './EnhancedStatusChip';
 import { CampaignData, AdSetData, AdData } from './types';
+import {
+  formatCurrency,
+  formatPercentage,
+  formatNumber,
+  formatBudget,
+  formatFrequency
+} from '../../../utils/formatters';
 
 interface ExpandableRowProps {
   item: CampaignData | AdSetData | AdData;
@@ -225,33 +232,7 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
     }
   };
 
-  const formatCurrency = (value?: number) => {
-    if (!value) return '$0.00';
-    const numValue = Number(value);
-    if (isNaN(numValue)) return '$0.00';
-    return `$${numValue.toFixed(2)}`;
-  };
-
-  const formatBudget = (value?: number) => {
-    if (!value || value === 0) return 'Using campaign budget';
-    const numValue = Number(value);
-    if (isNaN(numValue)) return 'Using campaign budget';
-    return `$${(numValue / 100).toFixed(2)}`; // Budgets are in cents
-  };
-
-  const formatNumber = (value?: number) => {
-    if (!value) return '0';
-    const numValue = Number(value);
-    if (isNaN(numValue)) return '0';
-    return numValue.toLocaleString();
-  };
-
-  const formatPercentage = (value?: number) => {
-    if (!value) return '0.00%';
-    const numValue = Number(value);
-    if (isNaN(numValue)) return '0.00%';
-    return `${numValue.toFixed(2)}%`;
-  };
+  // Using centralized formatters from utils/formatters.ts
 
   const getCellValue = (columnId: string) => {
     const metrics = item.metrics;

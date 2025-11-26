@@ -5,6 +5,7 @@ const { CampaignTracking, FacebookAuth, UserResource, UserResourceConfig } = req
 const { authenticate } = require('../middleware/auth');
 const { decryptToken } = require('./facebookSDKAuth');
 const AuditService = require('../services/AuditService');
+const MetricsCalculator = require('../services/metricsCalculator');
 
 /**
  * @route   GET /api/campaigns/manage/tracked
@@ -173,37 +174,40 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
             learningMessage = 'Learning status unknown';
         }
 
+        // Extract raw metrics from insights
+        const adsetInsights = adset.insights?.data?.[0];
+        const adsetRawMetrics = adsetInsights ? {
+          impressions: parseFloat(adsetInsights.impressions || 0),
+          clicks: parseFloat(adsetInsights.clicks || 0),
+          spend: parseFloat(adsetInsights.spend || 0),
+          reach: parseFloat(adsetInsights.reach || 0),
+          results: parseFloat(adsetInsights.actions?.find(a =>
+            ['purchase', 'lead', 'link_click', 'offsite_conversion'].includes(a.action_type)
+          )?.value || 0),
+          revenue: 0
+        } : null;
+
+        // Calculate metrics using MetricsCalculator
+        const adsetCalculatedMetrics = adsetRawMetrics ? MetricsCalculator.calculateAllMetrics(adsetRawMetrics) : {
+          impressions: 0,
+          clicks: 0,
+          spend: 0,
+          ctr: 0,
+          cpm: 0,
+          reach: 0,
+          frequency: 0,
+          results: 0,
+          cost_per_result: 0,
+          cpc: 0,
+          roas: 0
+        };
+
         return {
           ...adset,
           learning_status: learningStatus,
           learning_message: learningMessage,
           learning_progress: learningProgress,
-          // Extract insights if available
-          metrics: adset.insights?.data?.[0] ? {
-            impressions: adset.insights.data[0].impressions || 0,
-            clicks: adset.insights.data[0].clicks || 0,
-            spend: adset.insights.data[0].spend || 0,
-            ctr: adset.insights.data[0].ctr || 0,
-            cpm: adset.insights.data[0].cpm || 0,
-            reach: adset.insights.data[0].reach || 0,
-            frequency: adset.insights.data[0].frequency || 0,
-            results: adset.insights.data[0].actions?.find(a =>
-              ['purchase', 'lead', 'link_click', 'offsite_conversion'].includes(a.action_type)
-            )?.value || 0,
-            cost_per_result: adset.insights.data[0].cost_per_action_type?.find(a =>
-              ['purchase', 'lead', 'link_click', 'offsite_conversion'].includes(a.action_type)
-            )?.value || 0
-          } : {
-            impressions: 0,
-            clicks: 0,
-            spend: 0,
-            ctr: 0,
-            cpm: 0,
-            reach: 0,
-            frequency: 0,
-            results: 0,
-            cost_per_result: 0
-          }
+          metrics: adsetCalculatedMetrics
         };
       });
     }
@@ -381,23 +385,26 @@ router.get('/all', authenticate, async (req, res) => {
             break;
         }
 
+        // Extract raw metrics from insights
+        const rawMetrics = insights ? {
+          impressions: parseFloat(insights.impressions || 0),
+          clicks: parseFloat(insights.clicks || 0),
+          spend: parseFloat(insights.spend || 0),
+          reach: parseFloat(insights.reach || 0),
+          results: parseFloat(insights.actions?.find(a => a.action_type === resultActionType)?.value || 0),
+          revenue: 0 // Not provided by Facebook in campaigns list
+        } : null;
+
+        // Calculate all metrics using MetricsCalculator for accuracy
+        const calculatedMetrics = rawMetrics ? MetricsCalculator.calculateAllMetrics(rawMetrics) : null;
+
         return {
           ...campaign,
           // Explicitly include status fields for frontend display
           effective_status: campaign.effective_status,  // Real Facebook status (PENDING_REVIEW, IN_PROCESS, ACTIVE, etc.)
           configured_status: campaign.configured_status,
           issues_info: campaign.issues_info,  // Include issues for debugging
-          metrics: insights ? {
-            impressions: insights.impressions || 0,
-            clicks: insights.clicks || 0,
-            spend: insights.spend || 0,
-            ctr: insights.ctr || 0,
-            cpm: insights.cpm || 0,
-            reach: insights.reach || 0,
-            frequency: insights.frequency || 0,
-            results: insights.actions?.find(a => a.action_type === resultActionType)?.value || 0,
-            cost_per_result: insights.cost_per_action_type?.find(a => a.action_type === resultActionType)?.value || 0
-          } : null
+          metrics: calculatedMetrics
         };
       });
     }
@@ -703,19 +710,22 @@ router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
       adsData.data = adsData.data.map(ad => {
         const insights = ad.insights?.data?.[0];
 
+        // Extract raw metrics
+        const adRawMetrics = insights ? {
+          impressions: parseFloat(insights.impressions || 0),
+          clicks: parseFloat(insights.clicks || 0),
+          spend: parseFloat(insights.spend || 0),
+          reach: parseFloat(insights.reach || 0),
+          results: parseFloat(insights.actions?.find(a => a.action_type === 'link_click')?.value || 0),
+          revenue: 0
+        } : null;
+
+        // Calculate metrics using MetricsCalculator
+        const adCalculatedMetrics = adRawMetrics ? MetricsCalculator.calculateAllMetrics(adRawMetrics) : null;
+
         return {
           ...ad,
-          metrics: insights ? {
-            impressions: insights.impressions || 0,
-            clicks: insights.clicks || 0,
-            spend: insights.spend || 0,
-            ctr: insights.ctr || 0,
-            cpm: insights.cpm || 0,
-            reach: insights.reach || 0,
-            frequency: insights.frequency || 0,
-            results: insights.actions?.find(a => a.action_type === 'link_click')?.value || 0,
-            cost_per_result: insights.cost_per_action_type?.find(a => a.action_type === 'link_click')?.value || 0
-          } : null
+          metrics: adCalculatedMetrics
         };
       });
     }

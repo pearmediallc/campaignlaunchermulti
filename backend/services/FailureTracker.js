@@ -286,6 +286,22 @@ class FailureTracker {
       return { success: false, error };
     }
   }
+
+  /**
+   * Safe wrapper for trackFailedEntity - prevents crashes from tracking failures
+   * @param {Object} params - Same params as trackFailedEntity
+   * @returns {Promise<Object|null>} - Failed entity record or null on error
+   */
+  static async safeTrackFailedEntity(params) {
+    try {
+      return await this.trackFailedEntity(params);
+    } catch (trackingError) {
+      // Log the failure to track, but don't throw
+      console.error('⚠️ Failed to track failure (non-critical):', trackingError.message);
+      console.error('   Original failure params:', JSON.stringify(params, null, 2));
+      return null;
+    }
+  }
 }
 
 module.exports = FailureTracker;

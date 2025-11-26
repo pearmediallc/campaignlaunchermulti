@@ -3454,12 +3454,14 @@ class FacebookAPI {
           // Track failure immediately for manual retry if auto-retry fails
           if (userId) {
             const FailureTracker = require('./FailureTracker');
-            await FailureTracker.trackFailure({
+            await FailureTracker.safeTrackFailedEntity({
               userId,
               campaignId,
+              campaignName: `Campaign ${campaignId}`, // Add campaign name for tracking
               entityType: 'adset',
               adsetName: newName,
-              error: errorMessage,
+              error: new Error(errorMessage),
+              strategyType: 'strategy_150',
               metadata: {
                 ...newAdSetData,
                 copyIndex: i + 1,

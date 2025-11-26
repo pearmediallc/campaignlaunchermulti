@@ -1012,4 +1012,92 @@ router.get('/audiences', authenticate, async (req, res) => {
   }
 });
 
+// Enhanced Status Endpoints - Learning Phase & Status Accuracy
+const StatusEnhancer = require('../services/statusEnhancer');
+
+/**
+ * GET /api/auth/facebook/enhanced-status/:objectType/:objectId
+ * Get enhanced status for a single campaign/adset/ad
+ */
+router.get('/enhanced-status/:objectType/:objectId', authenticateToken, async (req, res) => {
+  try {
+    const { objectType, objectId } = req.params;
+    const { accessToken } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({ error: 'Access token is required' });
+    }
+
+    // Validate object type
+    const validTypes = ['campaign', 'adset', 'ad'];
+    if (!validTypes.includes(objectType)) {
+      return res.status(400).json({
+        error: `Invalid object type. Must be one of: ${validTypes.join(', ')}`
+      });
+    }
+
+    const enhancer = new StatusEnhancer(accessToken);
+    const enhancedStatus = await enhancer.getEnhancedStatus(objectId, objectType);
+
+    res.json({
+      success: true,
+      data: enhancedStatus
+    });
+  } catch (error) {
+    console.error('Error fetching enhanced status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch enhanced status',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/auth/facebook/enhanced-status/batch
+ * Get enhanced status for multiple objects (campaigns/adsets/ads)
+ * Body: { accessToken, objects: [{ id, type }] }
+ */
+router.post('/enhanced-status/batch', authenticateToken, async (req, res) => {
+  try {
+    const { accessToken, objects } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({ error: 'Access token is required' });
+    }
+
+    if (!objects || !Array.isArray(objects) || objects.length === 0) {
+      return res.status(400).json({
+        error: 'Objects array is required and must not be empty'
+      });
+    }
+
+    // Validate all object types
+    const validTypes = ['campaign', 'adset', 'ad'];
+    const invalidObjects = objects.filter(obj => !validTypes.includes(obj.type));
+
+    if (invalidObjects.length > 0) {
+      return res.status(400).json({
+        error: `Invalid object types found. All types must be one of: ${validTypes.join(', ')}`
+      });
+    }
+
+    const enhancer = new StatusEnhancer(accessToken);
+    const enhancedStatuses = await enhancer.getBatchEnhancedStatus(objects);
+
+    res.json({
+      success: true,
+      data: enhancedStatuses,
+      count: enhancedStatuses.length
+    });
+  } catch (error) {
+    console.error('Error fetching batch enhanced status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch batch enhanced status',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;

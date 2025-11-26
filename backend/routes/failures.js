@@ -228,13 +228,15 @@ router.post('/:id/retry', authenticate, async (req, res) => {
             console.error(`⚠️ Adset ${newAdSet.id} created but ad creation failed:`, adError.message);
 
             // Track ad failure separately (don't fail the whole retry)
-            await FailureTracker.trackFailure({
+            await FailureTracker.safeTrackFailedEntity({
               userId: entity.userId,
               campaignId: entity.campaignId,
+              campaignName: entity.campaignName || `Campaign ${entity.campaignId}`,
               entityType: 'ad',
               adsetId: newAdSet.id,
               adName: entity.metadata.adParams.name,
-              error: adError.message,
+              error: adError,
+              strategyType: entity.strategyType,
               metadata: {
                 ...entity.metadata.adParams,
                 adsetId: newAdSet.id
