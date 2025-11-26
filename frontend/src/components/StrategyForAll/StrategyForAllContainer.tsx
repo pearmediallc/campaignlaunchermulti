@@ -56,6 +56,13 @@ const StrategyForAllContainer: React.FC = () => {
     const searchParams = new URLSearchParams(location.search);
     const importSessionId = searchParams.get('import');
 
+    console.log('🔍 [Strategy For All] Import detection check:', {
+      importSessionId,
+      phase,
+      hasImportedData: !!importedAdsData,
+      willFetch: !!(importSessionId && phase === 'setup' && !importedAdsData)
+    });
+
     if (importSessionId && phase === 'setup' && !importedAdsData) {
       console.log('🔍 [Strategy For All] Detected Ad Scraper import session:', importSessionId);
       fetchAdsFromScraper(importSessionId);

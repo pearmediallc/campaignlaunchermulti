@@ -107,6 +107,9 @@ const AdSection: React.FC = () => {
   const formDynamicTextEnabled = watch('dynamicTextEnabled');
   const formPrimaryVariations = watch('primaryTextVariations');
   const formHeadlineVariations = watch('headlineVariations');
+  const formVideo = watch('video');
+  const formImage = watch('image');
+  const formImages = watch('images');
 
   // Sync form data to local state when Ad Scraper import populates the form
   useEffect(() => {
@@ -125,6 +128,28 @@ const AdSection: React.FC = () => {
       console.log('🔄 [Strategy For All] Synced headline variations from form:', formHeadlineVariations.length);
     }
   }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]);
+
+  // Sync form media values to local state (for Ad Scraper import and template loading)
+  useEffect(() => {
+    const mediaFilesToSync: File[] = [];
+
+    if (mediaType === 'single_video' && formVideo && formVideo instanceof File) {
+      console.log('🔄 [Strategy For All] Syncing video from form to preview:', formVideo.name);
+      mediaFilesToSync.push(formVideo);
+    } else if (mediaType === 'single_image' && formImage && formImage instanceof File) {
+      console.log('🔄 [Strategy For All] Syncing image from form to preview:', formImage.name);
+      mediaFilesToSync.push(formImage);
+    } else if (mediaType === 'carousel' && formImages && Array.isArray(formImages) && formImages.length > 0) {
+      console.log('🔄 [Strategy For All] Syncing carousel images from form to preview:', formImages.length, 'files');
+      mediaFilesToSync.push(...formImages);
+    }
+
+    // Only update if different from current state
+    if (mediaFilesToSync.length > 0 && JSON.stringify(mediaFilesToSync.map(f => f.name)) !== JSON.stringify(mediaFiles.map(f => f.name))) {
+      setMediaFiles(mediaFilesToSync);
+      console.log('✅ [Strategy For All] Media preview synced:', mediaFilesToSync.length, 'file(s)');
+    }
+  }, [formVideo, formImage, formImages, mediaType]);
 
   // Auto-select saved page or first available page
   useEffect(() => {

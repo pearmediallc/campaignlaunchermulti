@@ -90,6 +90,11 @@ const AdSection: React.FC = () => {
   const urlType = watch('urlType');
   const mediaType = watch('mediaType');
 
+  // Watch form video/image fields for Ad Scraper import sync
+  const formVideo = watch('video');
+  const formImage = watch('image');
+  const formImages = watch('images');
+
   // Auto-select saved page or first available page
   useEffect(() => {
     if (resources.pages.length > 0 && !watch('facebookPage')) {
@@ -102,6 +107,28 @@ const AdSection: React.FC = () => {
       }
     }
   }, [resources, setValue, watch]);
+
+  // Sync form media values to local state (for Ad Scraper import and template loading)
+  useEffect(() => {
+    const mediaFilesToSync: File[] = [];
+
+    if (mediaType === 'single_video' && formVideo && formVideo instanceof File) {
+      console.log('🔄 [Strategy 1-50-1] Syncing video from form to preview:', formVideo.name);
+      mediaFilesToSync.push(formVideo);
+    } else if (mediaType === 'single_image' && formImage && formImage instanceof File) {
+      console.log('🔄 [Strategy 1-50-1] Syncing image from form to preview:', formImage.name);
+      mediaFilesToSync.push(formImage);
+    } else if (mediaType === 'carousel' && formImages && Array.isArray(formImages) && formImages.length > 0) {
+      console.log('🔄 [Strategy 1-50-1] Syncing carousel images from form to preview:', formImages.length, 'files');
+      mediaFilesToSync.push(...formImages);
+    }
+
+    // Only update if different from current state
+    if (mediaFilesToSync.length > 0 && JSON.stringify(mediaFilesToSync.map(f => f.name)) !== JSON.stringify(mediaFiles.map(f => f.name))) {
+      setMediaFiles(mediaFilesToSync);
+      console.log('✅ [Strategy 1-50-1] Media preview synced:', mediaFilesToSync.length, 'file(s)');
+    }
+  }, [formVideo, formImage, formImages, mediaType]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
