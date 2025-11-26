@@ -118,7 +118,8 @@ const AdSection: React.FC = () => {
   // Only sync when enableDynamicVariations changes, not when variations change
   useEffect(() => {
     console.log('🎨 Dynamic Text Enable State Changed:', {
-      enableDynamicVariations
+      enableDynamicVariations,
+      formDynamicTextEnabled
     });
 
     if (enableDynamicVariations) {
@@ -126,12 +127,18 @@ const AdSection: React.FC = () => {
       setValue('dynamicTextEnabled', true);
       // Don't set the variations here - let them be controlled by the input handlers
     } else {
-      console.log('❌ Disabling dynamic text variations');
-      setValue('dynamicTextEnabled', false);
-      setValue('primaryTextVariations', []);
-      setValue('headlineVariations', []);
+      // Only clear if user is actively disabling an already-enabled feature
+      // Don't clear during mount or during Ad Scraper import when form is being populated
+      if (formDynamicTextEnabled === true) {
+        console.log('❌ User disabled dynamic text variations - clearing data');
+        setValue('dynamicTextEnabled', false);
+        setValue('primaryTextVariations', []);
+        setValue('headlineVariations', []);
+      } else {
+        console.log('ℹ️  Dynamic text not enabled in form - skipping clear (initial state or import in progress)');
+      }
     }
-  }, [enableDynamicVariations, setValue]);
+  }, [enableDynamicVariations, formDynamicTextEnabled, setValue]);
 
   // REMOVED the problematic syncing effect that was causing infinite loops
   // Instead, we'll update form values directly in the onChange handlers
