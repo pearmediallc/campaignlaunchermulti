@@ -87,8 +87,9 @@ const CampaignManagementContainer: React.FC = () => {
     const matchesObjective = advancedFilters.objective.length === 0 ||
       (campaign.objective && advancedFilters.objective.includes(campaign.objective));
 
-    // Note: hasIssues would need to be added to campaign data from backend
-    const matchesIssues = !advancedFilters.hasIssues;
+    // Check if campaign has issues
+    const hasIssues = campaign.issues_info && Array.isArray(campaign.issues_info) && campaign.issues_info.length > 0;
+    const matchesIssues = !advancedFilters.hasIssues || hasIssues;
 
     return matchesSearch && matchesStatus && matchesLearning && matchesObjective && matchesIssues;
   });

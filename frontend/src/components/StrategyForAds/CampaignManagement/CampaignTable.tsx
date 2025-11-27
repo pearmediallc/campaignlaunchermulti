@@ -217,6 +217,7 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
               </TableCell>
               <TableCell align="right">Ad Sets</TableCell>
               <TableCell align="center">Learning Phase</TableCell>
+              <TableCell align="center">Issues</TableCell>
               <TableCell align="right">
                 <TableSortLabel
                   active={sortField === 'totalSpend'}
@@ -354,6 +355,38 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
                       </Box>
                     );
                   })()}
+                </TableCell>
+                <TableCell align="center">
+                  {campaign.issues_info && Array.isArray(campaign.issues_info) && campaign.issues_info.length > 0 ? (
+                    <Tooltip
+                      title={
+                        <Box>
+                          {campaign.issues_info.map((issue: any, idx: number) => (
+                            <Box key={idx} sx={{ mb: idx < campaign.issues_info!.length - 1 ? 1 : 0 }}>
+                              <Typography variant="caption" fontWeight="bold">
+                                {issue.error_summary || 'Issue'}
+                              </Typography>
+                              <Typography variant="caption" display="block">
+                                {issue.error_message || 'No details available'}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      }
+                      arrow
+                    >
+                      <Chip
+                        label={`${campaign.issues_info.length} issue${campaign.issues_info.length > 1 ? 's' : ''}`}
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">
+                      No issues
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell align="right">
                   <Typography variant="body2" fontWeight="medium">
