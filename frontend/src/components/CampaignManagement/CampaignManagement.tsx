@@ -93,7 +93,7 @@ const CampaignManagement: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const params: any = { date_preset: datePreset, limit: 50 };
+      const params: any = { date_preset: datePreset, limit: 100 };
       if (after) params.after = after;
       if (accountId) params.ad_account_id = accountId;
 
@@ -487,6 +487,19 @@ const CampaignManagement: React.FC = () => {
                   )}
                 </select>
               </div>
+
+              {/* Load More button for All Campaigns */}
+              {viewMode === 'all' && paging?.next && (
+                <div className="d-flex justify-content-center mt-3">
+                  <button
+                    className="btn btn-outline-primary"
+                    onClick={() => fetchAllCampaigns(datePreset, paging.cursors.after, selectedAccount)}
+                    disabled={loading}
+                  >
+                    {loading ? 'Loading...' : `Load More Campaigns (${allCampaigns.length} shown)`}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

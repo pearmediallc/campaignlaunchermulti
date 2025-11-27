@@ -34,6 +34,7 @@ import {
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
 import axios from 'axios';
 import LibrarySelector from '../../LibrarySelector';
+import MediaUploadEnhanced from '../../shared/MediaUploadEnhanced';
 
 // Call-to-Action options
 const CALL_TO_ACTION_OPTIONS = [
@@ -616,6 +617,20 @@ const AdSection: React.FC = () => {
               </Typography>
             </Box>
           </Box>
+        )}
+
+        {/* Thumbnail & Aspect Ratio Selection */}
+        {mediaFiles.length > 0 && mediaType && (
+          <MediaUploadEnhanced
+            mediaType={mediaType}
+            videoFile={mediaType === 'single_video' ? mediaFiles[0] : null}
+            onThumbnailChange={(thumbnail, frameIndex) => {
+              setValue('videoThumbnail', thumbnail || undefined);
+              if (frameIndex !== undefined) setValue('videoThumbnailFrameIndex', frameIndex);
+            }}
+            aspectRatio={watch('aspectRatio') || '1:1'}
+            onAspectRatioChange={(ratio) => setValue('aspectRatio', ratio as any)}
+          />
         )}
 
         <Box sx={{ width: "100%" }}>

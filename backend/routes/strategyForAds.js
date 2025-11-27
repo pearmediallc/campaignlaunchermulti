@@ -12,6 +12,12 @@ const { uploadSingle } = require('../middleware/upload');
 const db = require('../models');
 const { decryptToken } = require('./facebookSDKAuth');
 const FailureTracker = require('../services/FailureTracker');
+const {
+  processImageAspectRatio,
+  extractVideoThumbnail,
+  processVideoThumbnail,
+  processVideoAspectRatio
+} = require('../utils/mediaProcessor');
 
 // Get OAuth resources (pages, pixels, business managers) for form population
 router.get('/resources', authenticate, async (req, res) => {
@@ -476,6 +482,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     // Handle media files - uploadSingle uses .any() so files are in req.files array
     let dynamicCreativeMediaPaths = [];
+    let videoThumbnailPath = null;
 
     if (req.files && req.files.length > 0) {
       console.log(`📸 Files detected: ${req.files.length} file(s)`);
@@ -488,17 +495,100 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         dynamicCreativeMediaPaths = req.files.map(file => file.path);
         console.log('🎨 Dynamic Creative media detected:', dynamicCreativeMediaPaths.length, 'files');
         console.log('  Files:', dynamicCreativeMediaPaths.map(p => path.basename(p)).join(', '));
+
+        // Process dynamic creative media with aspect ratios
+        if (req.body.aspectRatio) {
+          try {
+            dynamicCreativeMediaPaths = await Promise.all(
+              dynamicCreativeMediaPaths.map(mediaPath => {
+                // Determine if file is image or video based on extension
+                const ext = path.extname(mediaPath).toLowerCase();
+                if (['.mp4', '.mov', '.avi', '.webm'].includes(ext)) {
+                  return processVideoAspectRatio(mediaPath, req.body.aspectRatio);
+                } else {
+                  return processImageAspectRatio(mediaPath, req.body.aspectRatio);
+                }
+              })
+            );
+          } catch (err) {
+            console.error('⚠️ Failed to process dynamic creative aspect ratios:', err);
+          }
+        }
+
         // Set the first file as mediaPath for fallback
-        mediaPath = req.files[0].path;
+        mediaPath = dynamicCreativeMediaPaths[0];
       } else if (req.body.mediaType === 'single_image') {
         mediaPath = req.files[0].path;
         console.log('✅ Single image detected:', mediaPath);
+
+        // Process image with aspect ratio if specified
+        if (req.body.aspectRatio && req.body.aspectRatio !== '1:1') {
+          try {
+            mediaPath = await processImageAspectRatio(mediaPath, req.body.aspectRatio);
+          } catch (err) {
+            console.error('⚠️ Failed to process image aspect ratio:', err);
+          }
+        }
       } else if (req.body.mediaType === 'carousel') {
         imagePaths = req.files.map(file => file.path);
         console.log('✅ Carousel images detected:', imagePaths.length, 'images');
+
+        // Process carousel images with aspect ratio if specified
+        if (req.body.aspectRatio) {
+          try {
+            imagePaths = await Promise.all(
+              imagePaths.map(imgPath => processImageAspectRatio(imgPath, req.body.aspectRatio))
+            );
+          } catch (err) {
+            console.error('⚠️ Failed to process carousel aspect ratios:', err);
+          }
+        }
       } else if (req.body.mediaType === 'video' || req.body.mediaType === 'single_video') {
         mediaPath = req.files[0].path;
         console.log('✅ Video detected:', mediaPath);
+
+        // Handle video thumbnail
+        // Check if there's a custom thumbnail upload (will be second file)
+        if (req.files.length > 1) {
+          videoThumbnailPath = req.files[1].path;
+          console.log('✅ Custom video thumbnail detected:', videoThumbnailPath);
+
+          // Process custom thumbnail with aspect ratio
+          if (req.body.aspectRatio) {
+            try {
+              videoThumbnailPath = await processVideoThumbnail(videoThumbnailPath, req.body.aspectRatio);
+            } catch (err) {
+              console.error('⚠️ Failed to process video thumbnail:', err);
+            }
+          }
+        } else if (req.body.videoThumbnailFrameIndex !== undefined) {
+          // Extract thumbnail from video at specific frame
+          try {
+            const frameIndex = parseInt(req.body.videoThumbnailFrameIndex);
+            videoThumbnailPath = await extractVideoThumbnail(mediaPath, frameIndex);
+            console.log(`✅ Extracted video thumbnail from frame ${frameIndex}`);
+
+            // Process extracted thumbnail with aspect ratio
+            if (req.body.aspectRatio && videoThumbnailPath) {
+              try {
+                videoThumbnailPath = await processVideoThumbnail(videoThumbnailPath, req.body.aspectRatio);
+              } catch (err) {
+                console.error('⚠️ Failed to process extracted thumbnail:', err);
+              }
+            }
+          } catch (err) {
+            console.error('⚠️ Failed to extract video thumbnail:', err);
+          }
+        }
+
+        // Process video with aspect ratio if specified
+        if (req.body.aspectRatio) {
+          try {
+            mediaPath = await processVideoAspectRatio(mediaPath, req.body.aspectRatio);
+          } catch (err) {
+            console.error('⚠️ Failed to process video aspect ratio:', err);
+          }
+        }
       } else {
         // Default to single image if mediaType not specified but file exists
         mediaPath = req.files[0].path;
@@ -631,6 +721,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       mediaSpecs: req.body.mediaSpecs,
       imagePath: req.body.mediaType === 'single_image' && !dynamicCreativeMediaPaths.length ? mediaPath : null,
       videoPath: (req.body.mediaType === 'single_video' || req.body.mediaType === 'video') && !dynamicCreativeMediaPaths.length ? mediaPath : null,
+      videoThumbnailPath: videoThumbnailPath,  // Processed video thumbnail
+      aspectRatio: req.body.aspectRatio || '1:1',  // Selected aspect ratio
       imagePaths: req.body.mediaType === 'carousel' ? imagePaths : null,
       editorName: req.body.editorName,  // Editor name from Creative Library for ad naming
       dynamicEditorName: req.body.dynamicEditorName,  // Editor name for Dynamic Creative from Creative Library
