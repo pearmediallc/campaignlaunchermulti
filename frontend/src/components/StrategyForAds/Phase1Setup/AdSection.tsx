@@ -37,6 +37,7 @@ import axios from 'axios';
 import LibrarySelector from '../../LibrarySelector';
 import AIVariationsGenerator from '../../shared/AIVariationsGenerator';
 import MediaUploadEnhanced from '../../shared/MediaUploadEnhanced';
+import AspectRatioSelector from '../../shared/AspectRatioSelector';
 
 // Call-to-Action options
 const CALL_TO_ACTION_OPTIONS = [
@@ -1191,6 +1192,19 @@ const AdSection: React.FC = () => {
                             <FormHelperText>
                               Upload up to 10 images and/or videos. Facebook will test all combinations with your text variations.
                             </FormHelperText>
+
+                            {/* Aspect Ratio Selector for Dynamic Creative */}
+                            {field.value && field.value.length > 0 && (
+                              <Box sx={{ mt: 3 }}>
+                                <AspectRatioSelector
+                                  value={watch('aspectRatio') || '1:1'}
+                                  onChange={(ratio) => setValue('aspectRatio', ratio as any)}
+                                  mediaType="image"
+                                  helperText="Select aspect ratio for all Dynamic Creative media. Facebook will crop/resize to match."
+                                  showPreview={true}
+                                />
+                              </Box>
+                            )}
                           </Box>
                         )}
                       />
