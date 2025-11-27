@@ -45,7 +45,11 @@ interface CampaignDetails {
   };
 }
 
-export const useCampaignManagement = () => {
+interface UseCampaignManagementOptions {
+  dateRange?: { start: Date | null; end: Date | null };
+}
+
+export const useCampaignManagement = (options?: UseCampaignManagementOptions) => {
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [metrics, setMetrics] = useState<CampaignMetrics>({
     totalCampaigns: 0,
@@ -60,6 +64,7 @@ export const useCampaignManagement = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const dateRange = options?.dateRange;
 
   const calculateMetrics = (campaignList: CampaignListItem[]): CampaignMetrics => {
     const activeCampaigns = campaignList.filter(c => c.status === 'ACTIVE');
@@ -89,9 +94,19 @@ export const useCampaignManagement = () => {
       // Fetch detailed information for each campaign
       const campaignDetailsPromises = trackedCampaigns.map(async (tracked) => {
         try {
-          // Note: Date range parameters could be added here in the future
-          // For now, we fetch maximum data (all time)
-          const detailsResponse = await axios.get(`/api/campaigns/manage/details/${tracked.campaign_id}`);
+          // Build query parameters for date range
+          const params = new URLSearchParams();
+          if (dateRange?.start) {
+            params.append('dateStart', dateRange.start.toISOString().split('T')[0]);
+          }
+          if (dateRange?.end) {
+            params.append('dateEnd', dateRange.end.toISOString().split('T')[0]);
+          }
+
+          const queryString = params.toString();
+          const url = `/api/campaigns/manage/details/${tracked.campaign_id}${queryString ? `?${queryString}` : ''}`;
+
+          const detailsResponse = await axios.get(url);
           return detailsResponse.data.campaign as CampaignDetails;
         } catch (error) {
           console.error(`Failed to fetch details for campaign ${tracked.campaign_id}:`, error);
@@ -220,7 +235,7 @@ export const useCampaignManagement = () => {
 
   useEffect(() => {
     fetchCampaigns();
-  }, [fetchCampaigns]);
+  }, [fetchCampaigns, dateRange?.start, dateRange?.end]);
 
   // Auto-refresh metrics every 30 seconds for active campaigns
   useEffect(() => {

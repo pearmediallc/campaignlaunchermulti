@@ -39,6 +39,12 @@ import CampaignTable from './CampaignTable';
 import PerformanceMetrics from './PerformanceMetrics';
 
 const CampaignManagementContainer: React.FC = () => {
+  // Date Range State (must be before hook call)
+  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({
+    start: null,
+    end: null
+  });
+
   const {
     campaigns,
     metrics,
@@ -47,7 +53,7 @@ const CampaignManagementContainer: React.FC = () => {
     updateCampaignStatus,
     bulkUpdateStatus,
     refetch
-  } = useCampaignManagement();
+  } = useCampaignManagement({ dateRange });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -58,11 +64,6 @@ const CampaignManagementContainer: React.FC = () => {
     severity: 'success'
   });
 
-  // Date Range State
-  const [dateRange, setDateRange] = useState<{ start: Date | null; end: Date | null }>({
-    start: null,
-    end: null
-  });
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Advanced Filters State
@@ -153,8 +154,7 @@ const CampaignManagementContainer: React.FC = () => {
 
   const handleApplyDateRange = () => {
     setShowDatePicker(false);
-    // Date range will automatically filter through filteredCampaigns
-    // In a real implementation, this would refetch data with date parameters
+    // The useCampaignManagement hook will automatically refetch data with the new date range
   };
 
   const handleApplyAdvancedFilters = () => {
