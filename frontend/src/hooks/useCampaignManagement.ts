@@ -89,6 +89,8 @@ export const useCampaignManagement = () => {
       // Fetch detailed information for each campaign
       const campaignDetailsPromises = trackedCampaigns.map(async (tracked) => {
         try {
+          // Note: Date range parameters could be added here in the future
+          // For now, we fetch maximum data (all time)
           const detailsResponse = await axios.get(`/api/campaigns/manage/details/${tracked.campaign_id}`);
           return detailsResponse.data.campaign as CampaignDetails;
         } catch (error) {

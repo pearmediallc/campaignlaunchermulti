@@ -110,6 +110,7 @@ router.get('/accounts', authenticate, async (req, res) => {
 router.get('/details/:campaignId', authenticate, async (req, res) => {
   try {
     const { campaignId } = req.params;
+    const { dateStart, dateEnd, datePreset = 'maximum' } = req.query;
     const userId = req.user?.id || req.userId;
 
     if (!campaignId) {
@@ -131,14 +132,34 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Invalid Facebook access token' });
     }
 
+    // Build insights date filter
+    let insightsFilter = '';
+    if (dateStart && dateEnd) {
+      // Custom date range
+      insightsFilter = `insights.time_range({'since':'${dateStart}','until':'${dateEnd}'})`;
+    } else if (dateStart) {
+      // Only start date - from start to today
+      const today = new Date().toISOString().split('T')[0];
+      insightsFilter = `insights.time_range({'since':'${dateStart}','until':'${today}'})`;
+    } else if (dateEnd) {
+      // Only end date - use last 30 days ending on dateEnd
+      const startDate = new Date(dateEnd);
+      startDate.setDate(startDate.getDate() - 30);
+      const since = startDate.toISOString().split('T')[0];
+      insightsFilter = `insights.time_range({'since':'${since}','until':'${dateEnd}'})`;
+    } else {
+      // Use date preset (default: maximum)
+      insightsFilter = `insights.date_preset(${datePreset})`;
+    }
+
     // Fetch campaign details with ad sets and learning info from Facebook
     const url = `https://graph.facebook.com/v19.0/${campaignId}`;
     const params = {
-      fields: 'id,name,status,effective_status,configured_status,issues_info,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,insights.date_preset(maximum){impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}',
+      fields: `id,name,status,effective_status,configured_status,issues_info,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
       access_token: accessToken
     };
 
-    console.log(`📊 Fetching campaign details for ${campaignId}...`);
+    console.log(`📊 Fetching campaign details for ${campaignId} with date filter: ${insightsFilter}...`);
 
     const response = await axios.get(url, { params });
     const campaignData = response.data;
