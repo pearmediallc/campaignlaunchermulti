@@ -20,6 +20,7 @@ import {
   CardMedia,
   CardContent,
   CardActions,
+  CardActionArea,
   LinearProgress,
   Chip,
   Autocomplete,
@@ -38,6 +39,7 @@ import LibrarySelector from '../../LibrarySelector';
 import AIVariationsGenerator from '../../shared/AIVariationsGenerator';
 import MediaUploadEnhanced from '../../shared/MediaUploadEnhanced';
 import AspectRatioSelector from '../../shared/AspectRatioSelector';
+import VideoThumbnailSelector from '../../shared/VideoThumbnailSelector';
 
 // Call-to-Action options
 const CALL_TO_ACTION_OPTIONS = [
@@ -92,6 +94,8 @@ const AdSection: React.FC = () => {
   const [showDynamicLibraryModal, setShowDynamicLibraryModal] = useState(false);
   const [selectedEditorName, setSelectedEditorName] = useState<string>('');
   const [dynamicEditorName, setDynamicEditorName] = useState<string>('');
+  const [dynamicVideoThumbnailIndex, setDynamicVideoThumbnailIndex] = useState<number | null>(null);
+  const [showDynamicVideoThumbnailSelector, setShowDynamicVideoThumbnailSelector] = useState(false);
 
   // Watch form values for text variations
   const formPrimaryVariations = watch('primaryTextVariations');
@@ -1151,30 +1155,72 @@ const AdSection: React.FC = () => {
                               </Alert>
                             )}
 
-                            {/* Display selected files */}
+                            {/* Display selected files with previews */}
                             {field.value && field.value.length > 0 && (
                               <Box sx={{ mt: 2 }}>
-                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                <Typography variant="body2" sx={{ mb: 2, fontWeight: 'bold' }}>
                                   Selected Media: {field.value.length}/10
                                 </Typography>
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2 }}>
                                   {field.value.map((file: any, index) => {
                                     // Handle both file objects and stored media references
                                     const fileName = file?.name || file?.hash || file?.id || `Media ${index + 1}`;
-                                    const displayName = fileName.length > 20 ? `${fileName.substring(0, 20)}...` : fileName;
+                                    const displayName = fileName.length > 25 ? `${fileName.substring(0, 25)}...` : fileName;
                                     const isVideo = file?.type?.startsWith('video/') || file?.video_id || false;
 
                                     return (
-                                      <Chip
-                                        key={index}
-                                        label={displayName}
-                                        onDelete={() => {
-                                          const newFiles = field.value?.filter((_, i) => i !== index) || [];
-                                          field.onChange(newFiles);
-                                        }}
-                                        size="small"
-                                        icon={isVideo ? <VideoFile /> : <Image />}
-                                      />
+                                      <Card key={index} sx={{ position: 'relative' }}>
+                                        <CardActionArea>
+                                          <CardMedia
+                                            component={isVideo ? "video" : "img"}
+                                            image={file instanceof File ? URL.createObjectURL(file) : file?.url}
+                                            src={file instanceof File ? URL.createObjectURL(file) : file?.url}
+                                            alt={fileName}
+                                            sx={{
+                                              height: 150,
+                                              objectFit: 'cover',
+                                              bgcolor: '#f5f5f5'
+                                            }}
+                                          />
+                                          <CardContent sx={{ p: 1.5 }}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                                              {isVideo ? <VideoFile fontSize="small" /> : <Image fontSize="small" />}
+                                              <Typography variant="caption" sx={{ fontWeight: 'medium' }}>
+                                                {displayName}
+                                              </Typography>
+                                            </Box>
+
+                                            {/* Video Thumbnail Selector Button */}
+                                            {isVideo && file instanceof File && (
+                                              <Button
+                                                size="small"
+                                                variant="outlined"
+                                                fullWidth
+                                                startIcon={<VideoLibrary />}
+                                                onClick={() => {
+                                                  setDynamicVideoThumbnailIndex(index);
+                                                  setShowDynamicVideoThumbnailSelector(true);
+                                                }}
+                                                sx={{ mb: 1, fontSize: '0.7rem' }}
+                                              >
+                                                Select Thumbnail
+                                              </Button>
+                                            )}
+                                          </CardContent>
+                                        </CardActionArea>
+                                        <CardActions sx={{ p: 1, justifyContent: 'flex-end' }}>
+                                          <IconButton
+                                            size="small"
+                                            color="error"
+                                            onClick={() => {
+                                              const newFiles = field.value?.filter((_, i) => i !== index) || [];
+                                              field.onChange(newFiles);
+                                            }}
+                                          >
+                                            <Delete />
+                                          </IconButton>
+                                        </CardActions>
+                                      </Card>
                                     );
                                   })}
                                 </Box>
@@ -1182,7 +1228,8 @@ const AdSection: React.FC = () => {
                                   size="small"
                                   color="error"
                                   onClick={() => field.onChange([])}
-                                  sx={{ mt: 1 }}
+                                  sx={{ mt: 2 }}
+                                  startIcon={<Delete />}
                                 >
                                   Clear All
                                 </Button>
@@ -1291,6 +1338,25 @@ const AdSection: React.FC = () => {
         maxLength={aiGenerationType === 'primary_text' ? 125 : 40}
         onApply={handleApplyAIVariations}
       />
+
+      {/* Dynamic Creative Video Thumbnail Selector Modal */}
+      {showDynamicVideoThumbnailSelector &&
+       dynamicVideoThumbnailIndex !== null &&
+       watch('dynamicMediaFiles')?.[dynamicVideoThumbnailIndex] && (
+        <VideoThumbnailSelector
+          videoFile={watch('dynamicMediaFiles')![dynamicVideoThumbnailIndex]}
+          onThumbnailSelected={(thumbnail, frameIndex) => {
+            // Store thumbnail info - we'll need to handle this in form submission
+            setValue('videoThumbnail', thumbnail || undefined);
+            if (frameIndex !== undefined) {
+              setValue('videoThumbnailFrameIndex', frameIndex);
+            }
+            setShowDynamicVideoThumbnailSelector(false);
+          }}
+          open={showDynamicVideoThumbnailSelector}
+          onClose={() => setShowDynamicVideoThumbnailSelector(false)}
+        />
+      )}
     </Paper>
   );
 };
