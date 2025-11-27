@@ -121,6 +121,14 @@ export interface StrategyForAllFormData {
   video?: File;
   images?: File[];
 
+  // Video Thumbnail & Aspect Ratio
+  videoThumbnail?: File; // Custom thumbnail for video
+  videoThumbnailFrameIndex?: number; // If using video frame as thumbnail
+  aspectRatio?: '1:1' | '4:5' | '16:9' | '9:16' | '2:3'; // Selected aspect ratio
+
+  // Dynamic Creative aspect ratios (for multiple media)
+  dynamicMediaAspectRatios?: Array<'1:1' | '4:5' | '16:9' | '9:16' | '2:3'>;
+
   // Creative Library integration
   editorName?: string; // Name of the editor from Creative Library (for ad naming)
   fromLibrary?: boolean; // Flag to indicate files came from Creative Library
