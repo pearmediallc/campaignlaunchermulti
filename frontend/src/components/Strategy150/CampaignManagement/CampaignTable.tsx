@@ -216,7 +216,7 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
                 </TableSortLabel>
               </TableCell>
               <TableCell align="right">Ad Sets</TableCell>
-              <TableCell align="center">Learning Phase</TableCell>
+              <TableCell align="center">Delivery & Learning Status</TableCell>
               <TableCell align="right">
                 <TableSortLabel
                   active={sortField === 'totalSpend'}
@@ -319,34 +319,62 @@ const CampaignTable: React.FC<CampaignTableProps> = ({
                     const learningCount = campaign.duplicatedAdSets.filter(a => a.learningStatus === 'LEARNING').length;
                     const activeCount = campaign.duplicatedAdSets.filter(a => a.learningStatus === 'SUCCESS').length;
                     const limitedCount = campaign.duplicatedAdSets.filter(a => a.learningStatus === 'FAIL').length;
+                    const deliveringCount = campaign.duplicatedAdSets.filter(a => a.delivery_status === 'ACTIVE').length;
+                    const notDeliveringCount = campaign.duplicatedAdSets.filter(a => a.delivery_status === 'NOT_DELIVERING').length;
 
                     return (
-                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', flexWrap: 'wrap' }}>
+                        {deliveringCount > 0 && (
+                          <Tooltip title={`${deliveringCount} ad sets actively delivering`}>
+                            <Chip
+                              label={`${deliveringCount} Delivering`}
+                              size="small"
+                              color="success"
+                              variant="filled"
+                            />
+                          </Tooltip>
+                        )}
+                        {notDeliveringCount > 0 && (
+                          <Tooltip title={`${notDeliveringCount} ad sets not delivering`}>
+                            <Chip
+                              label={`${notDeliveringCount} Not Delivering`}
+                              size="small"
+                              color="error"
+                              variant="filled"
+                            />
+                          </Tooltip>
+                        )}
                         {learningCount > 0 && (
-                          <Chip
-                            label={`${learningCount} Learning`}
-                            size="small"
-                            color="warning"
-                            variant="outlined"
-                          />
+                          <Tooltip title={`${learningCount} ad sets in learning phase`}>
+                            <Chip
+                              label={`${learningCount} Learning`}
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                            />
+                          </Tooltip>
                         )}
                         {activeCount > 0 && (
-                          <Chip
-                            label={`${activeCount} Active`}
-                            size="small"
-                            color="success"
-                            variant="outlined"
-                          />
+                          <Tooltip title={`${activeCount} ad sets with active learning`}>
+                            <Chip
+                              label={`${activeCount} Active`}
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                            />
+                          </Tooltip>
                         )}
                         {limitedCount > 0 && (
-                          <Chip
-                            label={`${limitedCount} Limited`}
-                            size="small"
-                            color="error"
-                            variant="outlined"
-                          />
+                          <Tooltip title={`${limitedCount} ad sets with learning limited`}>
+                            <Chip
+                              label={`${limitedCount} Limited`}
+                              size="small"
+                              color="warning"
+                              variant="outlined"
+                            />
+                          </Tooltip>
                         )}
-                        {learningCount === 0 && activeCount === 0 && limitedCount === 0 && (
+                        {learningCount === 0 && activeCount === 0 && limitedCount === 0 && deliveringCount === 0 && notDeliveringCount === 0 && (
                           <Typography variant="caption" color="text.secondary">
                             No data
                           </Typography>

@@ -28,6 +28,16 @@ export interface CampaignListItem {
   facebookCampaignId: string;
   objective: string;
 
+  // Delivery information
+  delivery_status?: string;
+  delivery_message?: string;
+  cannot_deliver_reason?: string | null;
+  recommendations?: Array<{
+    code: string;
+    message: string;
+    title: string;
+  }>;
+
   // Strategy 1-50-1 specific
   originalAdSetId: string;
   duplicatedAdSets: Array<{
@@ -36,6 +46,8 @@ export interface CampaignListItem {
     status: string;
     learningStatus?: string;
     learningMessage?: string;
+    delivery_status?: string;
+    delivery_message?: string;
   }>;
 }
 

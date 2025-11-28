@@ -155,7 +155,7 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
     // Fetch campaign details with ad sets and learning info from Facebook
     const url = `https://graph.facebook.com/v19.0/${campaignId}`;
     const params = {
-      fields: `id,name,status,effective_status,configured_status,issues_info,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
+      fields: `id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
       access_token: accessToken
     };
 
@@ -223,11 +223,21 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
           roas: 0
         };
 
+        // Extract delivery information
+        const deliveryInfo = adset.delivery_info || {};
+        const deliveryStatus = deliveryInfo.delivery_status || 'UNKNOWN';
+        const deliveryMessage = deliveryInfo.delivery_status_description || '';
+        const cannotDeliverReason = deliveryInfo.cannot_deliver_reason || null;
+
         return {
           ...adset,
           learning_status: learningStatus,
           learning_message: learningMessage,
           learning_progress: learningProgress,
+          delivery_status: deliveryStatus,
+          delivery_message: deliveryMessage,
+          cannot_deliver_reason: cannotDeliverReason,
+          recommendations: adset.recommendations || [],
           metrics: adsetCalculatedMetrics
         };
       });
@@ -352,7 +362,7 @@ router.get('/all', authenticate, async (req, res) => {
     // Fetch all campaigns from the ad account with date filtering
     const url = `https://graph.facebook.com/v19.0/${adAccountId}/campaigns`;
     const params = {
-      fields: 'id,name,status,effective_status,configured_status,issues_info,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,special_ad_categories,insights.date_preset(' + date_preset + '){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
+      fields: 'id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,special_ad_categories,insights.date_preset(' + date_preset + '){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
       limit: limit,
       access_token: accessToken
     };
@@ -419,12 +429,19 @@ router.get('/all', authenticate, async (req, res) => {
         // Calculate all metrics using MetricsCalculator for accuracy
         const calculatedMetrics = rawMetrics ? MetricsCalculator.calculateAllMetrics(rawMetrics) : null;
 
+        // Extract delivery information for campaigns
+        const campaignDeliveryInfo = campaign.delivery_info || {};
+
         return {
           ...campaign,
           // Explicitly include status fields for frontend display
           effective_status: campaign.effective_status,  // Real Facebook status (PENDING_REVIEW, IN_PROCESS, ACTIVE, etc.)
           configured_status: campaign.configured_status,
           issues_info: campaign.issues_info,  // Include issues for debugging
+          delivery_status: campaignDeliveryInfo.delivery_status || 'UNKNOWN',
+          delivery_message: campaignDeliveryInfo.delivery_status_description || '',
+          cannot_deliver_reason: campaignDeliveryInfo.cannot_deliver_reason || null,
+          recommendations: campaign.recommendations || [],
           metrics: calculatedMetrics
         };
       });
@@ -716,7 +733,7 @@ router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
     // Fetch ads for the ad set
     const url = `https://graph.facebook.com/v19.0/${adsetId}/ads`;
     const params = {
-      fields: 'id,name,status,effective_status,configured_status,issues_info,creative{id,title,body,image_url,video_id,thumbnail_url,object_story_spec},insights.date_preset(last_14d){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
+      fields: 'id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,creative{id,title,body,image_url,video_id,thumbnail_url,object_story_spec},insights.date_preset(last_14d){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
       access_token: accessToken,
       limit: 100
     };
@@ -744,8 +761,15 @@ router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
         // Calculate metrics using MetricsCalculator
         const adCalculatedMetrics = adRawMetrics ? MetricsCalculator.calculateAllMetrics(adRawMetrics) : null;
 
+        // Extract delivery information for ads
+        const adDeliveryInfo = ad.delivery_info || {};
+
         return {
           ...ad,
+          delivery_status: adDeliveryInfo.delivery_status || 'UNKNOWN',
+          delivery_message: adDeliveryInfo.delivery_status_description || '',
+          cannot_deliver_reason: adDeliveryInfo.cannot_deliver_reason || null,
+          recommendations: ad.recommendations || [],
           metrics: adCalculatedMetrics
         };
       });

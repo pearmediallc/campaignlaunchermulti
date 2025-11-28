@@ -65,17 +65,42 @@ const EnhancedStatusChip: React.FC<EnhancedStatusChipProps> = ({
 
   const primaryStatus = item.status;
   const effectiveStatus = item.effective_status;
+  const deliveryStatus = item.delivery_status;
+  const deliveryMessage = item.delivery_message;
   const learningStageInfo = (item as AdSetData).learning_stage_info;
-  const learningStatus = learningStageInfo?.status;
+  const learningStatus = (item as AdSetData).learning_status;
+  const learningMessage = (item as AdSetData).learning_message;
 
   // Determine learning phase label
   const getLearningLabel = () => {
     if (!learningStatus) return '';
-    // Facebook shows "Learning limited" when status is LEARNING_LIMITED or when learning phase is constrained
-    if (learningStatus === 'LEARNING_LIMITED') return 'Learning limited';
-    if (learningStatus === 'LEARNING') return 'Learning limited'; // Facebook shows "Learning limited" by default
-    if (learningStatus === 'NOT_LEARNING') return '';
-    return learningStatus.replace(/_/g, ' ').toLowerCase();
+    // Map learning status from backend to display labels
+    switch (learningStatus) {
+      case 'LEARNING':
+        return 'Learning in progress';
+      case 'SUCCESS':
+        return 'Active';
+      case 'FAIL':
+        return 'Learning limited';
+      case 'WAIVING':
+        return 'Learning waived';
+      default:
+        return learningStatus.replace(/_/g, ' ').toLowerCase();
+    }
+  };
+
+  // Get delivery status message
+  const getDeliveryStatusLabel = () => {
+    if (!deliveryStatus || deliveryStatus === 'UNKNOWN') return '';
+    // Map common delivery statuses to user-friendly labels
+    const deliveryStatusMap: Record<string, string> = {
+      'ACTIVE': 'Delivering',
+      'NOT_DELIVERING': 'Not delivering',
+      'PENDING': 'Pending',
+      'LEARNING_LIMITED': 'Learning limited',
+      'LEARNING': 'Learning'
+    };
+    return deliveryStatusMap[deliveryStatus] || deliveryStatus.replace(/_/g, ' ').toLowerCase();
   };
 
   return (
@@ -110,27 +135,59 @@ const EnhancedStatusChip: React.FC<EnhancedStatusChipProps> = ({
         </Tooltip>
       )}
 
-      {/* Learning Phase Status (for ad sets only) */}
-      {showLearningPhase && learningStatus && learningStatus !== 'NOT_LEARNING' && (
+      {/* Delivery Status (shows actual Facebook delivery status) */}
+      {deliveryStatus && deliveryStatus !== 'UNKNOWN' && (
         <Tooltip
-          title={
-            learningStatus === 'LEARNING_LIMITED' || learningStatus === 'LEARNING'
-              ? "This ad set's learning is limited because it doesn't get enough conversions. Performance may be impacted."
-              : "This ad set is still learning. Performance may improve as it gathers more data."
-          }
+          title={deliveryMessage || `Delivery status: ${getDeliveryStatusLabel()}`}
           arrow
         >
           <Chip
-            label={getLearningLabel()}
-            color={learningStatus === 'LEARNING_LIMITED' ? 'warning' : 'info'}
+            label={getDeliveryStatusLabel()}
+            color={
+              deliveryStatus === 'ACTIVE' ? 'success' :
+              deliveryStatus === 'NOT_DELIVERING' ? 'error' :
+              deliveryStatus.includes('LEARNING') ? 'warning' :
+              'default'
+            }
             size="small"
             variant="outlined"
             sx={{
               fontSize: '10px',
               fontWeight: 500,
               height: '20px',
-              bgcolor: learningStatus === 'LEARNING_LIMITED' ? 'rgba(237, 108, 2, 0.08)' : 'rgba(2, 136, 209, 0.08)',
-              borderColor: learningStatus === 'LEARNING_LIMITED' ? '#ed6c02' : undefined
+              bgcolor:
+                deliveryStatus === 'ACTIVE' ? 'rgba(46, 125, 50, 0.08)' :
+                deliveryStatus === 'NOT_DELIVERING' ? 'rgba(211, 47, 47, 0.08)' :
+                deliveryStatus.includes('LEARNING') ? 'rgba(237, 108, 2, 0.08)' :
+                undefined
+            }}
+          />
+        </Tooltip>
+      )}
+
+      {/* Learning Phase Status (for ad sets only) */}
+      {showLearningPhase && learningStatus && learningStatus !== 'SUCCESS' && (
+        <Tooltip
+          title={learningMessage || `Learning status: ${getLearningLabel()}`}
+          arrow
+        >
+          <Chip
+            label={getLearningLabel()}
+            color={
+              learningStatus === 'FAIL' ? 'warning' :
+              learningStatus === 'LEARNING' ? 'info' :
+              'default'
+            }
+            size="small"
+            variant="outlined"
+            sx={{
+              fontSize: '10px',
+              fontWeight: 500,
+              height: '20px',
+              bgcolor:
+                learningStatus === 'FAIL' ? 'rgba(237, 108, 2, 0.08)' :
+                learningStatus === 'LEARNING' ? 'rgba(2, 136, 209, 0.08)' :
+                undefined
             }}
           />
         </Tooltip>

@@ -9,6 +9,12 @@ export interface IssueInfo {
   level?: 'ERROR' | 'WARNING';
 }
 
+export interface Recommendation {
+  code: string;
+  message: string;
+  title: string;
+}
+
 export interface CampaignData {
   id: string;
   name: string;
@@ -16,6 +22,10 @@ export interface CampaignData {
   effective_status?: string;
   configured_status?: string;
   issues_info?: IssueInfo[];
+  delivery_status?: string;
+  delivery_message?: string;
+  cannot_deliver_reason?: string | null;
+  recommendations?: Recommendation[];
   objective: string;
   budget?: number;
   daily_budget?: number;
@@ -31,6 +41,10 @@ export interface AdSetData {
   effective_status?: string;
   configured_status?: string;
   issues_info?: IssueInfo[];
+  delivery_status?: string;
+  delivery_message?: string;
+  cannot_deliver_reason?: string | null;
+  recommendations?: Recommendation[];
   campaign_id?: string;
   campaign_name?: string;
   daily_budget?: number;
@@ -52,6 +66,10 @@ export interface AdData {
   effective_status?: string;
   configured_status?: string;
   issues_info?: IssueInfo[];
+  delivery_status?: string;
+  delivery_message?: string;
+  cannot_deliver_reason?: string | null;
+  recommendations?: Recommendation[];
   adset_id?: string;
   adset_name?: string;
   campaign_id?: string;

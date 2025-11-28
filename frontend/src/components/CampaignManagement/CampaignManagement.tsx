@@ -24,6 +24,8 @@ interface AdSet {
   status: string;
   learning_status: string;
   learning_message: string;
+  delivery_status?: string;
+  delivery_message?: string;
   daily_budget?: number;
   metrics?: {
     impressions: number;
@@ -286,16 +288,45 @@ const CampaignManagement: React.FC = () => {
   const getLearningBadgeText = (status: string) => {
     switch(status) {
       case 'LEARNING':
-        return '🔄 Learning';
+        return '🔄 Learning in progress';
       case 'SUCCESS':
         return '✅ Active';
       case 'FAIL':
-        return '⚠️ Limited';
+        return '⚠️ Learning limited';
       case 'WAIVING':
-        return '⏭️ Waived';
+        return '⏭️ Learning waived';
       default:
         return 'Unknown';
     }
+  };
+
+  const getDeliveryBadgeClass = (status?: string) => {
+    if (!status || status === 'UNKNOWN') return 'badge bg-secondary';
+    switch(status) {
+      case 'ACTIVE':
+        return 'badge bg-success';
+      case 'NOT_DELIVERING':
+        return 'badge bg-danger';
+      case 'PENDING':
+        return 'badge bg-warning';
+      case 'LEARNING':
+      case 'LEARNING_LIMITED':
+        return 'badge bg-warning';
+      default:
+        return 'badge bg-secondary';
+    }
+  };
+
+  const getDeliveryBadgeText = (status?: string) => {
+    if (!status || status === 'UNKNOWN') return '';
+    const statusMap: Record<string, string> = {
+      'ACTIVE': '✓ Delivering',
+      'NOT_DELIVERING': '✗ Not delivering',
+      'PENDING': '⏳ Pending',
+      'LEARNING_LIMITED': '⚠️ Learning limited',
+      'LEARNING': '🔄 Learning'
+    };
+    return statusMap[status] || status.replace(/_/g, ' ').toLowerCase();
   };
 
   const formatCurrency = (amount?: number | string) => {
@@ -618,6 +649,7 @@ const CampaignManagement: React.FC = () => {
                     <tr>
                       <th>Ad Set Name</th>
                       <th>Status</th>
+                      <th>Delivery Status</th>
                       <th>Learning Phase</th>
                       <th>Daily Budget</th>
                       <th>Impressions</th>
@@ -637,6 +669,18 @@ const CampaignManagement: React.FC = () => {
                           <span className={`badge ${adset.status === 'ACTIVE' ? 'bg-success' : 'bg-secondary'}`}>
                             {adset.status}
                           </span>
+                        </td>
+                        <td>
+                          {adset.delivery_status && adset.delivery_status !== 'UNKNOWN' && (
+                            <>
+                              <span className={getDeliveryBadgeClass(adset.delivery_status)}>
+                                {getDeliveryBadgeText(adset.delivery_status)}
+                              </span>
+                              {adset.delivery_message && (
+                                <small className="d-block text-muted mt-1">{adset.delivery_message}</small>
+                              )}
+                            </>
+                          )}
                         </td>
                         <td>
                           <span className={getLearningBadgeClass(adset.learning_status)}>
