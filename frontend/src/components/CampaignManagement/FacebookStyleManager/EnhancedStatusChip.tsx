@@ -72,7 +72,7 @@ const EnhancedStatusChip: React.FC<EnhancedStatusChipProps> = ({
   const learningMessage = (item as AdSetData).learning_message;
 
   // Determine learning phase label
-  const getLearningLabel = () => {
+  const getLearningLabel = (): string => {
     if (!learningStatus) return '';
     // Map learning status from backend to display labels
     switch (learningStatus) {
@@ -85,7 +85,7 @@ const EnhancedStatusChip: React.FC<EnhancedStatusChipProps> = ({
       case 'WAIVING':
         return 'Learning waived';
       default:
-        return learningStatus.replace(/_/g, ' ').toLowerCase();
+        return (learningStatus as string).replace(/_/g, ' ').toLowerCase();
     }
   };
 
