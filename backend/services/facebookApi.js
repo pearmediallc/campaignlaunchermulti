@@ -6161,16 +6161,16 @@ class FacebookAPI {
         {
           params: {
             fields: 'name,targeting,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,is_dynamic_creative,promoted_object,attribution_spec',
-            limit: 3, // Limit to 3 ad sets to avoid issues
+            limit: 200, // Fetch all ad sets (up to Facebook's limit of 200)
             access_token: this.accessToken
           }
         }
       );
 
       const adSets = adSetsResponse.data.data || [];
-      console.log(`  📋 Copying ${Math.min(adSets.length, 3)} ad sets...`);
+      console.log(`  📋 Copying ${adSets.length} ad sets...`);
 
-      for (let i = 0; i < Math.min(adSets.length, 3); i++) {
+      for (let i = 0; i < adSets.length; i++) {
         try {
           // Add a small delay between ad set creations to avoid rate limits
           if (i > 0) {
@@ -6242,7 +6242,7 @@ class FacebookAPI {
               {
                 params: {
                   fields: 'id,name,creative{id,object_story_spec,object_story_id,link_url,effective_object_story_id},status,tracking_specs,adset{promoted_object}',
-                  limit: 5, // Limit ads per ad set to avoid API limits
+                  limit: 100, // Fetch all ads per ad set (up to Facebook's limit)
                   access_token: this.accessToken
                 }
               }
@@ -6251,7 +6251,7 @@ class FacebookAPI {
             const ads = adsResponse.data.data || [];
             console.log(`    📊 Found ${ads.length} ads in original ad set`);
 
-            for (let j = 0; j < Math.min(ads.length, 5); j++) {
+            for (let j = 0; j < ads.length; j++) {
               try {
                 // Add a small delay between ad creations to avoid rate limits
                 if (j > 0) {
