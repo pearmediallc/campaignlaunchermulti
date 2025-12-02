@@ -802,6 +802,37 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         postId: result.postId,
         campaignNumber: campaignIndex + 1
       });
+
+      // Auto-duplicate ad sets for multiple campaigns (so all copies get 50 ad sets)
+      if (numberOfCampaigns > 1) {
+        console.log(`\n🔄 Auto-duplicating ad sets for campaign ${campaignIndex + 1} (${currentCampaignName})...`);
+
+        try {
+          const duplicateData = {
+            campaignId: result.campaign.id,
+            originalAdSetId: result.adSet.id,
+            postId: result.postId,
+            count: 49, // Duplicate 49 times to get total of 50 (including original)
+            customBudgets: Array(49).fill(1.00), // Default $1 budget for each
+            userId: userId
+          };
+
+          // Trigger duplication (fire and forget - runs in background)
+          userFacebookApi.duplicateAdSetsWithExistingPost(duplicateData);
+          console.log(`✅ Auto-duplication started for campaign ${campaignIndex + 1}`);
+
+          // Update tracking record to reflect upcoming 50 ad sets
+          const { CampaignTracking } = require('../models');
+          await CampaignTracking.update(
+            { ad_set_count: 50 },
+            { where: { campaign_id: result.campaign.id } }
+          );
+        } catch (dupError) {
+          console.error(`⚠️ Auto-duplication failed for campaign ${campaignIndex + 1}:`, dupError.message);
+          // Don't fail the entire request if duplication fails
+          // User can manually trigger duplication from frontend
+        }
+      }
     } // End of campaign creation loop
 
     // Prepare response based on number of campaigns created

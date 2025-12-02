@@ -362,7 +362,7 @@ router.get('/all', authenticate, async (req, res) => {
     // Fetch all campaigns from the ad account with date filtering
     const url = `https://graph.facebook.com/v19.0/${adAccountId}/campaigns`;
     const params = {
-      fields: 'id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,special_ad_categories,insights.date_preset(' + date_preset + '){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
+      fields: 'id,name,status,effective_status,configured_status,issues_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,special_ad_categories,insights.date_preset(' + date_preset + '){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
       limit: limit,
       access_token: accessToken
     };
