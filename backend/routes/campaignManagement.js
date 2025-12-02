@@ -155,7 +155,7 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
     // Fetch campaign details with ad sets and learning info from Facebook
     const url = `https://graph.facebook.com/v19.0/${campaignId}`;
     const params = {
-      fields: `id,name,status,effective_status,configured_status,issues_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
+      fields: `id,name,status,effective_status,configured_status,issues_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,recommendations,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
       access_token: accessToken
     };
 
@@ -223,11 +223,12 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
           roas: 0
         };
 
-        // Extract delivery information
-        const deliveryInfo = adset.delivery_info || {};
-        const deliveryStatus = deliveryInfo.delivery_status || 'UNKNOWN';
-        const deliveryMessage = deliveryInfo.delivery_status_description || '';
-        const cannotDeliverReason = deliveryInfo.cannot_deliver_reason || null;
+        // Note: delivery_info field removed in API v19.0
+        // Use effective_status and issues_info for delivery status instead
+        const deliveryStatus = adset.effective_status || 'UNKNOWN';
+        const issuesInfo = adset.issues_info || [];
+        const deliveryMessage = issuesInfo.length > 0 ? issuesInfo[0]?.error_summary : '';
+        const cannotDeliverReason = issuesInfo.length > 0 ? issuesInfo[0]?.error_code : null;
 
         return {
           ...adset,
@@ -429,8 +430,8 @@ router.get('/all', authenticate, async (req, res) => {
         // Calculate all metrics using MetricsCalculator for accuracy
         const calculatedMetrics = rawMetrics ? MetricsCalculator.calculateAllMetrics(rawMetrics) : null;
 
-        // Note: Campaigns don't have delivery_info field (only Ad Sets and Ads do)
-        // We rely on effective_status and issues_info for campaign-level delivery status
+        // Note: delivery_info field was removed in Facebook API v19.0 for all objects
+        // We rely on effective_status and issues_info for delivery status
 
         return {
           ...campaign,
@@ -730,7 +731,7 @@ router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
     // Fetch ads for the ad set
     const url = `https://graph.facebook.com/v19.0/${adsetId}/ads`;
     const params = {
-      fields: 'id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,creative{id,title,body,image_url,video_id,thumbnail_url,object_story_spec},insights.date_preset(last_14d){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
+      fields: 'id,name,status,effective_status,configured_status,issues_info,recommendations,creative{id,title,body,image_url,video_id,thumbnail_url,object_story_spec},insights.date_preset(last_14d){impressions,clicks,spend,ctr,cpm,reach,frequency,actions,cost_per_action_type}',
       access_token: accessToken,
       limit: 100
     };
@@ -758,14 +759,18 @@ router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
         // Calculate metrics using MetricsCalculator
         const adCalculatedMetrics = adRawMetrics ? MetricsCalculator.calculateAllMetrics(adRawMetrics) : null;
 
-        // Extract delivery information for ads
-        const adDeliveryInfo = ad.delivery_info || {};
+        // Note: delivery_info field removed in API v19.0
+        // Use effective_status and issues_info for delivery status instead
+        const adIssuesInfo = ad.issues_info || [];
+        const adDeliveryStatus = ad.effective_status || 'UNKNOWN';
+        const adDeliveryMessage = adIssuesInfo.length > 0 ? adIssuesInfo[0]?.error_summary : '';
+        const adCannotDeliverReason = adIssuesInfo.length > 0 ? adIssuesInfo[0]?.error_code : null;
 
         return {
           ...ad,
-          delivery_status: adDeliveryInfo.delivery_status || 'UNKNOWN',
-          delivery_message: adDeliveryInfo.delivery_status_description || '',
-          cannot_deliver_reason: adDeliveryInfo.cannot_deliver_reason || null,
+          delivery_status: adDeliveryStatus,
+          delivery_message: adDeliveryMessage,
+          cannot_deliver_reason: adCannotDeliverReason,
           recommendations: ad.recommendations || [],
           metrics: adCalculatedMetrics
         };
