@@ -122,6 +122,9 @@ app.use('/api/users', userRoutes);
 app.use('/api/rbac', require('./routes/rbac'));
 app.use('/api/audit', require('./routes/audit'));
 
+// App Rotation Admin Routes (for monitoring backup apps)
+app.use('/api/admin/app-rotation', require('./routes/appRotationAdmin'));
+
 // IMPORTANT: Specific routes must come BEFORE general routes to avoid pattern matching conflicts
 // Strategy 1-50-1 routes (must be before general campaigns route)
 app.use('/api/campaigns/strategy-150', require('./routes/strategy150'));
@@ -170,6 +173,9 @@ app.use('/api/facebook-targeting', require('./routes/facebookTargeting'));
 
 // Migration runner (temporary - remove after fixing production)
 app.use('/api/migrations', require('./routes/migrationRunner'));
+
+// Rate limit management routes (System Users, Queue monitoring)
+app.use('/api/rate-limit', require('./routes/rateLimitManagement'));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Facebook Campaign Launcher API is running' });
@@ -292,7 +298,17 @@ async function startServer() {
       console.log('Permissions setup status:', permError.message);
       // Don't fail server startup if permissions already exist
     }
-    
+
+    // Start queue processor for handling rate-limited requests
+    try {
+      const queueProcessor = require('./services/QueueProcessor');
+      queueProcessor.start(60000); // Process every 1 minute
+      console.log('Queue processor started successfully.');
+    } catch (queueError) {
+      console.error('Failed to start queue processor:', queueError.message);
+      // Don't fail server startup if queue processor fails
+    }
+
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
