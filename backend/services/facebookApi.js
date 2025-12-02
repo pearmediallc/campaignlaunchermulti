@@ -6,6 +6,24 @@ const BatchDuplicationService = require('./batchDuplication');
 const Strategy150DuplicationService = require('./strategy150Duplication');
 const ImageConverter = require('./imageConverter');
 
+// Import rotation services for automatic backup app switching
+let AppRotationService = null;
+let appRotationInstance = null;
+
+// Lazy load rotation service only if enabled
+const getRotationService = () => {
+  if (!appRotationInstance && process.env.ENABLE_FB_APP_ROTATION === 'true') {
+    try {
+      AppRotationService = require('./AppRotationService');
+      appRotationInstance = new AppRotationService();
+      console.log('✅ App rotation enabled for FacebookAPI class');
+    } catch (error) {
+      console.warn('⚠️ Could not initialize app rotation:', error.message);
+    }
+  }
+  return appRotationInstance;
+};
+
 class FacebookAPI {
   constructor(userCredentials = {}) {
     this.baseURL = `https://graph.facebook.com/${process.env.FB_API_VERSION}`;
@@ -31,6 +49,106 @@ class FacebookAPI {
       'VT': '3888', 'VA': '3889', 'WA': '3890', 'WV': '3891', 'WI': '3892',
       'WY': '3893'
     };
+  }
+
+  /**
+   * Make Facebook API call with automatic backup app rotation
+   *
+   * This method wraps axios calls and automatically switches to backup apps when rate limits are hit.
+   *
+   * @param {String} method - HTTP method (GET, POST, PUT, DELETE)
+   * @param {String} url - Full URL or endpoint
+   * @param {Object} config - Axios config object
+   * @param {Number} attempt - Current attempt number (for internal use)
+   * @returns {Promise} Axios response
+   */
+  async makeApiCallWithRotation(method, url, config = {}, attempt = 0) {
+    const MAX_ATTEMPTS = 4; // Main app + 2 backup apps + 1 final retry
+    const rotationService = getRotationService();
+
+    // If rotation is disabled or not available, use direct axios call
+    if (!rotationService) {
+      return axios({ method, url, ...config });
+    }
+
+    try {
+      // Make the API call with current token
+      const response = await axios({ method, url, ...config });
+
+      // Track successful API call
+      if (rotationService && this.accessToken) {
+        // Determine which app is being used
+        const apps = rotationService.apps || [];
+        const currentApp = apps.find(app => app.accessToken === this.accessToken) || apps[0];
+        if (currentApp) {
+          rotationService.trackApiCall(currentApp.appId);
+        }
+      }
+
+      return response;
+
+    } catch (error) {
+      // Check if it's a rate limit error (429 or error code 17 with subcode 2446079)
+      const isRateLimit =
+        error.response?.status === 429 ||
+        (error.response?.data?.error?.code === 17 &&
+         error.response?.data?.error?.error_subcode === 2446079);
+
+      if (isRateLimit && attempt < MAX_ATTEMPTS - 1) {
+        console.log(`  ⚠️ Rate limit hit (attempt ${attempt + 1}/${MAX_ATTEMPTS}). Rotating to backup app...`);
+
+        // Mark current app as exhausted
+        if (rotationService && this.accessToken) {
+          const apps = rotationService.apps || [];
+          const currentApp = apps.find(app => app.accessToken === this.accessToken) || apps[0];
+          if (currentApp) {
+            rotationService.markAppExhausted(currentApp.appId);
+          }
+        }
+
+        // Get next available app
+        const nextApp = rotationService.getNextAvailableApp(this.accessToken);
+
+        if (nextApp && nextApp.accessToken) {
+          console.log(`  🔄 Switching to app: ${nextApp.name}`);
+
+          // Update access token in config
+          const newConfig = { ...config };
+          if (newConfig.params) {
+            newConfig.params = { ...newConfig.params, access_token: nextApp.accessToken };
+          } else {
+            newConfig.params = { access_token: nextApp.accessToken };
+          }
+
+          // Temporarily update instance token for this call
+          const originalToken = this.accessToken;
+          this.accessToken = nextApp.accessToken;
+
+          // Wait 2 seconds before retry to avoid hammering the API
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          try {
+            // Retry with new token
+            const retryResponse = await this.makeApiCallWithRotation(method, url, newConfig, attempt + 1);
+
+            // Keep the working token for future calls
+            console.log(`  ✅ Success with backup app: ${nextApp.name}`);
+            return retryResponse;
+
+          } catch (retryError) {
+            // Restore original token if retry fails
+            this.accessToken = originalToken;
+            throw retryError;
+          }
+        } else {
+          console.warn('  ❌ No backup apps available. All apps exhausted.');
+          throw error;
+        }
+      }
+
+      // If not a rate limit error or max attempts reached, throw original error
+      throw error;
+    }
   }
 
   /**
@@ -203,7 +321,7 @@ class FacebookAPI {
       console.log('  - Spend Cap:', params.spend_cap ? `$${params.spend_cap/100}` : 'Not set');
       console.log('\n📤 Sending Campaign Creation Request...');
 
-      const response = await axios.post(url, null, {
+      const response = await this.makeApiCallWithRotation('POST', url, {
         params,
         timeout: 120000 // 120 seconds timeout for complex operations
       });
@@ -754,7 +872,7 @@ class FacebookAPI {
         targeting: params.targeting ? '[TARGETING_DATA]' : undefined
       }, null, 2));
 
-      const response = await axios.post(url, null, {
+      const response = await this.makeApiCallWithRotation('POST', url, {
         params,
         timeout: 120000 // 120 seconds timeout for complex operations
       });
@@ -1318,7 +1436,7 @@ class FacebookAPI {
       console.log('  Using Dynamic Creative:', !!adData.dynamicTextEnabled);
       console.log('📦 Creative JSON preview:', JSON.stringify(creative).substring(0, 500) + '...');
 
-      const response = await axios.post(url, null, {
+      const response = await this.makeApiCallWithRotation('POST', url, {
         params,
         timeout: 60000, // 60 second timeout for ad creation (dynamic creative may take longer)
         maxContentLength: 50 * 1024 * 1024, // 50MB max (dynamic creative may have larger payloads)
@@ -6099,7 +6217,8 @@ class FacebookAPI {
       console.log(`  🔧 Using manual copy method (last resort)...`);
 
       // Step 1: Get original campaign details with more fields
-      const campaignResponse = await axios.get(
+      const campaignResponse = await this.makeApiCallWithRotation(
+        'GET',
         `${this.baseURL}/${campaignId}`,
         {
           params: {
@@ -6146,9 +6265,9 @@ class FacebookAPI {
         hasBudget: !!(newCampaignData.daily_budget || newCampaignData.lifetime_budget)
       });
 
-      const newCampaignResponse = await axios.post(
+      const newCampaignResponse = await this.makeApiCallWithRotation(
+        'POST',
         `${this.baseURL}/act_${accountId}/campaigns`,
-        null,
         { params: newCampaignData }
       );
 
@@ -6156,7 +6275,8 @@ class FacebookAPI {
       console.log(`  ✅ New campaign created: ${newCampaignId}`);
 
       // Step 3: Copy ad sets with better error handling
-      const adSetsResponse = await axios.get(
+      const adSetsResponse = await this.makeApiCallWithRotation(
+        'GET',
         `${this.baseURL}/${campaignId}/adsets`,
         {
           params: {
@@ -6224,9 +6344,9 @@ class FacebookAPI {
 
           console.log(`    📝 Creating ad set ${i + 1} with optimization goal: ${adSet.optimization_goal}`);
 
-          const newAdSetResponse = await axios.post(
+          const newAdSetResponse = await this.makeApiCallWithRotation(
+            'POST',
             `${this.baseURL}/act_${accountId}/adsets`,
-            null,
             { params: newAdSetData }
           );
 
@@ -6237,7 +6357,8 @@ class FacebookAPI {
           try {
             console.log(`    📋 Fetching ads from original ad set ${adSet.id}...`);
 
-            const adsResponse = await axios.get(
+            const adsResponse = await this.makeApiCallWithRotation(
+              'GET',
               `${this.baseURL}/${adSet.id}/ads`,
               {
                 params: {
@@ -6352,9 +6473,9 @@ class FacebookAPI {
                 }
 
                 // Create the ad
-                const newAdResponse = await axios.post(
+                const newAdResponse = await this.makeApiCallWithRotation(
+                  'POST',
                   `${this.baseURL}/act_${accountId}/ads`,
-                  null,
                   { params: newAdData }
                 );
 
