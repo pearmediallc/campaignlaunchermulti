@@ -7,15 +7,13 @@ const Strategy150DuplicationService = require('./strategy150Duplication');
 const ImageConverter = require('./imageConverter');
 
 // Import rotation services for automatic backup app switching
-let AppRotationService = null;
 let appRotationInstance = null;
 
-// Lazy load rotation service only if enabled
+// Lazy load rotation service only if enabled (AppRotationService exports a singleton)
 const getRotationService = () => {
   if (!appRotationInstance && process.env.ENABLE_FB_APP_ROTATION === 'true') {
     try {
-      AppRotationService = require('./AppRotationService');
-      appRotationInstance = new AppRotationService();
+      appRotationInstance = require('./AppRotationService'); // Import singleton instance directly
       console.log('✅ App rotation enabled for FacebookAPI class');
     } catch (error) {
       console.warn('⚠️ Could not initialize app rotation:', error.message);
