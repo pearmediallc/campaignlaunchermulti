@@ -155,7 +155,7 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
     // Fetch campaign details with ad sets and learning info from Facebook
     const url = `https://graph.facebook.com/v19.0/${campaignId}`;
     const params = {
-      fields: `id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
+      fields: `id,name,status,effective_status,configured_status,issues_info,recommendations,objective,created_time,daily_budget,lifetime_budget,spend_cap,bid_strategy,adsets.limit(200){id,name,status,effective_status,configured_status,issues_info,delivery_info,recommendations,daily_budget,lifetime_budget,optimization_goal,billing_event,learning_stage_info,targeting,attribution_spec,${insightsFilter}{impressions,clicks,spend,conversions,cost_per_conversion,ctr,cpm,actions,cost_per_action_type,frequency,reach}}`,
       access_token: accessToken
     };
 
@@ -429,8 +429,8 @@ router.get('/all', authenticate, async (req, res) => {
         // Calculate all metrics using MetricsCalculator for accuracy
         const calculatedMetrics = rawMetrics ? MetricsCalculator.calculateAllMetrics(rawMetrics) : null;
 
-        // Extract delivery information for campaigns
-        const campaignDeliveryInfo = campaign.delivery_info || {};
+        // Note: Campaigns don't have delivery_info field (only Ad Sets and Ads do)
+        // We rely on effective_status and issues_info for campaign-level delivery status
 
         return {
           ...campaign,
@@ -438,9 +438,6 @@ router.get('/all', authenticate, async (req, res) => {
           effective_status: campaign.effective_status,  // Real Facebook status (PENDING_REVIEW, IN_PROCESS, ACTIVE, etc.)
           configured_status: campaign.configured_status,
           issues_info: campaign.issues_info,  // Include issues for debugging
-          delivery_status: campaignDeliveryInfo.delivery_status || 'UNKNOWN',
-          delivery_message: campaignDeliveryInfo.delivery_status_description || '',
-          cannot_deliver_reason: campaignDeliveryInfo.cannot_deliver_reason || null,
           recommendations: campaign.recommendations || [],
           metrics: calculatedMetrics
         };
