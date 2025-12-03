@@ -115,6 +115,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   <MenuItem value={1}>1 Campaign</MenuItem>
                   <MenuItem value={2}>2 Campaigns</MenuItem>
                   <MenuItem value={3}>3 Campaigns</MenuItem>
+                  <MenuItem value={4}>4 Campaigns</MenuItem>
                 </Select>
               </FormControl>
             )}
@@ -134,7 +135,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
               </Box>
               <Alert severity="info" sx={{ mt: 2 }}>
                 <Typography variant="caption">
-                  Each campaign will be created with identical settings. A 10-second delay will be added between campaigns to avoid rate limits.
+                  <strong>Optimized Duplication:</strong> Each campaign will be created with identical ad sets and ads using parallel batch processing. Campaigns are created with staggered timing to maximize speed while avoiding rate limits.
                 </Typography>
               </Alert>
             </Box>
