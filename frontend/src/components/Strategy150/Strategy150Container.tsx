@@ -450,6 +450,17 @@ const Strategy150Container: React.FC = () => {
         formData.append('media', workingCampaignData.image);
       } else if (workingCampaignData.mediaType === 'single_video' && workingCampaignData.video instanceof File) {
         formData.append('media', workingCampaignData.video);
+
+        // Add video thumbnail if provided
+        if (workingCampaignData.videoThumbnail instanceof File) {
+          formData.append('videoThumbnail', workingCampaignData.videoThumbnail);
+          console.log('✅ Including video thumbnail:', workingCampaignData.videoThumbnail.name);
+
+          // Add frame index if provided
+          if (workingCampaignData.videoThumbnailFrameIndex !== undefined) {
+            formData.append('videoThumbnailFrameIndex', String(workingCampaignData.videoThumbnailFrameIndex));
+          }
+        }
       } else if (workingCampaignData.mediaType === 'carousel' && workingCampaignData.images && Array.isArray(workingCampaignData.images)) {
         workingCampaignData.images.forEach((file: File) => {
           formData.append('media', file);

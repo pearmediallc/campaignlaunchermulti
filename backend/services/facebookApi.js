@@ -116,6 +116,7 @@ class FacebookAPI {
 
         if (nextApp && nextApp.accessToken) {
           console.log(`  🔄 Switching to app: ${nextApp.name} (${nextApp.appId})`);
+          console.log(`  🔑 Using backup app token: ${nextApp.accessToken.substring(0, 20)}...`);
 
           // Update access token in config
           const newConfig = { ...config };
@@ -124,6 +125,8 @@ class FacebookAPI {
           } else {
             newConfig.params = { access_token: nextApp.accessToken };
           }
+
+          console.log(`  ✅ API request will use backup app token: ${newConfig.params.access_token.substring(0, 20)}...`);
 
           // Update instance token and app ID
           const originalToken = this.accessToken;
@@ -2922,13 +2925,36 @@ class FacebookAPI {
               console.log('✅ Video is ready for use in ads');
             }
 
-            const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
-            if (thumbnailUrl) {
-              mediaAssets.videoThumbnail = thumbnailUrl;
-              console.log('✅ Video thumbnail ready for ad creation:', thumbnailUrl);
+            // Check if user provided a custom thumbnail
+            if (campaignData.videoThumbnailPath) {
+              console.log('📸 Uploading custom video thumbnail...');
+              console.log('  Thumbnail path:', campaignData.videoThumbnailPath);
+              try {
+                const thumbnailHash = await this.uploadImage(campaignData.videoThumbnailPath);
+                if (thumbnailHash) {
+                  mediaAssets.videoThumbnail = thumbnailHash;
+                  console.log('✅ Custom video thumbnail uploaded with hash:', thumbnailHash);
+                }
+              } catch (thumbnailError) {
+                console.error('❌ Custom thumbnail upload failed:', thumbnailError.message);
+                console.log('⚠️ Falling back to Facebook-generated thumbnail...');
+                // Fall back to Facebook-generated thumbnail
+                const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
+                if (thumbnailUrl) {
+                  mediaAssets.videoThumbnail = thumbnailUrl;
+                  console.log('✅ Using Facebook-generated thumbnail:', thumbnailUrl);
+                }
+              }
             } else {
-              console.log('⚠️ No thumbnail available, cannot create video ad');
-              throw new Error('Video thumbnail is required for video ads');
+              // No custom thumbnail, use Facebook-generated one
+              const thumbnailUrl = await this.getVideoThumbnail(videoId, campaignData.videoPath);
+              if (thumbnailUrl) {
+                mediaAssets.videoThumbnail = thumbnailUrl;
+                console.log('✅ Video thumbnail ready for ad creation:', thumbnailUrl);
+              } else {
+                console.log('⚠️ No thumbnail available, cannot create video ad');
+                throw new Error('Video thumbnail is required for video ads');
+              }
             }
           }
         } catch (error) {
@@ -5045,7 +5071,17 @@ class FacebookAPI {
         throw new Error('Deep copy did not return a campaign ID');
       }
     } catch (error) {
-      console.error(`❌ Deep copy failed for copy ${copyNumber}:`, error.response?.data || error.message);
+      const errorSubcode = error.response?.data?.error?.error_subcode;
+      const errorMessage = error.response?.data?.error?.message || error.message;
+
+      console.error(`❌ Deep copy failed for copy ${copyNumber}:`, errorMessage);
+
+      // Check if error is "Copy request is too large" (error_subcode 1885194)
+      if (errorSubcode === 1885194) {
+        console.log('  ℹ️ Deep copy limit exceeded (50+ objects), will use manual duplication method instead');
+        error.useManualFallback = true; // Flag for batchMultiplyCampaigns to use manual method
+      }
+
       throw error;
     }
   }
@@ -5105,6 +5141,48 @@ class FacebookAPI {
 
         } catch (error) {
           console.error(`  ❌ Failed to create campaign copy ${copyNumber}:`, error.message);
+
+          // Check if we should fallback to manual duplication
+          if (error.useManualFallback) {
+            console.log(`  🔄 Falling back to manual duplication method for copy ${copyNumber}...`);
+
+            try {
+              // Use manual duplication instead
+              const manualCopyResult = await this.manualCampaignCopy(
+                sourceCampaignId,
+                null, // accountId will be extracted from sourceCampaignId
+                `Copy${copyNumber}_${timestamp}`
+              );
+
+              if (manualCopyResult.success) {
+                results.push({
+                  copyNumber,
+                  campaignId: manualCopyResult.newCampaignId,
+                  campaignName: manualCopyResult.newCampaignName,
+                  adSetsCreated: manualCopyResult.adSetsCreated,
+                  adsCreated: manualCopyResult.adsCreated,
+                  status: 'success',
+                  message: 'Manual duplication succeeded after deep copy failed',
+                  method: 'manual_fallback'
+                });
+
+                console.log(`  ✅ Manual duplication successful for copy ${copyNumber}`);
+                console.log(`    New Campaign ID: ${manualCopyResult.newCampaignId}`);
+                console.log(`    Ad Sets: ${manualCopyResult.adSetsCreated}`);
+                console.log(`    Ads: ${manualCopyResult.adsCreated}`);
+                continue; // Skip adding to errors array
+              }
+            } catch (manualError) {
+              console.error(`  ❌ Manual duplication also failed:`, manualError.message);
+              errors.push({
+                copyNumber,
+                error: `Deep copy failed (too large), manual fallback also failed: ${manualError.message}`,
+                status: 'failed'
+              });
+              continue;
+            }
+          }
+
           errors.push({
             copyNumber,
             error: error.message,
@@ -6253,41 +6331,94 @@ class FacebookAPI {
 
       console.log(`  📊 Using account ID: ${accountId}`);
 
-      // Step 2: Create new campaign with proper data structure
-      const newCampaignData = {
-        name: newName || `${originalCampaign.name} - Copy`,
-        objective: originalCampaign.objective,
-        status: 'PAUSED',
-        access_token: this.accessToken,
-        // CRITICAL FIX: special_ad_categories is ALWAYS required by Facebook, even if empty
-        special_ad_categories: JSON.stringify(originalCampaign.special_ad_categories || [])
-      };
+      // Step 2: Check if campaign with same name already exists (to prevent duplicates on retry)
+      const targetCampaignName = newName || `${originalCampaign.name} - Copy`;
+      let newCampaignId = null;
+      let existingCampaign = null;
 
-      // Only add budget fields if they exist
-      if (originalCampaign.daily_budget) {
-        newCampaignData.daily_budget = originalCampaign.daily_budget;
+      try {
+        console.log(`  🔍 Checking if campaign "${targetCampaignName}" already exists...`);
+        const searchResponse = await this.makeApiCallWithRotation(
+          'GET',
+          `${this.baseURL}/act_${accountId}/campaigns`,
+          {
+            params: {
+              fields: 'id,name',
+              filtering: JSON.stringify([{field: 'name', operator: 'EQUAL', value: targetCampaignName}]),
+              limit: 1,
+              access_token: this.accessToken
+            }
+          }
+        );
+
+        const campaigns = searchResponse.data.data || [];
+        if (campaigns.length > 0) {
+          existingCampaign = campaigns[0];
+
+          // Check if existing campaign has ad sets
+          const adSetsCheck = await this.makeApiCallWithRotation(
+            'GET',
+            `${this.baseURL}/${existingCampaign.id}/adsets`,
+            {
+              params: {
+                fields: 'id',
+                limit: 1,
+                access_token: this.accessToken
+              }
+            }
+          );
+
+          const hasAdSets = (adSetsCheck.data.data || []).length > 0;
+
+          if (!hasAdSets) {
+            console.log(`  ♻️ Found existing empty campaign, reusing: ${existingCampaign.id}`);
+            newCampaignId = existingCampaign.id;
+          } else {
+            console.log(`  ⚠️ Campaign with this name already exists and has ad sets, will create with unique name`);
+            existingCampaign = null; // Force creation of new campaign with different name
+          }
+        }
+      } catch (searchError) {
+        console.log(`  ℹ️ Could not search for existing campaign, will create new one`);
       }
-      if (originalCampaign.lifetime_budget) {
-        newCampaignData.lifetime_budget = originalCampaign.lifetime_budget;
+
+      // Only create new campaign if we didn't find an empty existing one
+      if (!newCampaignId) {
+        const newCampaignData = {
+          name: existingCampaign ? `${targetCampaignName} - ${Date.now()}` : targetCampaignName,
+          objective: originalCampaign.objective,
+          status: 'PAUSED',
+          access_token: this.accessToken,
+          // CRITICAL FIX: special_ad_categories is ALWAYS required by Facebook, even if empty
+          special_ad_categories: JSON.stringify(originalCampaign.special_ad_categories || [])
+        };
+
+        // Only add budget fields if they exist
+        if (originalCampaign.daily_budget) {
+          newCampaignData.daily_budget = originalCampaign.daily_budget;
+        }
+        if (originalCampaign.lifetime_budget) {
+          newCampaignData.lifetime_budget = originalCampaign.lifetime_budget;
+        }
+        if (originalCampaign.bid_strategy) {
+          newCampaignData.bid_strategy = originalCampaign.bid_strategy;
+        }
+
+        console.log(`  📝 Creating new campaign with data:`, {
+          name: newCampaignData.name,
+          objective: newCampaignData.objective,
+          hasBudget: !!(newCampaignData.daily_budget || newCampaignData.lifetime_budget)
+        });
+
+        const newCampaignResponse = await this.makeApiCallWithRotation(
+          'POST',
+          `${this.baseURL}/act_${accountId}/campaigns`,
+          { params: newCampaignData }
+        );
+
+        newCampaignId = newCampaignResponse.data.id;
+        console.log(`  ✅ New campaign created: ${newCampaignId}`);
       }
-      if (originalCampaign.bid_strategy) {
-        newCampaignData.bid_strategy = originalCampaign.bid_strategy;
-      }
-
-      console.log(`  📝 Creating new campaign with data:`, {
-        name: newCampaignData.name,
-        objective: newCampaignData.objective,
-        hasBudget: !!(newCampaignData.daily_budget || newCampaignData.lifetime_budget)
-      });
-
-      const newCampaignResponse = await this.makeApiCallWithRotation(
-        'POST',
-        `${this.baseURL}/act_${accountId}/campaigns`,
-        { params: newCampaignData }
-      );
-
-      const newCampaignId = newCampaignResponse.data.id;
-      console.log(`  ✅ New campaign created: ${newCampaignId}`);
 
       // Step 3: Copy ad sets with better error handling
       const adSetsResponse = await this.makeApiCallWithRotation(
@@ -6359,11 +6490,32 @@ class FacebookAPI {
 
           console.log(`    📝 Creating ad set ${i + 1} with optimization goal: ${adSet.optimization_goal}`);
 
-          const newAdSetResponse = await this.makeApiCallWithRotation(
-            'POST',
-            `${this.baseURL}/act_${accountId}/adsets`,
-            { params: newAdSetData }
-          );
+          // Retry logic for transient errors
+          let newAdSetResponse;
+          let retryCount = 0;
+          const MAX_RETRIES = 3;
+
+          while (retryCount <= MAX_RETRIES) {
+            try {
+              newAdSetResponse = await this.makeApiCallWithRotation(
+                'POST',
+                `${this.baseURL}/act_${accountId}/adsets`,
+                { params: newAdSetData }
+              );
+              break; // Success, exit retry loop
+            } catch (adSetCreateError) {
+              const isTransient = adSetCreateError.response?.data?.error?.is_transient;
+              const errorCode = adSetCreateError.response?.data?.error?.code;
+
+              if (isTransient && retryCount < MAX_RETRIES) {
+                retryCount++;
+                console.log(`    ⚠️ Transient error creating ad set ${i + 1}, retry ${retryCount}/${MAX_RETRIES}...`);
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+              } else {
+                throw adSetCreateError; // Not transient or max retries reached
+              }
+            }
+          }
 
           const newAdSetId = newAdSetResponse.data.id;
           console.log(`    ✅ Ad set ${i + 1} created successfully: ${newAdSetId}`);
@@ -6487,12 +6639,31 @@ class FacebookAPI {
                     : JSON.stringify(ad.tracking_specs);
                 }
 
-                // Create the ad
-                const newAdResponse = await this.makeApiCallWithRotation(
-                  'POST',
-                  `${this.baseURL}/act_${accountId}/ads`,
-                  { params: newAdData }
-                );
+                // Create the ad with retry logic for transient errors
+                let newAdResponse;
+                let adRetryCount = 0;
+                const AD_MAX_RETRIES = 3;
+
+                while (adRetryCount <= AD_MAX_RETRIES) {
+                  try {
+                    newAdResponse = await this.makeApiCallWithRotation(
+                      'POST',
+                      `${this.baseURL}/act_${accountId}/ads`,
+                      { params: newAdData }
+                    );
+                    break; // Success, exit retry loop
+                  } catch (adCreateError) {
+                    const isTransient = adCreateError.response?.data?.error?.is_transient;
+
+                    if (isTransient && adRetryCount < AD_MAX_RETRIES) {
+                      adRetryCount++;
+                      console.log(`      ⚠️ Transient error creating ad ${j + 1}, retry ${adRetryCount}/${AD_MAX_RETRIES}...`);
+                      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                    } else {
+                      throw adCreateError; // Not transient or max retries reached
+                    }
+                  }
+                }
 
                 console.log(`      ✅ Ad ${j + 1} created successfully: ${newAdResponse.data.id}`);
               } catch (adError) {

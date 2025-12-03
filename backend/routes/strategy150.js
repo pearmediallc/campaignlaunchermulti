@@ -476,13 +476,21 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           }
         }
       } else if (req.body.mediaType === 'video' || req.body.mediaType === 'single_video') {
-        mediaPath = req.files[0].path;
-        console.log('✅ Video detected:', mediaPath);
+        // Find video file (fieldname 'media')
+        const videoFile = req.files.find(f => f.fieldname === 'media');
+        if (videoFile) {
+          mediaPath = videoFile.path;
+          console.log('✅ Video detected:', mediaPath);
+        } else {
+          mediaPath = req.files[0].path; // Fallback to first file
+          console.log('✅ Video detected (fallback):', mediaPath);
+        }
 
         // Handle video thumbnail
-        // Check if there's a custom thumbnail upload (will be second file)
-        if (req.files.length > 1) {
-          videoThumbnailPath = req.files[1].path;
+        // Look for custom thumbnail upload by fieldname 'videoThumbnail'
+        const thumbnailFile = req.files.find(f => f.fieldname === 'videoThumbnail');
+        if (thumbnailFile) {
+          videoThumbnailPath = thumbnailFile.path;
           console.log('✅ Custom video thumbnail detected:', videoThumbnailPath);
 
           // Process custom thumbnail with aspect ratio
