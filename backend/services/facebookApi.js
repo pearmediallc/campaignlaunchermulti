@@ -30,6 +30,10 @@ class FacebookAPI {
     this.adAccountId = userCredentials.adAccountId || process.env.FB_AD_ACCOUNT_ID;
     this.pageId = userCredentials.pageId || process.env.FB_PAGE_ID;
     this.pixelId = userCredentials.pixelId || process.env.FB_PIXEL_ID;
+
+    // Track which app is currently being used (for rotation)
+    this.currentAppId = 'main_app';
+    this.consecutiveRateLimitErrors = 0; // Track consecutive rate limit errors across all apps
     
     // Facebook region IDs for US states (these are the actual Facebook region keys)
     // Source: Facebook Marketing API
@@ -74,13 +78,10 @@ class FacebookAPI {
       const response = await axios({ method, url, ...config });
 
       // Track successful API call
-      if (rotationService && this.accessToken) {
-        // Determine which app is being used
-        const apps = rotationService.apps || [];
-        const currentApp = apps.find(app => app.accessToken === this.accessToken) || apps[0];
-        if (currentApp) {
-          rotationService.trackApiCall(currentApp.appId);
-        }
+      if (rotationService && this.currentAppId) {
+        rotationService.trackApiCall(this.currentAppId);
+        // Reset consecutive errors counter on success
+        this.consecutiveRateLimitErrors = 0;
       }
 
       return response;
@@ -95,20 +96,26 @@ class FacebookAPI {
       if (isRateLimit && attempt < MAX_ATTEMPTS - 1) {
         console.log(`  ⚠️ Rate limit hit (attempt ${attempt + 1}/${MAX_ATTEMPTS}). Rotating to backup app...`);
 
+        // Increment consecutive rate limit errors
+        this.consecutiveRateLimitErrors++;
+
         // Mark current app as exhausted
-        if (rotationService && this.accessToken) {
-          const apps = rotationService.apps || [];
-          const currentApp = apps.find(app => app.accessToken === this.accessToken) || apps[0];
-          if (currentApp) {
-            rotationService.markAppExhausted(currentApp.appId);
-          }
+        if (rotationService && this.currentAppId) {
+          rotationService.markAppExhausted(this.currentAppId);
+        }
+
+        // Detect if this is an ad account limit (all apps failing immediately)
+        const isAdAccountLimit = this.consecutiveRateLimitErrors >= 2;
+        if (isAdAccountLimit) {
+          console.warn('  ⚠️ Detected ad account-level rate limit (not app-level)');
+          console.warn('  ⚠️ All apps share the same ad account quota (~5000 calls/hour)');
         }
 
         // Get next available app
         const nextApp = rotationService.getNextAvailableApp(this.accessToken);
 
         if (nextApp && nextApp.accessToken) {
-          console.log(`  🔄 Switching to app: ${nextApp.name}`);
+          console.log(`  🔄 Switching to app: ${nextApp.name} (${nextApp.appId})`);
 
           // Update access token in config
           const newConfig = { ...config };
@@ -118,9 +125,11 @@ class FacebookAPI {
             newConfig.params = { access_token: nextApp.accessToken };
           }
 
-          // Temporarily update instance token for this call
+          // Update instance token and app ID
           const originalToken = this.accessToken;
+          const originalAppId = this.currentAppId;
           this.accessToken = nextApp.accessToken;
+          this.currentAppId = nextApp.appId;
 
           // Wait 2 seconds before retry to avoid hammering the API
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -129,17 +138,25 @@ class FacebookAPI {
             // Retry with new token
             const retryResponse = await this.makeApiCallWithRotation(method, url, newConfig, attempt + 1);
 
-            // Keep the working token for future calls
+            // Keep the working token and app ID for future calls
             console.log(`  ✅ Success with backup app: ${nextApp.name}`);
             return retryResponse;
 
           } catch (retryError) {
-            // Restore original token if retry fails
+            // Restore original token and app ID if retry fails
             this.accessToken = originalToken;
+            this.currentAppId = originalAppId;
             throw retryError;
           }
         } else {
-          console.warn('  ❌ No backup apps available. All apps exhausted.');
+          // No backup apps available
+          if (isAdAccountLimit) {
+            console.error('  ❌ Ad account rate limit reached (~5000 calls/hour shared across all apps)');
+            console.error('  ❌ Cannot rotate - all apps access the same ad account');
+            console.error('  ⏳ Recommendation: Implement request queuing or wait for limit to reset');
+          } else {
+            console.warn('  ❌ No backup apps available. All apps exhausted.');
+          }
           throw error;
         }
       }

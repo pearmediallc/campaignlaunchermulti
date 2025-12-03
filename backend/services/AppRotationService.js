@@ -28,12 +28,14 @@ class AppRotationService {
     this.apps = getBackupApps();
     this.usage = {}; // Track usage per app: { appId: callCount }
     this.exhaustedApps = new Set(); // Track which apps hit 429
+    this.exhaustionTimestamps = {}; // Track when each app was marked exhausted
     this.resetTime = Date.now() + 3600000; // Reset counters every hour
     this.lastResetDate = new Date();
 
     // Initialize usage counters
     this.apps.forEach(app => {
       this.usage[app.appId] = 0;
+      this.exhaustionTimestamps[app.appId] = null;
     });
 
     console.log('✅ AppRotationService initialized');
@@ -102,11 +104,40 @@ class AppRotationService {
    */
   markAppExhausted(appId) {
     this.exhaustedApps.add(appId);
+    this.exhaustionTimestamps[appId] = Date.now();
     const app = this.apps.find(a => a.appId === appId);
 
     if (app) {
       this.usage[appId] = app.rateLimit; // Max out the usage counter
       console.warn(`⚠️ App marked as exhausted: ${app.name} (${appId})`);
+    }
+
+    // Detect if this is likely an ad account limit (multiple apps exhausted within 10 seconds)
+    this.detectAdAccountLimit();
+  }
+
+  /**
+   * Detect if rate limit is at ad account level (not app level)
+   * If all apps are marked exhausted within a short time window, it's likely the ad account limit
+   */
+  detectAdAccountLimit() {
+    const now = Date.now();
+    const recentExhaustionWindow = 10000; // 10 seconds
+
+    const recentlyExhaustedApps = this.apps.filter(app => {
+      const timestamp = this.exhaustionTimestamps[app.appId];
+      return timestamp && (now - timestamp) < recentExhaustionWindow;
+    });
+
+    // If 2 or more apps exhausted within 10 seconds, likely ad account limit
+    if (recentlyExhaustedApps.length >= 2) {
+      console.error('');
+      console.error('🚨 AD ACCOUNT RATE LIMIT DETECTED 🚨');
+      console.error('   Multiple apps failed within 10 seconds - this indicates ad account limit, not app-level limit');
+      console.error('   Ad account limit: ~5000 calls/hour SHARED across all apps');
+      console.error('   App rotation cannot solve this - all apps access the same ad account');
+      console.error('   Recommendation: Wait for hourly reset or implement request queuing');
+      console.error('');
     }
   }
 
@@ -122,6 +153,7 @@ class AppRotationService {
       // Reset all counters
       this.apps.forEach(app => {
         this.usage[app.appId] = 0;
+        this.exhaustionTimestamps[app.appId] = null;
       });
 
       // Clear exhausted apps
@@ -143,6 +175,7 @@ class AppRotationService {
 
     this.apps.forEach(app => {
       this.usage[app.appId] = 0;
+      this.exhaustionTimestamps[app.appId] = null;
     });
 
     this.exhaustedApps.clear();
