@@ -99,16 +99,17 @@ class FacebookAPI {
         // Increment consecutive rate limit errors
         this.consecutiveRateLimitErrors++;
 
-        // Mark current app as exhausted
-        if (rotationService && this.currentAppId) {
-          rotationService.markAppExhausted(this.currentAppId);
-        }
-
         // Detect if this is an ad account limit (all apps failing immediately)
         const isAdAccountLimit = this.consecutiveRateLimitErrors >= 2;
         if (isAdAccountLimit) {
           console.warn('  ⚠️ Detected ad account-level rate limit (not app-level)');
           console.warn('  ⚠️ All apps share the same ad account quota (~5000 calls/hour)');
+          console.warn('  ⚠️ NOT marking apps as exhausted - this is an account limit, not app limit');
+        } else {
+          // Only mark app as exhausted if it's likely an app-level limit (first failure)
+          if (rotationService && this.currentAppId) {
+            rotationService.markAppExhausted(this.currentAppId);
+          }
         }
 
         // Get next available app
@@ -6382,7 +6383,24 @@ class FacebookAPI {
         console.log(`  ℹ️ Could not search for existing campaign, will create new one`);
       }
 
-      // Only create new campaign if we didn't find an empty existing one
+      // Step 3: Fetch ad sets from original campaign FIRST (before creating campaign)
+      console.log(`  📋 Fetching ad sets from original campaign...`);
+      const adSetsResponse = await this.makeApiCallWithRotation(
+        'GET',
+        `${this.baseURL}/${campaignId}/adsets`,
+        {
+          params: {
+            fields: 'name,targeting,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,is_dynamic_creative,promoted_object,attribution_spec',
+            limit: 200, // Fetch all ad sets (up to Facebook's limit of 200)
+            access_token: this.accessToken
+          }
+        }
+      );
+
+      const adSets = adSetsResponse.data.data || [];
+      console.log(`  📋 Found ${adSets.length} ad sets to copy`);
+
+      // Only create new campaign if we didn't find an empty existing one AND we successfully fetched ad sets
       if (!newCampaignId) {
         const newCampaignData = {
           name: existingCampaign ? `${targetCampaignName} - ${Date.now()}` : targetCampaignName,
@@ -6420,20 +6438,7 @@ class FacebookAPI {
         console.log(`  ✅ New campaign created: ${newCampaignId}`);
       }
 
-      // Step 3: Copy ad sets with better error handling
-      const adSetsResponse = await this.makeApiCallWithRotation(
-        'GET',
-        `${this.baseURL}/${campaignId}/adsets`,
-        {
-          params: {
-            fields: 'name,targeting,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,is_dynamic_creative,promoted_object,attribution_spec',
-            limit: 200, // Fetch all ad sets (up to Facebook's limit of 200)
-            access_token: this.accessToken
-          }
-        }
-      );
-
-      const adSets = adSetsResponse.data.data || [];
+      // Step 4: Now copy the ad sets
       console.log(`  📋 Copying ${adSets.length} ad sets...`);
 
       for (let i = 0; i < adSets.length; i++) {
