@@ -6272,9 +6272,10 @@ class FacebookAPI {
       console.log(`  📊 Campaign structure: ${structure.adSetCount} ad sets, ${structure.totalAds} ads, ${structure.totalObjects} total objects`);
 
       // Facebook's limit is EXTREMELY strict - even campaigns with 7 objects fail
-      // So we go straight to manual copy for ALL campaigns
-      console.log(`  🔧 Using manual copy (Facebook's 3-object limit is too restrictive)`);
-      return await this.manualCampaignCopy(campaignId, newName);
+      // Use optimized manual copy with parallel batch processing
+      console.log(`  🚀 Using optimized manual copy with parallel batch processing`);
+      const result = await this.hierarchicalDeepCopy(campaignId, 1, Date.now());
+      return result.copyId || result.campaign?.id;
 
     } catch (error) {
       console.error(`  ❌ Duplication failed:`, error.response?.data || error.message);
@@ -6596,23 +6597,26 @@ class FacebookAPI {
           const errorData = JSON.parse(batchResult.body);
           console.error(`  ⚠️ Batch API returned error:`, errorData.error || errorData);
 
-          // If it's still a size limit issue, try manual copy
+          // If it's still a size limit issue, use optimized copy
           if (errorData.error?.error_subcode === 1885194) {
-            console.log(`  📋 Still too large for batch API, trying manual copy...`);
-            return await this.manualCampaignCopy(campaignId, newName);
+            console.log(`  📋 Still too large for batch API, using optimized copy...`);
+            const result = await this.hierarchicalDeepCopy(campaignId, 1, Date.now());
+            return result.copyId || result.campaign?.id;
           }
         }
       }
 
-      // If batch fails for any other reason, try manual copy
-      console.log(`  ⚠️ Batch API failed, trying manual copy...`);
-      return await this.manualCampaignCopy(campaignId, newName);
+      // If batch fails for any other reason, use optimized copy
+      console.log(`  ⚠️ Batch API failed, using optimized copy...`);
+      const result = await this.hierarchicalDeepCopy(campaignId, 1, Date.now());
+      return result.copyId || result.campaign?.id;
 
     } catch (error) {
       console.error(`  ❌ Async batch duplication failed:`, error.response?.data || error.message);
-      // Try manual copy as last resort
-      console.log(`  🔧 Falling back to manual copy...`);
-      return await this.manualCampaignCopy(campaignId, newName);
+      // Use optimized copy as last resort
+      console.log(`  🔧 Falling back to optimized copy...`);
+      const result = await this.hierarchicalDeepCopy(campaignId, 1, Date.now());
+      return result.copyId || result.campaign?.id;
     }
   }
 

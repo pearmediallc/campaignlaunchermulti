@@ -600,9 +600,9 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
       pixelId: selectedPixelId
     });
 
-    // Use Facebook's native deep copy API for exact duplication
-    // This preserves original structure, attribution, and all settings
-    console.log(`📋 Using native Facebook deep copy for ${numberOfCopies} campaign(s)`);
+    // Use optimized batch multiplication with hierarchical deep copy
+    // This uses parallel batch processing and staggered execution for speed
+    console.log(`🚀 Using optimized batch multiplication for ${numberOfCopies} campaign(s)`);
 
     // First, detect the original campaign structure for logging
     try {
@@ -610,62 +610,37 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
       console.log(`📊 Original campaign structure detected:`);
       console.log(`  - Ad Sets: ${structure.adSetCount}`);
       console.log(`  - Total Ads: ${structure.totalAds}`);
-      console.log(`  ℹ️ Facebook's deep_copy will preserve this exact structure`);
+      console.log(`  ℹ️ Hierarchical copy will optimize based on structure`);
     } catch (err) {
-      console.log(`⚠️ Could not detect structure, but deep_copy will still work`);
+      console.log(`⚠️ Could not detect structure, but copy will still work`);
     }
 
-    const newCampaigns = [];
-    for (let i = 0; i < numberOfCopies; i++) {
-      // Add delay between campaign duplications to avoid rate limits
-      if (i > 0) {
-        console.log(`  ⏱️ Waiting 5 seconds before next duplication to avoid rate limits...`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-      }
+    // Use batch multiplication for efficient parallel processing
+    const batchResult = await facebookApi.batchMultiplyCampaigns(
+      campaignId,
+      numberOfCopies,
+      (progress) => console.log(`  📊 Progress: ${progress}`)
+    );
 
-      const copyName = numberOfCopies > 1
-        ? `${new_name} - Copy ${i + 1}`
-        : new_name;
-
-      try {
-        const newCampaignId = await facebookApi.duplicateCampaignDeepCopy(campaignId, copyName);
-        console.log(`✅ Successfully duplicated campaign with ID: ${newCampaignId}`);
-        newCampaigns.push({
-          id: newCampaignId,
-          name: copyName,
-          copyNumber: i + 1,
-          success: true
-        });
-      } catch (error) {
-        console.error(`Failed to create copy ${i + 1}:`, error.message);
-
-        // Check if it's a rate limit error and add longer delay
-        if (error.response?.data?.error?.code === 17 || error.response?.data?.error?.error_subcode === 2446079) {
-          console.log(`  ⚠️ Rate limit hit. Waiting 60 seconds before continuing...`);
-          await new Promise(resolve => setTimeout(resolve, 60000)); // 60 second delay
-          // Retry this copy
-          try {
-            const newCampaignId = await facebookApi.duplicateCampaignDeepCopy(campaignId, copyName);
-            console.log(`✅ Successfully duplicated campaign with ID: ${newCampaignId} (after retry)`);
-            newCampaigns.push({
-              id: newCampaignId,
-              name: copyName,
-              copyNumber: i + 1,
-              success: true
-            });
-            continue;
-          } catch (retryError) {
-            console.error(`Failed to create copy ${i + 1} even after retry:`, retryError.message);
-          }
-        }
-
-        newCampaigns.push({
-          success: false,
-          error: error.message,
-          copyNumber: i + 1
-        });
-      }
+    if (!batchResult.success || batchResult.results.length === 0) {
+      throw new Error('Batch multiplication failed: ' + (batchResult.errors[0]?.error || 'Unknown error'));
     }
+
+    const newCampaigns = batchResult.results.map(result => ({
+      id: result.campaignId,
+      name: result.campaignName,
+      copyNumber: result.copyNumber,
+      success: true
+    }));
+
+    // Add failed copies to the results
+    batchResult.errors.forEach(error => {
+      newCampaigns.push({
+        success: false,
+        error: error.error,
+        copyNumber: error.copyNumber
+      });
+    });
 
     // Handle both single and multiple campaign results
     const campaigns = Array.isArray(newCampaigns) ? newCampaigns : [newCampaigns];
