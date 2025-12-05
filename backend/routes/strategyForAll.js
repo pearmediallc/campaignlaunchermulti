@@ -307,6 +307,12 @@ const parseFormDataJson = (req, res, next) => {
   if (req.body.customBudgets && typeof req.body.customBudgets === 'string') {
     req.body.customBudgets = parseJsonField(req.body.customBudgets);
   }
+  if (req.body._multiAccountDeployment && typeof req.body._multiAccountDeployment === 'string') {
+    req.body._multiAccountDeployment = parseJsonField(req.body._multiAccountDeployment);
+  }
+  if (req.body._multipleCampaigns && typeof req.body._multipleCampaigns === 'string') {
+    req.body._multipleCampaigns = parseJsonField(req.body._multipleCampaigns);
+  }
 
   next();
 };
@@ -736,17 +742,11 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // Handle multi-account deployment if requested
     console.log('🔍 Checking for multi-account deployment:', {
       hasDeploymentFlag: !!req.body._multiAccountDeployment,
-      deploymentData: req.body._multiAccountDeployment,
-      deploymentDataType: typeof req.body._multiAccountDeployment
+      deploymentData: req.body._multiAccountDeployment
     });
 
     if (req.body._multiAccountDeployment) {
-      // Parse _multiAccountDeployment if it's a string (from FormData)
-      const deploymentData = typeof req.body._multiAccountDeployment === 'string'
-        ? JSON.parse(req.body._multiAccountDeployment)
-        : req.body._multiAccountDeployment;
-
-      const { targets, mode } = deploymentData;
+      const { targets, mode } = req.body._multiAccountDeployment;
       console.log(`\n🚀 MULTI-ACCOUNT DEPLOYMENT REQUESTED`);
       console.log(`  Targets: ${targets?.length || 0}`);
       console.log(`  Mode: ${mode}`);
