@@ -625,8 +625,14 @@ const AdSection: React.FC = () => {
             mediaType={mediaType}
             videoFile={mediaType === 'single_video' ? mediaFiles[0] : null}
             onThumbnailChange={(thumbnail, frameIndex) => {
+              console.log('📸 [AdSection] Thumbnail selected:', {
+                thumbnailName: thumbnail?.name,
+                thumbnailSize: thumbnail?.size,
+                frameIndex: frameIndex
+              });
               setValue('videoThumbnail', thumbnail || undefined);
               if (frameIndex !== undefined) setValue('videoThumbnailFrameIndex', frameIndex);
+              console.log('✅ [AdSection] Set videoThumbnail in form state');
             }}
             aspectRatio={watch('aspectRatio') || '1:1'}
             onAspectRatioChange={(ratio) => setValue('aspectRatio', ratio as any)}

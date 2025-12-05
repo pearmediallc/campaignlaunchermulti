@@ -240,6 +240,12 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
 
   const handleFormSubmit = methods.handleSubmit((data: Strategy150FormData) => {
     // Show confirmation dialog before submitting
+    console.log('📋 [Phase1Setup] Form submitted with data:', {
+      hasVideoThumbnail: !!(data as any).videoThumbnail,
+      videoThumbnailName: (data as any).videoThumbnail?.name,
+      videoThumbnailFrameIndex: (data as any).videoThumbnailFrameIndex,
+      mediaType: data.mediaType
+    });
     setPendingFormData(data);
     setConfirmDialogOpen(true);
   });
