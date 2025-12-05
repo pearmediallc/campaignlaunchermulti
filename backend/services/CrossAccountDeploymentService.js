@@ -1,5 +1,6 @@
 const db = require('../models');
 const FacebookAPI = require('./facebookApi');
+const { decryptToken } = require('../routes/facebookSDKAuth');
 
 /**
  * Cross-Account Campaign Deployment Service
@@ -387,7 +388,20 @@ class CrossAccountDeploymentService {
       throw new Error('No active Facebook authentication found for user');
     }
 
-    const userAccessToken = facebookAuth.accessToken;
+    let userAccessToken = facebookAuth.accessToken;
+
+    // CRITICAL: Decrypt token if it's encrypted (starts with '{')
+    if (userAccessToken && userAccessToken.startsWith('{')) {
+      console.log(`🔐 Token is encrypted, decrypting...`);
+      userAccessToken = decryptToken(userAccessToken);
+
+      if (!userAccessToken) {
+        throw new Error('Failed to decrypt access token');
+      }
+      console.log(`✅ Token decrypted successfully`);
+    } else {
+      console.log(`ℹ️  Token is already in plain format`);
+    }
 
     console.log(`🔑 Access Token Debug:`);
     console.log(`  - Token exists: ${!!userAccessToken}`);
