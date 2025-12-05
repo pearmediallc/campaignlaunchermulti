@@ -574,7 +574,7 @@ const StrategyForAdsContainer: React.FC = () => {
       Object.keys(workingCampaignData).forEach(key => {
         const value = workingCampaignData[key as keyof typeof workingCampaignData];
 
-        if (key === 'media' || key === 'mediaFiles' || key === 'image' || key === 'dynamicMediaFiles' || key === 'video' || key === 'images') {
+        if (key === 'media' || key === 'mediaFiles' || key === 'image' || key === 'dynamicMediaFiles' || key === 'video' || key === 'videoThumbnail' || key === 'images') {
           // Skip file fields, we'll handle them separately
           return;
         }

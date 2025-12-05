@@ -3133,6 +3133,9 @@ class FacebookAPI {
         campaign,
         adSet,
         ads: [ad],
+        campaignId: campaign.id, // CRITICAL: Add for multi-account deployment
+        adSetId: adSet.id,       // CRITICAL: Add for multi-account deployment
+        adId: ad ? ad.id : null, // CRITICAL: Add for multi-account deployment
         postId: ad?.postId || null, // Explicitly include postId in return
         mediaHashes: mediaAssets // Return media hashes for reuse
       };

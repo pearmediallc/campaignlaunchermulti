@@ -545,7 +545,7 @@ const StrategyForAllContainer: React.FC = () => {
       Object.keys(workingCampaignData).forEach(key => {
         const value = workingCampaignData[key as keyof typeof workingCampaignData];
 
-        if (key === 'media' || key === 'mediaFiles' || key === 'image') {
+        if (key === 'media' || key === 'mediaFiles' || key === 'image' || key === 'video' || key === 'videoThumbnail') {
           // Skip file fields, we'll handle them separately
           return;
         }
