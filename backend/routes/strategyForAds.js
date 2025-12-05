@@ -822,13 +822,19 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // Handle multi-account deployment if requested
     console.log('🔍 Checking for multi-account deployment:', {
       hasDeploymentFlag: !!req.body._multiAccountDeployment,
-      deploymentData: req.body._multiAccountDeployment
+      deploymentData: req.body._multiAccountDeployment,
+      deploymentDataType: typeof req.body._multiAccountDeployment
     });
 
     if (req.body._multiAccountDeployment) {
-      const { targets, mode } = req.body._multiAccountDeployment;
+      // Parse _multiAccountDeployment if it's a string (from FormData)
+      const deploymentData = typeof req.body._multiAccountDeployment === 'string'
+        ? JSON.parse(req.body._multiAccountDeployment)
+        : req.body._multiAccountDeployment;
+
+      const { targets, mode } = deploymentData;
       console.log(`\n🚀 MULTI-ACCOUNT DEPLOYMENT REQUESTED`);
-      console.log(`  Targets: ${targets.length}`);
+      console.log(`  Targets: ${targets?.length || 0}`);
       console.log(`  Mode: ${mode}`);
       console.log(`  Target details:`, JSON.stringify(targets, null, 2));
 
