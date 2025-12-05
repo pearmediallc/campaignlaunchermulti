@@ -34,7 +34,16 @@ class FacebookAPI {
     // Track which app is currently being used (for rotation)
     this.currentAppId = 'main_app';
     this.consecutiveRateLimitErrors = 0; // Track consecutive rate limit errors across all apps
-    
+
+    // CRITICAL: Initialize campaign structure cache to avoid rate limits during duplication
+    this.structureCache = {};
+
+    // CRITICAL: Initialize ad-account level API call tracking for rate limiting
+    // Ad accounts have ~5000 calls/hour limit (shared across all apps)
+    if (!FacebookAPI.adAccountCallTracker) {
+      FacebookAPI.adAccountCallTracker = {};
+    }
+
     // Facebook region IDs for US states (these are the actual Facebook region keys)
     // Source: Facebook Marketing API
     // IMPORTANT: DC is alphabetically positioned after DE, which shifts all subsequent state IDs by +1
@@ -6238,8 +6247,21 @@ class FacebookAPI {
 
   /**
    * Get campaign structure (number of ad sets and ads)
+   * CRITICAL: Now includes caching to avoid rate limits during duplication
    */
-  async getCampaignStructure(campaignId) {
+  async getCampaignStructure(campaignId, useCache = true) {
+    // Check cache first
+    const cacheKey = `campaign_structure_${campaignId}`;
+    if (useCache && this.structureCache && this.structureCache[cacheKey]) {
+      const cached = this.structureCache[cacheKey];
+      const cacheAge = Date.now() - cached.timestamp;
+      // Cache valid for 5 minutes
+      if (cacheAge < 300000) {
+        console.log(`  ✅ Using cached structure for ${campaignId} (age: ${Math.round(cacheAge/1000)}s)`);
+        return cached.data;
+      }
+    }
+
     try {
       // Get ad sets count
       const adSetsResponse = await axios.get(
@@ -6288,14 +6310,33 @@ class FacebookAPI {
         totalAds = Math.round(avgAdsPerAdSet * adSetCount);
       }
 
-      return {
+      const result = {
         adSetCount: adSetCount,
         totalAds: totalAds,
         adsPerAdSet: adsPerAdSet.length > 0 ? Math.round(totalAds / adSetCount) : 0,
         totalObjects: 1 + adSetCount + totalAds // 1 campaign + ad sets + ads
       };
+
+      // Cache the result
+      if (!this.structureCache) this.structureCache = {};
+      this.structureCache[cacheKey] = {
+        data: result,
+        timestamp: Date.now()
+      };
+      console.log(`  💾 Cached structure for ${campaignId}: ${result.adSetCount} ad sets, ${result.totalAds} ads`);
+
+      return result;
     } catch (error) {
       console.error('Failed to get campaign structure:', error.message);
+
+      // CRITICAL FIX: Check cache before returning 0
+      if (this.structureCache && this.structureCache[cacheKey]) {
+        const cached = this.structureCache[cacheKey];
+        console.log(`  ⚠️ Rate limit hit, using stale cache for ${campaignId} (age: ${Math.round((Date.now() - cached.timestamp)/1000)}s)`);
+        return cached.data;
+      }
+
+      console.error(`  ❌ No cache available for ${campaignId}, returning 0 structure`);
       return { adSetCount: 0, totalAds: 0, totalObjects: 0 };
     }
   }

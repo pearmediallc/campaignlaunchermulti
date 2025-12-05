@@ -279,6 +279,8 @@ const StrategyForAllContainer: React.FC = () => {
         video: data.video,
         images: data.images,
         mediaSpecs: data.mediaSpecs,
+        videoThumbnail: data.videoThumbnail,  // CRITICAL: Include video thumbnail
+        videoThumbnailFrameIndex: data.videoThumbnailFrameIndex,  // CRITICAL: Include thumbnail frame index
 
         // Facebook resources
         facebookPage: data.facebookPage,

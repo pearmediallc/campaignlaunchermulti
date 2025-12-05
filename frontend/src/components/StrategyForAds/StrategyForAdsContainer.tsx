@@ -424,6 +424,8 @@ const StrategyForAdsContainer: React.FC = () => {
         image: campaignData.image,
         video: campaignData.video,
         images: campaignData.images,
+        videoThumbnail: (campaignData as any).videoThumbnail,  // CRITICAL: Include video thumbnail
+        videoThumbnailFrameIndex: (campaignData as any).videoThumbnailFrameIndex,  // CRITICAL: Include thumbnail frame index
 
         // Creative Library integration - CRITICAL for editor name in ad names
         editorName: data.editorName,

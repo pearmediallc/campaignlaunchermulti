@@ -734,11 +734,17 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Ad Set Count:', campaignData.duplicationSettings?.adSetCount || 'Not set');
 
     // Handle multi-account deployment if requested
+    console.log('🔍 Checking for multi-account deployment:', {
+      hasDeploymentFlag: !!req.body._multiAccountDeployment,
+      deploymentData: req.body._multiAccountDeployment
+    });
+
     if (req.body._multiAccountDeployment) {
       const { targets, mode } = req.body._multiAccountDeployment;
       console.log(`\n🚀 MULTI-ACCOUNT DEPLOYMENT REQUESTED`);
       console.log(`  Targets: ${targets.length}`);
       console.log(`  Mode: ${mode}`);
+      console.log(`  Target details:`, JSON.stringify(targets, null, 2));
 
       const CrossAccountDeploymentService = require('../services/CrossAccountDeploymentService');
 
