@@ -377,8 +377,8 @@ const Strategy150Container: React.FC = () => {
         image: campaignData.image,
         video: campaignData.video,
         images: campaignData.images,
-        videoThumbnail: (campaignData as any).videoThumbnail,  // CRITICAL: Include video thumbnail
-        videoThumbnailFrameIndex: (campaignData as any).videoThumbnailFrameIndex,  // CRITICAL: Include thumbnail frame index
+        videoThumbnail: (data as any).videoThumbnail,  // CRITICAL: Get from form data (data), not campaignData
+        videoThumbnailFrameIndex: (data as any).videoThumbnailFrameIndex,  // CRITICAL: Get from form data (data), not campaignData
 
         // Creative Library integration - CRITICAL for editor name in ad names
         editorName: data.editorName,
@@ -440,6 +440,14 @@ const Strategy150Container: React.FC = () => {
       console.log('🔗 Endpoint: /api/campaigns/strategy-150/create');
       console.log('📦 Payload size:', JSON.stringify(workingCampaignData).length, 'bytes');
       console.log('📊 Request data:', workingCampaignData);
+
+      // CRITICAL: Log video thumbnail status
+      if (workingCampaignData.mediaType === 'single_video') {
+        console.log('🎬 Video upload detected');
+        console.log('   Video file:', workingCampaignData.video instanceof File ? workingCampaignData.video.name : 'NOT A FILE');
+        console.log('   Custom thumbnail:', (workingCampaignData as any).videoThumbnail instanceof File ? (workingCampaignData as any).videoThumbnail.name : 'NO CUSTOM THUMBNAIL');
+        console.log('   Thumbnail frame index:', (workingCampaignData as any).videoThumbnailFrameIndex);
+      }
 
       // Create FormData to handle file uploads properly
       const formData = new FormData();
