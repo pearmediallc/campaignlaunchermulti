@@ -383,7 +383,17 @@ class CrossAccountDeploymentService {
       where: { userId, isActive: true }
     });
 
+    if (!facebookAuth) {
+      throw new Error('No active Facebook authentication found for user');
+    }
+
     const userAccessToken = facebookAuth.accessToken;
+
+    console.log(`🔑 Access Token Debug:`);
+    console.log(`  - Token exists: ${!!userAccessToken}`);
+    console.log(`  - Token type: ${typeof userAccessToken}`);
+    console.log(`  - Token length: ${userAccessToken?.length || 0}`);
+    console.log(`  - Token preview: ${userAccessToken?.substring(0, 20)}...`);
 
     // Process deployments
     const results = [];

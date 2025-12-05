@@ -877,7 +877,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         console.log(`  Failed: ${deploymentResult.failed}`);
 
         // Audit log
-        await AuditService.logAction({
+        await AuditService.log({
           userId: req.user.id,
           action: 'campaign_multi_account_deployment',
           resourceType: 'campaign',
