@@ -212,6 +212,17 @@ const StrategyForAdsContainer: React.FC = () => {
       console.log(`📢 Creating ${numberOfCampaigns} identical campaigns`);
     }
 
+    // Check if multi-account deployment requested
+    const multiAccountDeployment = (data as any)._multiAccountDeployment;
+    if (multiAccountDeployment) {
+      console.log('🚀 [Container] Multi-account deployment detected!');
+      console.log('   Targets:', multiAccountDeployment.targets?.length || 0);
+      console.log('   Mode:', multiAccountDeployment.mode);
+      console.log('   Full data:', multiAccountDeployment);
+    } else {
+      console.log('ℹ️  [Container] No multi-account deployment (_multiAccountDeployment not found in data)');
+    }
+
     console.log('\n🎯 ========== STRATEGY FOR ADS CLIENT START ==========');
     console.log('📄 Form Data Received:', data);
     console.log('📊 Key Parameters:');
@@ -497,6 +508,18 @@ const StrategyForAdsContainer: React.FC = () => {
       // CRITICAL: Include dynamic creative and media files
       workingCampaignData.dynamicCreativeEnabled = campaignData.dynamicCreativeEnabled || false;
       workingCampaignData.dynamicMediaFiles = campaignData.dynamicMediaFiles || [];
+
+      // CRITICAL: Include multi-account deployment data if present
+      if (multiAccountDeployment) {
+        workingCampaignData._multiAccountDeployment = multiAccountDeployment;
+        console.log('✅ [Container] Added _multiAccountDeployment to workingCampaignData');
+      }
+
+      // CRITICAL: Include _multipleCampaigns if present
+      if ((data as any)._multipleCampaigns) {
+        workingCampaignData._multipleCampaigns = (data as any)._multipleCampaigns;
+        console.log('✅ [Container] Added _multipleCampaigns to workingCampaignData');
+      }
 
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {

@@ -254,6 +254,9 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
     if (pendingFormData) {
       // Multi-account deployment
       if (deploymentTargets && deploymentTargets.length > 0) {
+        console.log('🚀 [Phase1Setup] Multi-account deployment requested');
+        console.log('   Targets:', deploymentTargets);
+        console.log('   Mode:', deploymentMode);
         const dataWithDeployment = {
           ...pendingFormData,
           _multiAccountDeployment: {
@@ -261,10 +264,12 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
             mode: deploymentMode || 'parallel'
           }
         };
+        console.log('📦 [Phase1Setup] Sending data with _multiAccountDeployment:', dataWithDeployment._multiAccountDeployment);
         onSubmit(dataWithDeployment as StrategyForAllFormData);
       }
       // Multiple campaigns in same account
       else if (numberOfCampaigns && numberOfCampaigns > 1) {
+        console.log('📋 [Phase1Setup] Multiple campaigns requested:', numberOfCampaigns);
         const dataWithMultiple = {
           ...pendingFormData,
           _multipleCampaigns: numberOfCampaigns
@@ -273,6 +278,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
       }
       // Single campaign
       else {
+        console.log('📝 [Phase1Setup] Single campaign requested');
         onSubmit(pendingFormData);
       }
     }

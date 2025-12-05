@@ -220,6 +220,17 @@ const Strategy150Container: React.FC = () => {
       console.log(`📢 Creating ${numberOfCampaigns} identical campaigns`);
     }
 
+    // Check if multi-account deployment requested
+    const multiAccountDeployment = (data as any)._multiAccountDeployment;
+    if (multiAccountDeployment) {
+      console.log('🚀 [Container] Multi-account deployment detected!');
+      console.log('   Targets:', multiAccountDeployment.targets?.length || 0);
+      console.log('   Mode:', multiAccountDeployment.mode);
+      console.log('   Full data:', multiAccountDeployment);
+    } else {
+      console.log('ℹ️  [Container] No multi-account deployment (_multiAccountDeployment not found in data)');
+    }
+
     try {
       setFormData(data);
       setPhase('creating');
@@ -366,6 +377,8 @@ const Strategy150Container: React.FC = () => {
         image: campaignData.image,
         video: campaignData.video,
         images: campaignData.images,
+        videoThumbnail: (campaignData as any).videoThumbnail,  // CRITICAL: Include video thumbnail
+        videoThumbnailFrameIndex: (campaignData as any).videoThumbnailFrameIndex,  // CRITICAL: Include thumbnail frame index
 
         // Creative Library integration - CRITICAL for editor name in ad names
         editorName: data.editorName,
@@ -396,6 +409,18 @@ const Strategy150Container: React.FC = () => {
 
       // CRITICAL: Include adSetBudget with spendingLimits for ad set level controls
       workingCampaignData.adSetBudget = campaignData.adSetBudget;
+
+      // CRITICAL: Include multi-account deployment data if present
+      if (multiAccountDeployment) {
+        workingCampaignData._multiAccountDeployment = multiAccountDeployment;
+        console.log('✅ [Container] Added _multiAccountDeployment to workingCampaignData');
+      }
+
+      // CRITICAL: Include _multipleCampaigns if present
+      if ((data as any)._multipleCampaigns) {
+        workingCampaignData._multipleCampaigns = (data as any)._multipleCampaigns;
+        console.log('✅ [Container] Added _multipleCampaigns to workingCampaignData');
+      }
 
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {
