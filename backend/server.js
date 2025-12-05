@@ -142,7 +142,7 @@ app.use('/api/campaigns/strategy-for-all/ads', require('./routes/adDuplication')
 app.use('/api/campaigns/manage', require('./routes/campaignManagement'));
 
 // Multi-account deployment routes (must be before general campaigns route)
-app.use('/api/campaigns', require('./routes/campaignDeployment'));
+app.use('/api/campaigns/deployment', require('./routes/campaignDeployment'));
 
 // General campaign routes (must be AFTER specific campaign routes)
 app.use('/api/campaigns', campaignRoutes);
