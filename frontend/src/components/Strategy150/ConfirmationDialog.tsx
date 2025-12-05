@@ -17,10 +17,26 @@ import {
   MenuItem,
   Select,
   FormControl,
-  InputLabel
+  InputLabel,
+  RadioGroup,
+  Radio,
+  Tabs,
+  Tab
 } from '@mui/material';
 import { WarningAmber, CheckCircle, ContentCopy } from '@mui/icons-material';
 import { Strategy150FormData } from '../../types/strategy150';
+import { MultiAccountDeploymentSection } from '../MultiAccountDeployment';
+
+interface DeploymentTarget {
+  adAccountId: string;
+  adAccountName: string;
+  pageId: string;
+  pageName: string;
+  pixelId?: string | null;
+  pixelName?: string | null;
+  isCurrent: boolean;
+  status: string;
+}
 
 interface ConfirmationDialogProps {
   open: boolean;
@@ -28,7 +44,7 @@ interface ConfirmationDialogProps {
   selectedAdAccount?: { id: string; name: string } | null;
   selectedPage?: { id: string; name: string } | null;
   selectedPixel?: { id: string; name: string } | null;
-  onConfirm: (numberOfCampaigns?: number) => void;
+  onConfirm: (numberOfCampaigns?: number, deploymentTargets?: DeploymentTarget[], deploymentMode?: 'parallel' | 'sequential') => void;
   onCancel: () => void;
 }
 
@@ -41,16 +57,25 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   onConfirm,
   onCancel
 }) => {
-  const [createMultiple, setCreateMultiple] = useState(false);
+  const [deploymentOption, setDeploymentOption] = useState<'single' | 'multiple' | 'multi-account'>('single');
   const [numberOfCampaigns, setNumberOfCampaigns] = useState(1);
+  const [multiAccountTargets, setMultiAccountTargets] = useState<DeploymentTarget[]>([]);
+  const [multiAccountMode, setMultiAccountMode] = useState<'parallel' | 'sequential'>('parallel');
 
   // Reset when dialog opens/closes
   React.useEffect(() => {
     if (!open) {
-      setCreateMultiple(false);
+      setDeploymentOption('single');
       setNumberOfCampaigns(1);
+      setMultiAccountTargets([]);
+      setMultiAccountMode('parallel');
     }
   }, [open]);
+
+  const handleMultiAccountSelectionChange = (targets: DeploymentTarget[], mode: 'parallel' | 'sequential') => {
+    setMultiAccountTargets(targets);
+    setMultiAccountMode(mode);
+  };
 
   if (!formData) return null;
 
@@ -86,31 +111,73 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       </DialogTitle>
 
       <DialogContent>
-        {/* Multiple Campaign Option */}
+        {/* Deployment Options */}
         <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={createMultiple}
-                  onChange={(e) => setCreateMultiple(e.target.checked)}
-                  icon={<ContentCopy />}
-                  checkedIcon={<ContentCopy color="primary" />}
-                />
-              }
-              label={
-                <Typography variant="body2" fontWeight={600}>
-                  Create multiple identical campaigns
-                </Typography>
-              }
-            />
-            {createMultiple && (
-              <FormControl size="small" sx={{ minWidth: 120 }}>
-                <InputLabel>Count</InputLabel>
+          <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+            🎯 Deployment Options
+          </Typography>
+          <FormControl component="fieldset">
+            <RadioGroup
+              value={deploymentOption}
+              onChange={(e) => setDeploymentOption(e.target.value as 'single' | 'multiple' | 'multi-account')}
+            >
+              <FormControlLabel
+                value="single"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>
+                      Single Campaign (Current Account)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Create 1 campaign in {selectedAdAccount?.name || 'current account'}
+                    </Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="multiple"
+                control={<Radio />}
+                label={
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <ContentCopy fontSize="small" />
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>
+                        Multiple Copies (Same Account)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Create 1-4 identical campaigns in current account
+                      </Typography>
+                    </Box>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="multi-account"
+                control={<Radio />}
+                label={
+                  <Box>
+                    <Typography variant="body2" fontWeight={600} color="primary">
+                      🔥 Multi-Account Deployment (RECOMMENDED)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Deploy to multiple accounts/pages simultaneously - 3x faster!
+                    </Typography>
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+
+          {/* Multiple copies option */}
+          {deploymentOption === 'multiple' && (
+            <Box sx={{ mt: 2, pl: 4 }}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Number of Campaigns</InputLabel>
                 <Select
                   value={numberOfCampaigns}
                   onChange={(e) => setNumberOfCampaigns(Number(e.target.value))}
-                  label="Count"
+                  label="Number of Campaigns"
                 >
                   <MenuItem value={1}>1 Campaign</MenuItem>
                   <MenuItem value={2}>2 Campaigns</MenuItem>
@@ -118,29 +185,24 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
                   <MenuItem value={4}>4 Campaigns</MenuItem>
                 </Select>
               </FormControl>
-            )}
-          </Box>
 
-          {createMultiple && numberOfCampaigns > 1 && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="caption" color="text.secondary">
-                Campaign names to be created:
-              </Typography>
-              <Box sx={{ mt: 1 }}>
-                {Array.from({ length: numberOfCampaigns }, (_, i) => (
-                  <Typography key={i} variant="body2" sx={{ pl: 2 }}>
-                    • {i === 0 ? formData.campaignName : `${formData.campaignName} - Copy ${i + 1}`}
+              {numberOfCampaigns > 1 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="caption">
+                    <strong>Optimized Duplication:</strong> Campaigns will be created sequentially
+                    with 2-minute waits between each to avoid rate limits. Estimated time: {numberOfCampaigns * 5} minutes.
                   </Typography>
-                ))}
-              </Box>
-              <Alert severity="info" sx={{ mt: 2 }}>
-                <Typography variant="caption">
-                  <strong>Optimized Duplication:</strong> Each campaign will be created with identical ad sets and ads using parallel batch processing. Campaigns are created with staggered timing to maximize speed while avoiding rate limits.
-                </Typography>
-              </Alert>
+                </Alert>
+              )}
             </Box>
           )}
         </Paper>
+
+        {/* Multi-Account Deployment Section */}
+        <MultiAccountDeploymentSection
+          show={deploymentOption === 'multi-account'}
+          onSelectionChange={handleMultiAccountSelectionChange}
+        />
 
         {/* Campaign Details */}
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
@@ -309,13 +371,29 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           Cancel - Let Me Review
         </Button>
         <Button
-          onClick={() => onConfirm(createMultiple && numberOfCampaigns > 1 ? numberOfCampaigns : undefined)}
+          onClick={() => {
+            if (deploymentOption === 'multi-account') {
+              // Multi-account deployment
+              onConfirm(undefined, multiAccountTargets, multiAccountMode);
+            } else if (deploymentOption === 'multiple') {
+              // Multiple copies in same account
+              onConfirm(numberOfCampaigns, undefined, undefined);
+            } else {
+              // Single campaign
+              onConfirm(undefined, undefined, undefined);
+            }
+          }}
           variant="contained"
           size="large"
           color="primary"
           startIcon={<CheckCircle />}
+          disabled={deploymentOption === 'multi-account' && multiAccountTargets.length === 0}
         >
-          I Confirm - Create {numberOfCampaigns > 1 ? `${numberOfCampaigns} Campaigns` : 'Campaign'}
+          {deploymentOption === 'multi-account'
+            ? `I Confirm - Deploy to ${multiAccountTargets.length} Account${multiAccountTargets.length !== 1 ? 's' : ''}`
+            : deploymentOption === 'multiple' && numberOfCampaigns > 1
+            ? `I Confirm - Create ${numberOfCampaigns} Campaigns`
+            : 'I Confirm - Create Campaign'}
         </Button>
       </DialogActions>
     </Dialog>

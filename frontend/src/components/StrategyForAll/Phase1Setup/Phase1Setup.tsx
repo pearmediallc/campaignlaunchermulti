@@ -244,19 +244,35 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
     setConfirmDialogOpen(true);
   });
 
-  const handleConfirmSubmit = (numberOfCampaigns?: number) => {
+  const handleConfirmSubmit = (
+    numberOfCampaigns?: number,
+    deploymentTargets?: any[],
+    deploymentMode?: 'parallel' | 'sequential'
+  ) => {
     // User confirmed - proceed with campaign creation
     setConfirmDialogOpen(false);
     if (pendingFormData) {
-      // If multiple campaigns requested, handle them
-      if (numberOfCampaigns && numberOfCampaigns > 1) {
-        // Pass the number of campaigns along with the form data
+      // Multi-account deployment
+      if (deploymentTargets && deploymentTargets.length > 0) {
+        const dataWithDeployment = {
+          ...pendingFormData,
+          _multiAccountDeployment: {
+            targets: deploymentTargets,
+            mode: deploymentMode || 'parallel'
+          }
+        };
+        onSubmit(dataWithDeployment as StrategyForAllFormData);
+      }
+      // Multiple campaigns in same account
+      else if (numberOfCampaigns && numberOfCampaigns > 1) {
         const dataWithMultiple = {
           ...pendingFormData,
           _multipleCampaigns: numberOfCampaigns
         };
         onSubmit(dataWithMultiple as StrategyForAllFormData);
-      } else {
+      }
+      // Single campaign
+      else {
         onSubmit(pendingFormData);
       }
     }

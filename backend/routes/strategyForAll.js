@@ -733,6 +733,84 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  Conversion Event:', campaignData.conversionEvent);
     console.log('  Ad Set Count:', campaignData.duplicationSettings?.adSetCount || 'Not set');
 
+    // Handle multi-account deployment if requested
+    if (req.body._multiAccountDeployment) {
+      const { targets, mode } = req.body._multiAccountDeployment;
+      console.log(`\n🚀 MULTI-ACCOUNT DEPLOYMENT REQUESTED`);
+      console.log(`  Targets: ${targets.length}`);
+      console.log(`  Mode: ${mode}`);
+
+      const CrossAccountDeploymentService = require('../services/CrossAccountDeploymentService');
+
+      try {
+        // Create the campaign in the CURRENT account first
+        console.log(`\n📝 Step 1: Creating campaign in current account (${selectedAdAccountId})...`);
+        const initialResult = await userFacebookApi.createCampaignStructure(campaignData);
+
+        console.log(`✅ Campaign created successfully in current account!`);
+        console.log(`  Campaign ID: ${initialResult.campaignId}`);
+
+        // Now deploy to other accounts
+        console.log(`\n📝 Step 2: Deploying to ${targets.length} additional accounts...`);
+
+        const sourceAccount = {
+          adAccountId: selectedAdAccountId,
+          pageId: selectedPageId,
+          pixelId: selectedPixelId
+        };
+
+        const deploymentResult = await CrossAccountDeploymentService.deployToMultipleTargets(
+          req.user.id,
+          initialResult.campaignId,
+          sourceAccount,
+          targets,
+          mode
+        );
+
+        console.log(`\n✅ MULTI-ACCOUNT DEPLOYMENT COMPLETED!`);
+        console.log(`  Total targets: ${deploymentResult.totalTargets}`);
+        console.log(`  Successful: ${deploymentResult.successful}`);
+        console.log(`  Failed: ${deploymentResult.failed}`);
+
+        // Audit log
+        await AuditService.logAction({
+          userId: req.user.id,
+          action: 'campaign_multi_account_deployment',
+          resourceType: 'campaign',
+          resourceId: initialResult.campaignId,
+          details: {
+            targetCount: targets.length,
+            successful: deploymentResult.successful,
+            failed: deploymentResult.failed,
+            mode: mode
+          }
+        });
+
+        return res.json({
+          success: true,
+          message: `Multi-account deployment completed! Campaign created in ${deploymentResult.successful + 1} accounts (including current).`,
+          data: {
+            ...initialResult,
+            multiAccountDeployment: {
+              deploymentId: deploymentResult.deploymentId,
+              totalTargets: deploymentResult.totalTargets,
+              successful: deploymentResult.successful,
+              failed: deploymentResult.failed,
+              results: deploymentResult.results
+            }
+          }
+        });
+
+      } catch (deploymentError) {
+        console.error('❌ Multi-account deployment failed:', deploymentError);
+        return res.status(500).json({
+          success: false,
+          error: 'Multi-account deployment failed',
+          details: deploymentError.message
+        });
+      }
+    }
+
     // Create the initial 1-1-1 campaign structure
     let result;
     try {

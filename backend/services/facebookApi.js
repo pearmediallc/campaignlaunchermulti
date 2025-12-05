@@ -87,11 +87,46 @@ class FacebookAPI {
       return response;
 
     } catch (error) {
-      // Check if it's a rate limit error (429 or error code 17 with subcode 2446079)
+      // Enhanced error logging
+      const errorDetails = {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        code: error.response?.data?.error?.code,
+        subcode: error.response?.data?.error?.error_subcode,
+        message: error.response?.data?.error?.message,
+        type: error.response?.data?.error?.type,
+        fbtrace_id: error.response?.data?.error?.fbtrace_id,
+        url: error.config?.url,
+        method: error.config?.method
+      };
+
+      console.error(`  ❌ API Error Details:`, JSON.stringify(errorDetails, null, 2));
+
+      // Check if it's a rate limit error (FIXED: includes 400 status and more error codes)
+      const errorCode = error.response?.data?.error?.code;
+      const errorSubcode = error.response?.data?.error?.error_subcode;
+      const status = error.response?.status;
+
       const isRateLimit =
-        error.response?.status === 429 ||
-        (error.response?.data?.error?.code === 17 &&
-         error.response?.data?.error?.error_subcode === 2446079);
+        status === 429 ||
+        status === 400 && (
+          errorCode === 4 ||  // Rate limit
+          errorCode === 17 ||  // Rate limit
+          errorCode === 80004 ||  // Rate limit
+          errorCode === 32 ||  // Rate limit
+          errorCode === 613 ||  // Rate limit
+          errorSubcode === 2446079 ||  // App rate limit
+          errorSubcode === 1487742 ||  // Ad account rate limit
+          errorSubcode === 80000  // Rate limit
+        );
+
+      console.log(`  🔍 Rate Limit Detection:`, {
+        isRateLimit,
+        status,
+        errorCode,
+        errorSubcode,
+        consecutiveErrors: this.consecutiveRateLimitErrors
+      });
 
       if (isRateLimit && attempt < MAX_ATTEMPTS - 1) {
         console.log(`  ⚠️ Rate limit hit (attempt ${attempt + 1}/${MAX_ATTEMPTS}). Rotating to backup app...`);
@@ -105,11 +140,16 @@ class FacebookAPI {
           console.warn('  ⚠️ Detected ad account-level rate limit (not app-level)');
           console.warn('  ⚠️ All apps share the same ad account quota (~5000 calls/hour)');
           console.warn('  ⚠️ NOT marking apps as exhausted - this is an account limit, not app limit');
-        } else {
-          // Only mark app as exhausted if it's likely an app-level limit (first failure)
+          console.warn(`  ⚠️ Consecutive errors: ${this.consecutiveRateLimitErrors}`);
+        } else if (this.consecutiveRateLimitErrors === 1) {
+          // Only mark app as exhausted on FIRST error (might be app-level)
           if (rotationService && this.currentAppId) {
+            console.log(`  📌 Marking app as exhausted: ${this.currentAppId} (first rate limit hit)`);
             rotationService.markAppExhausted(this.currentAppId);
           }
+        } else {
+          // Don't mark subsequent apps as exhausted - likely ad account limit
+          console.log(`  ⚠️ Not marking app as exhausted (consecutive error #${this.consecutiveRateLimitErrors})`);
         }
 
         // Get next available app
@@ -5009,12 +5049,13 @@ class FacebookAPI {
     try {
       console.log(`\n🏗️  Using hierarchical deep copy for campaign ${sourceCampaignId}...`);
 
-      // Step 1: Count objects to decide strategy
+      // Step 1: Count objects to decide strategy (FIXED: Use makeApiCallWithRotation)
+      console.log(`  📊 Fetching campaign structure to determine copy method...`);
       const [adSetsResponse, campaignResponse] = await Promise.all([
-        axios.get(`${this.baseURL}/${sourceCampaignId}/adsets`, {
+        this.makeApiCallWithRotation('GET', `${this.baseURL}/${sourceCampaignId}/adsets`, {
           params: { fields: 'id', limit: 200, access_token: this.accessToken }
         }),
-        axios.get(`${this.baseURL}/${sourceCampaignId}`, {
+        this.makeApiCallWithRotation('GET', `${this.baseURL}/${sourceCampaignId}`, {
           params: { fields: 'name', access_token: this.accessToken }
         })
       ]);
@@ -5043,6 +5084,14 @@ class FacebookAPI {
 
     } catch (error) {
       console.error(`  ❌ Hierarchical copy failed:`, error.message);
+      console.error(`  ❌ Error details:`, {
+        status: error.response?.status,
+        code: error.response?.data?.error?.code,
+        subcode: error.response?.data?.error?.error_subcode,
+        message: error.response?.data?.error?.message,
+        type: error.response?.data?.error?.type,
+        fbtrace_id: error.response?.data?.error?.fbtrace_id
+      });
       console.log(`  🔄 Falling back to optimized manual copy...`);
       return await this.optimizedManualCopy(sourceCampaignId, copyNumber, timestamp);
     }
@@ -5291,12 +5340,18 @@ class FacebookAPI {
 
     } catch (error) {
       console.error(`  ❌ Optimized copy failed:`, error.message);
+      console.error(`  ❌ Error details:`, {
+        code: error.response?.data?.error?.code,
+        subcode: error.response?.data?.error?.error_subcode,
+        message: error.response?.data?.error?.message,
+        type: error.response?.data?.error?.type
+      });
 
-      // CLEANUP LOGIC: Delete incomplete campaign if we created it
+      // CLEANUP LOGIC: Delete incomplete campaign if we created it (FIXED: Use makeApiCallWithRotation)
       if (createdNewCampaign && createdCampaignId) {
         try {
           console.log(`  🧹 Cleaning up incomplete campaign: ${createdCampaignId}`);
-          await axios.delete(`${this.baseURL}/${createdCampaignId}`, {
+          await this.makeApiCallWithRotation('DELETE', `${this.baseURL}/${createdCampaignId}`, {
             params: { access_token: this.accessToken }
           });
           console.log(`  ✅ Cleanup complete - deleted incomplete campaign`);
@@ -5314,8 +5369,10 @@ class FacebookAPI {
     try {
       console.log(`\n📋 Using Facebook's native deep_copy for campaign ${sourceCampaignId}...`);
 
-      // Get original campaign name for the copy
-      const campaignResponse = await axios.get(
+      // Get original campaign name for the copy (FIXED: Use makeApiCallWithRotation)
+      console.log(`  📊 Fetching campaign name...`);
+      const campaignResponse = await this.makeApiCallWithRotation(
+        'GET',
         `${this.baseURL}/${sourceCampaignId}`,
         {
           params: {
@@ -5325,6 +5382,7 @@ class FacebookAPI {
         }
       );
       const originalName = campaignResponse.data.name || 'Campaign';
+      console.log(`  📝 Original campaign name: ${originalName}`);
 
       // Use Facebook's native /copies endpoint with deep_copy
       const copyData = {
@@ -5343,11 +5401,17 @@ class FacebookAPI {
       };
 
       console.log(`  🔄 Deep copying campaign (includes all 50 adsets and ads)...`);
+      console.log(`  📊 Copy parameters:`, {
+        deep_copy: true,
+        status: 'PAUSED',
+        copyNumber,
+        timestamp
+      });
 
-      // Facebook's native campaign copy API - copies everything in one call
-      const response = await axios.post(
+      // Facebook's native campaign copy API - copies everything in one call (FIXED: Use makeApiCallWithRotation)
+      const response = await this.makeApiCallWithRotation(
+        'POST',
         `${this.baseURL}/${sourceCampaignId}/copies`,
-        null,
         { params: copyData }
       );
 
@@ -5398,116 +5462,91 @@ class FacebookAPI {
     }
   }
 
-  // NEW OPTIMIZED: Batch multiplication with hierarchical deep copy and staggered parallel execution
+  // NEW OPTIMIZED: Batch multiplication with SEQUENTIAL processing (FIXED: No parallel to avoid rate limits)
   async batchMultiplyCampaigns(sourceCampaignId, multiplyCount, updateProgress) {
-    console.log('\n🚀 OPTIMIZED CAMPAIGN MULTIPLICATION: Hierarchical copy with staggered parallel execution');
+    console.log('\n🚀 OPTIMIZED CAMPAIGN MULTIPLICATION: Sequential processing with wait periods');
     console.log(`  Source Campaign: ${sourceCampaignId}`);
     console.log(`  Copies to create: ${multiplyCount}`);
-    console.log('  Method: Hierarchical deep copy with parallel batch processing');
+    console.log('  Method: Hierarchical deep copy with sequential processing');
+    console.log('  ⚠️  IMPORTANT: Processing sequentially to avoid rate limit issues');
 
     try {
       const results = [];
       const errors = [];
       const timestamp = Date.now();
 
-      // STAGGERED PARALLEL EXECUTION: Start copies with 30-second offsets
-      const STAGGER_DELAY = 30000; // 30 seconds between starts
-      const MAX_CONCURRENT = 3; // Maximum 3 parallel operations
+      // SEQUENTIAL PROCESSING: One at a time with wait periods (FIXED)
+      const WAIT_BETWEEN_COPIES = 120000; // 2 minutes between copies (reduced from 5 min for testing)
 
-      // Split into batches for concurrent processing
-      const batches = [];
-      for (let i = 0; i < multiplyCount; i += MAX_CONCURRENT) {
-        const batchSize = Math.min(MAX_CONCURRENT, multiplyCount - i);
-        const batch = Array.from({ length: batchSize }, (_, j) => i + j);
-        batches.push(batch);
-      }
+      console.log(`  📊 Will process ${multiplyCount} copies sequentially`);
+      console.log(`  ⏱️  Wait time between copies: ${WAIT_BETWEEN_COPIES/1000} seconds`);
+      console.log(`  ⏱️  Estimated total time: ${Math.ceil((multiplyCount * 3 + (multiplyCount - 1) * WAIT_BETWEEN_COPIES/60)/60)} minutes\n`);
 
-      console.log(`  📦 Processing ${multiplyCount} copies in ${batches.length} batches (max ${MAX_CONCURRENT} concurrent)`);
+      // Process copies one by one
+      for (let copyIndex = 0; copyIndex < multiplyCount; copyIndex++) {
+        const copyNumber = copyIndex + 1;
 
-      // Process each batch
-      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-        const batch = batches[batchIndex];
-        console.log(`\n📦 Starting batch ${batchIndex + 1}/${batches.length} (${batch.length} campaigns)...`);
+        console.log(`\n📦 Processing copy ${copyNumber} of ${multiplyCount}...`);
+        console.log(`  🚀 Copy ${copyNumber}: Starting...`);
 
-        // Start all campaigns in this batch with staggered delays
-        const batchPromises = batch.map(async (copyIndex) => {
-          const copyNumber = copyIndex + 1;
-          const staggerDelay = (copyIndex % MAX_CONCURRENT) * STAGGER_DELAY;
+        if (updateProgress) {
+          updateProgress(`Creating copy ${copyNumber} of ${multiplyCount}...`);
+        }
 
-          // Apply stagger delay
-          if (staggerDelay > 0) {
-            console.log(`  ⏱️  Copy ${copyNumber}: Waiting ${staggerDelay/1000}s before starting (stagger)...`);
-            await new Promise(resolve => setTimeout(resolve, staggerDelay));
-          }
+        try {
+          // Use hierarchical deep copy - automatically chooses best method
+          console.log(`  📊 Calling hierarchicalDeepCopy for copy ${copyNumber}...`);
+          const copyResult = await this.hierarchicalDeepCopy(sourceCampaignId, copyNumber, timestamp);
 
-          console.log(`  🚀 Copy ${copyNumber}: Starting...`);
-          if (updateProgress) {
-            updateProgress(`Starting copy ${copyNumber} of ${multiplyCount}...`);
-          }
-
-          try {
-            // Use hierarchical deep copy - automatically chooses best method
-            const copyResult = await this.hierarchicalDeepCopy(sourceCampaignId, copyNumber, timestamp);
-
-            if (copyResult.success) {
-              const result = {
-                copyNumber,
-                campaignId: copyResult.campaign.id,
-                campaignName: copyResult.campaign.name,
-                adSetsCreated: copyResult.stats?.adSetsCreated || copyResult.adSetIds?.length || 0,
-                adsCreated: copyResult.stats?.adsCreated || copyResult.adIds?.length || 0,
-                adSetIds: copyResult.adSetIds || [],
-                adIds: copyResult.adIds || [],
-                status: 'success',
-                method: copyResult.stats?.method || 'hierarchical',
-                message: `Successfully created campaign copy ${copyNumber}`
-              };
-
-              console.log(`  ✅ Copy ${copyNumber} completed successfully`);
-              console.log(`    Campaign ID: ${copyResult.campaign.id}`);
-              console.log(`    Ad Sets: ${result.adSetsCreated}`);
-              console.log(`    Ads: ${result.adsCreated}`);
-              console.log(`    Method: ${result.method}`);
-
-              return result; // Return for Promise.allSettled
-            } else {
-              throw new Error('Copy did not return success status');
-            }
-
-          } catch (error) {
-            console.error(`  ❌ Copy ${copyNumber} failed:`, error.message);
-
-            return {
+          if (copyResult.success) {
+            const result = {
               copyNumber,
-              error: error.message,
-              status: 'failed'
+              campaignId: copyResult.campaign.id,
+              campaignName: copyResult.campaign.name,
+              adSetsCreated: copyResult.stats?.adSetsCreated || copyResult.adSetIds?.length || 0,
+              adsCreated: copyResult.stats?.adsCreated || copyResult.adIds?.length || 0,
+              adSetIds: copyResult.adSetIds || [],
+              adIds: copyResult.adIds || [],
+              status: 'success',
+              method: copyResult.stats?.method || 'hierarchical',
+              message: `Successfully created campaign copy ${copyNumber}`
             };
-          }
-        });
 
-        // Wait for all campaigns in this batch to complete
-        const batchResults = await Promise.allSettled(batchPromises);
+            results.push(result);
 
-        // Process batch results
-        batchResults.forEach((result, index) => {
-          const copyNumber = batch[index] + 1;
-
-          if (result.status === 'fulfilled' && result.value.status === 'success') {
-            results.push(result.value);
-            console.log(`  ✅ Batch ${batchIndex + 1}: Copy ${copyNumber} succeeded`);
+            console.log(`  ✅ Copy ${copyNumber} completed successfully`);
+            console.log(`    Campaign ID: ${copyResult.campaign.id}`);
+            console.log(`    Campaign Name: ${copyResult.campaign.name}`);
+            console.log(`    Ad Sets: ${result.adSetsCreated}`);
+            console.log(`    Ads: ${result.adsCreated}`);
+            console.log(`    Method: ${result.method}`);
           } else {
-            const error = result.status === 'fulfilled' ? result.value : { copyNumber, error: result.reason?.message || 'Unknown error', status: 'failed' };
-            errors.push(error);
-            console.error(`  ❌ Batch ${batchIndex + 1}: Copy ${copyNumber} failed - ${error.error}`);
+            throw new Error('Copy did not return success status');
           }
-        });
 
-        console.log(`  📊 Batch ${batchIndex + 1} complete: ${results.length} total successes, ${errors.length} total failures`);
+        } catch (error) {
+          console.error(`  ❌ Copy ${copyNumber} failed:`, error.message);
+          console.error(`  ❌ Error details:`, {
+            status: error.response?.status,
+            code: error.response?.data?.error?.code,
+            subcode: error.response?.data?.error?.error_subcode,
+            message: error.response?.data?.error?.message
+          });
 
-        // Wait before starting next batch (except for last batch)
-        if (batchIndex < batches.length - 1) {
-          console.log(`  ⏱️  Waiting 10s before next batch...`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
+          errors.push({
+            copyNumber,
+            error: error.message,
+            errorCode: error.response?.data?.error?.code,
+            errorSubcode: error.response?.data?.error?.error_subcode,
+            status: 'failed'
+          });
+        }
+
+        // Wait before next copy (except for last one)
+        if (copyIndex < multiplyCount - 1) {
+          console.log(`  ⏱️  Waiting ${WAIT_BETWEEN_COPIES/1000} seconds before next copy to avoid rate limits...`);
+          await new Promise(resolve => setTimeout(resolve, WAIT_BETWEEN_COPIES));
+          console.log(`  ✅ Wait complete, proceeding to next copy...`);
         }
       }
 
