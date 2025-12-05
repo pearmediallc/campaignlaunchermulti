@@ -454,6 +454,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     let videoThumbnailPath = null;
     if (req.files && req.files.length > 0) {
       console.log(`📸 Files detected: ${req.files.length} file(s)`);
+      console.log('📋 File details:', req.files.map(f => ({ fieldname: f.fieldname, filename: f.originalname, size: f.size })));
 
       if (req.body.mediaType === 'single_image') {
         mediaPath = req.files[0].path;
