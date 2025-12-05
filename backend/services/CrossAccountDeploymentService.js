@@ -180,7 +180,7 @@ class CrossAccountDeploymentService {
       `${facebookApi.baseURL}/${campaignId}`,
       {
         params: {
-          fields: 'name,objective,status,special_ad_categories,daily_budget,lifetime_budget,bid_strategy,spend_cap',
+          fields: 'name,objective,status,buying_type,special_ad_categories,daily_budget,lifetime_budget,bid_strategy,spend_cap',
           access_token: facebookApi.accessToken
         }
       }
@@ -196,7 +196,7 @@ class CrossAccountDeploymentService {
       `${facebookApi.baseURL}/${campaignId}/adsets`,
       {
         params: {
-          fields: 'name,optimization_goal,billing_event,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,status,attribution_spec',
+          fields: 'name,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,status,attribution_spec,promoted_object',
           limit: 200,
           access_token: facebookApi.accessToken
         }
@@ -246,11 +246,17 @@ class CrossAccountDeploymentService {
 
     // Create campaign
     console.log(`  📝 Creating campaign: ${newCampaignName}`);
+
+    // CRITICAL: Ensure special_ad_categories is always present (Facebook requires it)
+    const specialAdCategories = structure.campaign.special_ad_categories || [];
+    console.log(`  🏷️  Special Ad Categories: ${JSON.stringify(specialAdCategories)}`);
+
     const campaignData = {
       name: newCampaignName,
       objective: structure.campaign.objective,
+      buying_type: structure.campaign.buying_type || 'AUCTION', // CRITICAL: Required by Facebook
       status: 'PAUSED', // Always create paused for safety
-      special_ad_categories: structure.campaign.special_ad_categories || [],
+      special_ad_categories: JSON.stringify(specialAdCategories), // CRITICAL: Must be JSON string
       access_token: facebookApi.accessToken
     };
 
@@ -286,10 +292,37 @@ class CrossAccountDeploymentService {
         campaign_id: newCampaignId,
         optimization_goal: adSet.optimization_goal,
         billing_event: adSet.billing_event,
-        targeting: adSet.targeting,
+        targeting: typeof adSet.targeting === 'string' ? adSet.targeting : JSON.stringify(adSet.targeting), // CRITICAL: Must be JSON string
         status: 'PAUSED',
         access_token: facebookApi.accessToken
       };
+
+      // CRITICAL: Copy promoted_object but replace pixel_id and page_id with target's
+      if (adSet.promoted_object) {
+        const promotedObject = { ...adSet.promoted_object };
+
+        // Replace with target's pixel and page
+        if (target.pixelId) {
+          promotedObject.pixel_id = target.pixelId;
+          console.log(`      🎯 Using target pixel: ${target.pixelId}`);
+        }
+        if (target.pageId) {
+          promotedObject.page_id = target.pageId;
+          console.log(`      📄 Using target page: ${target.pageId}`);
+        }
+
+        adSetData.promoted_object = JSON.stringify(promotedObject);
+      }
+
+      // Copy attribution_spec if present
+      if (adSet.attribution_spec) {
+        adSetData.attribution_spec = JSON.stringify(adSet.attribution_spec);
+      }
+
+      // Copy bid_strategy if present
+      if (adSet.bid_strategy) {
+        adSetData.bid_strategy = adSet.bid_strategy;
+      }
 
       if (adSet.bid_amount) adSetData.bid_amount = adSet.bid_amount;
       if (adSet.daily_budget) adSetData.daily_budget = adSet.daily_budget;
