@@ -262,8 +262,8 @@ class CrossAccountDeploymentService {
   async createCampaignFromStructure(facebookApi, structure, target) {
     console.log(`  🏗️  Creating campaign structure...`);
 
-    const timestamp = Date.now();
-    const newCampaignName = `${structure.campaign.name} - Deployed_${timestamp}`;
+    // Use original campaign name without any prefix or suffix
+    const newCampaignName = structure.campaign.name.replace(/^\[Launcher\]\s*/, ''); // Remove [Launcher] prefix if present
 
     // Create campaign
     console.log(`  📝 Creating campaign: ${newCampaignName}`);
@@ -309,7 +309,7 @@ class CrossAccountDeploymentService {
     const campaignResponse = await facebookApi.makeApiCallWithRotation(
       'POST',
       `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/campaigns`,
-      { data: campaignData }  // FIXED: Changed from 'params' to 'data' - params sends as query string, data sends as POST body
+      { params: campaignData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js line 392)
     );
 
     const newCampaignId = campaignResponse.data.id;
@@ -380,7 +380,7 @@ class CrossAccountDeploymentService {
       const adSetResponse = await facebookApi.makeApiCallWithRotation(
         'POST',
         `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/adsets`,
-        { data: adSetData }  // FIXED: Changed from 'params' to 'data' - params sends as query string, data sends as POST body
+        { params: adSetData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
       );
 
       adSetMapping.set(adSet.id, adSetResponse.data.id);
@@ -413,7 +413,7 @@ class CrossAccountDeploymentService {
       await facebookApi.makeApiCallWithRotation(
         'POST',
         `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/ads`,
-        { data: adData }  // FIXED: Changed from 'params' to 'data' - params sends as query string, data sends as POST body
+        { params: adData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
       );
     }
 
