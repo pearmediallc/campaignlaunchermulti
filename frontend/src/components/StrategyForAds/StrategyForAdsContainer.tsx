@@ -52,26 +52,37 @@ const StrategyForAdsContainer: React.FC = () => {
   // ===== AD SCRAPER IMPORT INTEGRATION =====
   // Helper: Download single media file via proxy
   const downloadMediaViaProxy = async (sessionId: string, adIndex: number): Promise<File | null> => {
-    try {
-      const proxyUrl = `https://facebookswipefile-2gxnqoptoa-uc.a.run.app/api/proxy-media/${sessionId}/${adIndex}`;
-      const response = await fetch(proxyUrl);
+    // Try both Ad Scraper URLs (new primary, old fallback)
+    const AD_SCRAPER_URLS = [
+      'https://facebookswipefile-443507027642.us-central1.run.app',
+      'https://facebookswipefile-2gxnqoptoa-uc.a.run.app'
+    ];
 
-      if (!response.ok) {
-        console.error(`❌ Failed proxy download for ad ${adIndex + 1}: HTTP ${response.status}`);
-        return null;
+    for (const baseUrl of AD_SCRAPER_URLS) {
+      try {
+        const proxyUrl = `${baseUrl}/api/proxy-media/${sessionId}/${adIndex}`;
+        const response = await fetch(proxyUrl);
+
+        if (!response.ok) {
+          console.error(`❌ Failed proxy download from ${baseUrl} for ad ${adIndex + 1}: HTTP ${response.status}`);
+          continue; // Try next URL
+        }
+
+        const blob = await response.blob();
+        const isVideo = blob.type.startsWith('video/');
+        const fileName = isVideo ? `imported-ad-${adIndex + 1}.mp4` : `imported-ad-${adIndex + 1}.jpg`;
+        const file = new File([blob], fileName, { type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg') });
+
+        console.log(`✅ Downloaded media for ad ${adIndex + 1} from ${baseUrl}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+        return file;
+      } catch (error: any) {
+        console.error(`❌ Error downloading media from ${baseUrl} for ad ${adIndex + 1}:`, error);
+        // Try next URL
       }
-
-      const blob = await response.blob();
-      const isVideo = blob.type.startsWith('video/');
-      const fileName = isVideo ? `imported-ad-${adIndex + 1}.mp4` : `imported-ad-${adIndex + 1}.jpg`;
-      const file = new File([blob], fileName, { type: blob.type || (isVideo ? 'video/mp4' : 'image/jpeg') });
-
-      console.log(`✅ Downloaded media for ad ${adIndex + 1}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-      return file;
-    } catch (error: any) {
-      console.error(`❌ Error downloading media for ad ${adIndex + 1}:`, error);
-      return null;
     }
+
+    console.error(`❌ Failed to download media for ad ${adIndex + 1} from all URLs`);
+    return null;
   };
 
   // Helper: Download ALL media files for all ads
@@ -108,48 +119,59 @@ const StrategyForAdsContainer: React.FC = () => {
   }, [location.search, phase, importedAdsData]);
 
   const fetchAdsFromScraper = async (sessionId: string) => {
-    try {
-      console.log('📥 [Strategy For Ads] Fetching ads from Ad Scraper session:', sessionId);
+    // Try both Ad Scraper URLs (new primary, old fallback)
+    const AD_SCRAPER_URLS = [
+      'https://facebookswipefile-443507027642.us-central1.run.app',
+      'https://facebookswipefile-2gxnqoptoa-uc.a.run.app'
+    ];
 
-      const response = await fetch(`https://facebookswipefile-2gxnqoptoa-uc.a.run.app/api/launcher-import/${sessionId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+    for (const baseUrl of AD_SCRAPER_URLS) {
+      try {
+        console.log(`📥 [Strategy For Ads] Fetching ads from ${baseUrl} session:`, sessionId);
 
-      if (!response.ok) {
-        console.error('❌ [Strategy For Ads] Failed to fetch ads from Ad Scraper:', response.status, response.statusText);
-        setError(`Failed to import ads from Ad Scraper: ${response.statusText}`);
-        return;
-      }
-
-      const result = await response.json();
-
-      if (result.success && result.ads && result.ads.length > 0) {
-        console.log(`✅ [Strategy For Ads] Successfully fetched ${result.ads.length} ads from Ad Scraper`);
-        console.log('📦 Ads data:', result.ads);
-
-        // Download ALL media files via proxy (Strategy For Ads uses ALL ads for dynamic features)
-        console.log(`📥 Downloading media for ${result.ads.length} ad(s)...`);
-        const adsWithMedia = await downloadAllMediaViaProxy(sessionId, result.ads);
-
-        // Store imported ads data with downloaded media
-        setImportedAdsData({
-          ...result,
-          ads: adsWithMedia
+        const response = await fetch(`${baseUrl}/api/launcher-import/${sessionId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
         });
 
-        setError(`✅ Successfully imported ${result.ads.length} ad(s) from Ad Scraper with media!`);
+        if (!response.ok) {
+          console.error(`❌ [Strategy For Ads] Failed to fetch from ${baseUrl}:`, response.status, response.statusText);
+          continue; // Try next URL
+        }
 
-      } else {
-        console.error('❌ [Strategy For Ads] No ads found in session:', result);
-        setError('Failed to import ads: Session not found or expired');
+        const result = await response.json();
+
+        if (result.success && result.ads && result.ads.length > 0) {
+          console.log(`✅ [Strategy For Ads] Successfully fetched ${result.ads.length} ads from ${baseUrl}`);
+          console.log('📦 Ads data:', result.ads);
+
+          // Download ALL media files via proxy (Strategy For Ads uses ALL ads for dynamic features)
+          console.log(`📥 Downloading media for ${result.ads.length} ad(s)...`);
+          const adsWithMedia = await downloadAllMediaViaProxy(sessionId, result.ads);
+
+          // Store imported ads data with downloaded media
+          setImportedAdsData({
+            ...result,
+            ads: adsWithMedia
+          });
+
+          setError(`✅ Successfully imported ${result.ads.length} ad(s) from Ad Scraper with media!`);
+          return; // Success, exit function
+        } else {
+          console.error(`❌ [Strategy For Ads] No ads found in session on ${baseUrl}:`, result);
+          // Try next URL
+        }
+      } catch (error: any) {
+        console.error(`❌ [Strategy For Ads] Error fetching from ${baseUrl}:`, error);
+        // Try next URL
       }
-    } catch (error: any) {
-      console.error('❌ [Strategy For Ads] Error fetching ads from Ad Scraper:', error);
-      setError(`Failed to import ads: ${error.message}`);
     }
+
+    // All URLs failed
+    console.error('❌ [Strategy For Ads] Failed to fetch ads from all Ad Scraper URLs');
+    setError('Failed to import ads: Session not found or all servers unavailable');
   };
   // ===== END AD SCRAPER IMPORT INTEGRATION =====
 
