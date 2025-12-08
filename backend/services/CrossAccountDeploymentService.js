@@ -303,6 +303,9 @@ class CrossAccountDeploymentService {
       lifetime_budget: campaignData.lifetime_budget
     });
 
+    // CRITICAL DEBUG: Log EXACTLY what's being sent
+    console.error('🚨 ABOUT TO CREATE CAMPAIGN - PARAMS:', JSON.stringify(campaignData, null, 2));
+
     const campaignResponse = await facebookApi.makeApiCallWithRotation(
       'POST',
       `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/campaigns`,
