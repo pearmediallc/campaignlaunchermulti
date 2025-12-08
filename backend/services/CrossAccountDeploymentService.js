@@ -188,6 +188,14 @@ class CrossAccountDeploymentService {
 
     const campaign = campaignResponse.data;
     console.log(`  ✅ Campaign fetched: ${campaign.name}`);
+    console.log(`  📋 Campaign details:`, {
+      objective: campaign.objective,
+      buying_type: campaign.buying_type,
+      special_ad_categories: campaign.special_ad_categories,
+      bid_strategy: campaign.bid_strategy,
+      daily_budget: campaign.daily_budget,
+      lifetime_budget: campaign.lifetime_budget
+    });
 
     // Get ad sets
     console.log(`  📊 Fetching ad sets...`);
@@ -205,6 +213,19 @@ class CrossAccountDeploymentService {
 
     const adSets = adSetsResponse.data.data || [];
     console.log(`  ✅ Ad sets fetched: ${adSets.length}`);
+
+    // Log first ad set details for debugging
+    if (adSets.length > 0) {
+      console.log(`  📋 First ad set details:`, {
+        name: adSets[0].name,
+        optimization_goal: adSets[0].optimization_goal,
+        billing_event: adSets[0].billing_event,
+        bid_strategy: adSets[0].bid_strategy,
+        promoted_object: adSets[0].promoted_object,
+        attribution_spec: adSets[0].attribution_spec,
+        targeting: adSets[0].targeting ? 'Present' : 'Missing'
+      });
+    }
 
     // Get ads for each ad set
     console.log(`  📊 Fetching ads...`);
@@ -249,14 +270,15 @@ class CrossAccountDeploymentService {
 
     // CRITICAL: Ensure special_ad_categories is always present (Facebook requires it)
     const specialAdCategories = structure.campaign.special_ad_categories || [];
-    console.log(`  🏷️  Special Ad Categories: ${JSON.stringify(specialAdCategories)}`);
+    console.log(`  🏷️  Special Ad Categories from source: ${JSON.stringify(specialAdCategories)}`);
+    console.log(`  🏷️  Type: ${typeof specialAdCategories}, Is Array: ${Array.isArray(specialAdCategories)}`);
 
     const campaignData = {
       name: newCampaignName,
       objective: structure.campaign.objective,
       buying_type: structure.campaign.buying_type || 'AUCTION', // CRITICAL: Required by Facebook
       status: 'PAUSED', // Always create paused for safety
-      special_ad_categories: JSON.stringify(specialAdCategories), // CRITICAL: Must be JSON string
+      special_ad_categories: JSON.stringify(specialAdCategories), // CRITICAL: Must be JSON string (same as facebookApi.js line 351)
       access_token: facebookApi.accessToken
     };
 
@@ -269,6 +291,17 @@ class CrossAccountDeploymentService {
     if (structure.campaign.bid_strategy) {
       campaignData.bid_strategy = structure.campaign.bid_strategy;
     }
+
+    console.log(`  📤 Campaign data being sent:`, {
+      name: campaignData.name,
+      objective: campaignData.objective,
+      buying_type: campaignData.buying_type,
+      status: campaignData.status,
+      special_ad_categories: campaignData.special_ad_categories,
+      bid_strategy: campaignData.bid_strategy,
+      daily_budget: campaignData.daily_budget,
+      lifetime_budget: campaignData.lifetime_budget
+    });
 
     const campaignResponse = await facebookApi.makeApiCallWithRotation(
       'POST',
@@ -329,6 +362,17 @@ class CrossAccountDeploymentService {
       if (adSet.lifetime_budget) adSetData.lifetime_budget = adSet.lifetime_budget;
       if (adSet.start_time) adSetData.start_time = adSet.start_time;
       if (adSet.end_time) adSetData.end_time = adSet.end_time;
+
+      console.log(`      📤 Ad set data being sent:`, {
+        name: adSetData.name,
+        campaign_id: adSetData.campaign_id,
+        optimization_goal: adSetData.optimization_goal,
+        billing_event: adSetData.billing_event,
+        bid_strategy: adSetData.bid_strategy,
+        promoted_object: adSetData.promoted_object,
+        attribution_spec: adSetData.attribution_spec ? 'Present' : 'Missing',
+        targeting: adSetData.targeting ? 'Present' : 'Missing'
+      });
 
       const adSetResponse = await facebookApi.makeApiCallWithRotation(
         'POST',

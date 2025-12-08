@@ -505,11 +505,26 @@ const StrategyForAllContainer: React.FC = () => {
         lifetimeBudget: workingCampaignData.lifetimeBudget
       });
 
+      // CRITICAL: Log thumbnail BEFORE removing undefined fields
+      console.log('🔍 [THUMBNAIL DEBUG] Before cleanup:', {
+        hasVideoThumbnail: !!(workingCampaignData as any).videoThumbnail,
+        videoThumbnailType: typeof (workingCampaignData as any).videoThumbnail,
+        isFile: (workingCampaignData as any).videoThumbnail instanceof File,
+        thumbnailName: (workingCampaignData as any).videoThumbnail?.name,
+        frameIndex: (workingCampaignData as any).videoThumbnailFrameIndex
+      });
+
       // Remove any undefined fields before sending
       Object.keys(workingCampaignData).forEach(key => {
         if (workingCampaignData[key] === undefined) {
           delete workingCampaignData[key];
         }
+      });
+
+      // CRITICAL: Log thumbnail AFTER removing undefined fields
+      console.log('🔍 [THUMBNAIL DEBUG] After cleanup:', {
+        hasVideoThumbnail: !!(workingCampaignData as any).videoThumbnail,
+        thumbnailStillPresent: (workingCampaignData as any).videoThumbnail instanceof File
       });
 
       console.log('\n📤 Sending Request to Backend...');
