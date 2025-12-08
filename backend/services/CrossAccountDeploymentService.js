@@ -171,14 +171,15 @@ class CrossAccountDeploymentService {
     }
 
     // Step 2.5: Check target account capabilities (SOFT CHECK - logs only, doesn't block)
-    await this.checkAccountCapabilities(targetFacebookApi, target.adAccountId);
+    const accountInfo = await this.checkAccountCapabilities(targetFacebookApi, target.adAccountId);
 
     // Step 3: Create campaign in target account
     console.log(`\n🚀 Step 3: Creating campaign in target account...`);
     const newCampaign = await this.createCampaignFromStructure(
       targetFacebookApi,
       campaignStructure,
-      target
+      target,
+      accountInfo  // Pass account info to createCampaignFromStructure
     );
 
     console.log(`✅ Campaign deployed successfully to target account!`);
@@ -310,11 +311,20 @@ class CrossAccountDeploymentService {
   /**
    * Create campaign from structure in target account
    */
-  async createCampaignFromStructure(facebookApi, structure, target) {
+  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null) {
     console.log(`  🏗️  Creating campaign structure...`);
 
     // Use original campaign name as-is (keeps [Launcher] prefix, no timestamp suffix)
     const newCampaignName = structure.campaign.name;
+
+    // Log account currency for budget handling
+    if (accountInfo) {
+      console.log(`  💱 Target account currency: ${accountInfo.currency || 'Unknown'}`);
+      if (structure.campaign.daily_budget || structure.campaign.lifetime_budget) {
+        console.log(`  ⚠️  NOTE: Budget values are in smallest currency unit (cents/paise/etc)`);
+        console.log(`  📊 Source budget: daily=${structure.campaign.daily_budget}, lifetime=${structure.campaign.lifetime_budget}`);
+      }
+    }
 
     // Create campaign
     console.log(`  📝 Creating campaign: ${newCampaignName}`);
