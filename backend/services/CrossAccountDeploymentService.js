@@ -314,8 +314,12 @@ class CrossAccountDeploymentService {
   async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null) {
     console.log(`  🏗️  Creating campaign structure...`);
 
-    // Use original campaign name as-is (keeps [Launcher] prefix, no timestamp suffix)
-    const newCampaignName = structure.campaign.name;
+    // CRITICAL: Make campaign name unique to avoid conflicts when deploying to same account with different pages
+    // Use page ID in name to ensure uniqueness
+    const pageIdLast6 = target.pageId.toString().slice(-6); // Last 6 digits of page ID
+    const newCampaignName = `${structure.campaign.name} - Page ${pageIdLast6}`;
+
+    console.log(`  📝 Using unique campaign name for page ${target.pageId}: ${newCampaignName}`);
 
     // Log account currency for budget handling
     if (accountInfo) {
