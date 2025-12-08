@@ -309,7 +309,7 @@ class CrossAccountDeploymentService {
     const campaignResponse = await facebookApi.makeApiCallWithRotation(
       'POST',
       `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/campaigns`,
-      { params: campaignData }
+      { data: campaignData }  // FIXED: Changed from 'params' to 'data' - params sends as query string, data sends as POST body
     );
 
     const newCampaignId = campaignResponse.data.id;
@@ -380,7 +380,7 @@ class CrossAccountDeploymentService {
       const adSetResponse = await facebookApi.makeApiCallWithRotation(
         'POST',
         `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/adsets`,
-        { params: adSetData }
+        { data: adSetData }  // FIXED: Changed from 'params' to 'data' - params sends as query string, data sends as POST body
       );
 
       adSetMapping.set(adSet.id, adSetResponse.data.id);
@@ -413,7 +413,7 @@ class CrossAccountDeploymentService {
       await facebookApi.makeApiCallWithRotation(
         'POST',
         `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/ads`,
-        { params: adData }
+        { data: adData }  // FIXED: Changed from 'params' to 'data' - params sends as query string, data sends as POST body
       );
     }
 
