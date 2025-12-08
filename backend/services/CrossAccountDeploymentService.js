@@ -262,8 +262,8 @@ class CrossAccountDeploymentService {
   async createCampaignFromStructure(facebookApi, structure, target) {
     console.log(`  🏗️  Creating campaign structure...`);
 
-    // Use original campaign name without any prefix or suffix
-    const newCampaignName = structure.campaign.name.replace(/^\[Launcher\]\s*/, ''); // Remove [Launcher] prefix if present
+    // Use original campaign name as-is (keeps [Launcher] prefix, no timestamp suffix)
+    const newCampaignName = structure.campaign.name;
 
     // Create campaign
     console.log(`  📝 Creating campaign: ${newCampaignName}`);
