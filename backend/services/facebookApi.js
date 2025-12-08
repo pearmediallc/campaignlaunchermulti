@@ -96,7 +96,7 @@ class FacebookAPI {
       return response;
 
     } catch (error) {
-      // Enhanced error logging
+      // Enhanced error logging - CRITICAL: Capture ALL error fields Facebook provides
       const errorDetails = {
         status: error.response?.status,
         statusText: error.response?.statusText,
@@ -105,11 +105,20 @@ class FacebookAPI {
         message: error.response?.data?.error?.message,
         type: error.response?.data?.error?.type,
         fbtrace_id: error.response?.data?.error?.fbtrace_id,
+        error_user_title: error.response?.data?.error?.error_user_title,  // ADDED: User-friendly error title
+        error_user_msg: error.response?.data?.error?.error_user_msg,      // ADDED: User-friendly error message
+        is_transient: error.response?.data?.error?.is_transient,          // ADDED: Whether error is temporary
+        error_data: error.response?.data?.error?.error_data,              // ADDED: Additional error context
         url: error.config?.url,
         method: error.config?.method
       };
 
       console.error(`  ❌ API Error Details:`, JSON.stringify(errorDetails, null, 2));
+
+      // CRITICAL: Log the FULL error response to see what we're missing
+      if (error.response?.data?.error) {
+        console.error(`  🔍 FULL Facebook Error Object:`, JSON.stringify(error.response.data.error, null, 2));
+      }
 
       // Check if it's a rate limit error (FIXED: includes 400 status and more error codes)
       const errorCode = error.response?.data?.error?.code;

@@ -68,6 +68,54 @@ class CrossAccountDeploymentService {
   }
 
   /**
+   * Query ad account capabilities and restrictions (SOFT CHECK - logs only, doesn't block)
+   */
+  async checkAccountCapabilities(facebookApi, adAccountId) {
+    console.log(`\n🔍 CHECKING ACCOUNT CAPABILITIES: ${adAccountId}`);
+
+    try {
+      // Query ad account details including capabilities
+      const accountInfo = await facebookApi.makeApiCallWithRotation(
+        'GET',
+        `${facebookApi.baseURL}/${adAccountId}`,
+        {
+          params: {
+            fields: 'id,name,account_status,disable_reason,capabilities,can_create_brand_lift_study,is_prepay_account,spend_cap,amount_spent,balance,business,age,currency,timezone_name',
+            access_token: facebookApi.accessToken
+          }
+        }
+      );
+
+      console.log(`  📊 Account Info:`, {
+        id: accountInfo.data.id,
+        name: accountInfo.data.name,
+        status: accountInfo.data.account_status,
+        disable_reason: accountInfo.data.disable_reason || 'none',
+        currency: accountInfo.data.currency,
+        is_prepay: accountInfo.data.is_prepay_account,
+        capabilities: accountInfo.data.capabilities || []
+      });
+
+      // Check specific capabilities
+      const caps = accountInfo.data.capabilities || [];
+      console.log(`  ✓ Account Capabilities:`, caps);
+
+      // Log any potential issues (NOT blocking, just informational)
+      if (accountInfo.data.account_status !== 1) {
+        console.warn(`  ⚠️  Account status is NOT active (status: ${accountInfo.data.account_status})`);
+        if (accountInfo.data.disable_reason) {
+          console.warn(`  ⚠️  Disable reason: ${accountInfo.data.disable_reason}`);
+        }
+      }
+
+      return accountInfo.data;
+    } catch (error) {
+      console.error(`  ⚠️  Could not fetch account capabilities (non-blocking):`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * CRITICAL: Clone campaign to a specific account/page combination
    * This is the core method that must NEVER mix up accounts
    */
@@ -121,6 +169,9 @@ class CrossAccountDeploymentService {
     if (targetFacebookApi.adAccountId !== target.adAccountId.replace('act_', '')) {
       throw new Error(`CRITICAL: API account mismatch! Expected ${target.adAccountId}, got ${targetFacebookApi.adAccountId}`);
     }
+
+    // Step 2.5: Check target account capabilities (SOFT CHECK - logs only, doesn't block)
+    await this.checkAccountCapabilities(targetFacebookApi, target.adAccountId);
 
     // Step 3: Create campaign in target account
     console.log(`\n🚀 Step 3: Creating campaign in target account...`);
@@ -237,7 +288,7 @@ class CrossAccountDeploymentService {
         `${facebookApi.baseURL}/${adSet.id}/ads`,
         {
           params: {
-            fields: 'name,adset_id,creative,status',
+            fields: 'name,adset_id,creative{id,object_story_spec,asset_feed_spec,image_hash,video_id},status',  // FIXED: Expand creative to get full spec
             limit: 100,
             access_token: facebookApi.accessToken
           }
@@ -402,14 +453,40 @@ class CrossAccountDeploymentService {
 
       console.log(`    Creating ad ${i + 1}/${structure.ads.length}: ${ad.name}`);
 
+      // CRITICAL: Cannot copy creative ID across accounts - must create new creative or use object_story_spec directly
+      // Check if we have the full creative spec
+      let creativeSpec;
+      if (ad.creative && ad.creative.object_story_spec) {
+        // We have the full creative spec - clone it and replace page_id with target page
+        console.log(`      ✓ Using object_story_spec from source creative`);
+        creativeSpec = JSON.parse(JSON.stringify(ad.creative.object_story_spec)); // Deep clone
+
+        // CRITICAL: Replace page_id with target page
+        if (creativeSpec.page_id) {
+          console.log(`      🔄 Replacing page_id: ${creativeSpec.page_id} -> ${target.pageId}`);
+          creativeSpec.page_id = target.pageId;
+        }
+
+        console.log(`      📋 Creative spec after page replacement:`, JSON.stringify(creativeSpec).substring(0, 200));
+      } else if (ad.creative && ad.creative.id) {
+        // We only have creative ID - this WON'T work across accounts!
+        console.error(`      ❌ CRITICAL: Only have creative ID (${ad.creative.id}), cannot copy across accounts`);
+        console.error(`      ⚠️  Skipping this ad - need full creative spec to clone`);
+        continue;
+      } else {
+        console.error(`      ❌ No valid creative data found for ad ${ad.name}`);
+        continue;
+      }
+
       const adData = {
         name: ad.name,
         adset_id: newAdSetId,
-        creative: ad.creative,
+        creative: JSON.stringify(creativeSpec),  // FIXED: Using JSON string of object_story_spec with replaced page_id
         status: 'PAUSED',
         access_token: facebookApi.accessToken
       };
 
+      console.log(`      📤 Creating ad with creative spec...`);
       await facebookApi.makeApiCallWithRotation(
         'POST',
         `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/ads`,
