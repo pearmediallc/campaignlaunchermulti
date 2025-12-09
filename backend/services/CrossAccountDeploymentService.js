@@ -1043,7 +1043,9 @@ class CrossAccountDeploymentService {
           console.warn(`      ⚠️  Source has pixel but target doesn't - attempting deployment anyway`);
         }
 
-        console.log(`      📋 Creative spec after replacements:`, JSON.stringify(creativeSpec).substring(0, 200));
+        // CRITICAL DEBUG: Log COMPLETE creative spec (not truncated)
+        console.log(`      📋 COMPLETE Creative spec after replacements:`);
+        console.log(JSON.stringify(creativeSpec, null, 2));
       } else if (ad.creative && ad.creative.id) {
         // We only have creative ID - this WON'T work across accounts!
         console.error(`      ❌ CRITICAL: Only have creative ID (${ad.creative.id}), cannot copy across accounts`);
@@ -1054,10 +1056,14 @@ class CrossAccountDeploymentService {
         continue;
       }
 
+      // CRITICAL FIX: Creative parameter must be stringified object with object_story_spec property
+      // NOT the spec itself stringified (same pattern as batchDuplication.js:245-247)
       const adData = {
         name: ad.name,
         adset_id: newAdSetId,
-        creative: JSON.stringify(creativeSpec),  // FIXED: Using JSON string of object_story_spec with replaced page_id
+        creative: JSON.stringify({
+          object_story_spec: creativeSpec  // Wrap spec in object
+        }),
         status: 'PAUSED',
         access_token: facebookApi.accessToken
       };
