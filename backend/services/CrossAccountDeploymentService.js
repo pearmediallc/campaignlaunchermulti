@@ -335,16 +335,13 @@ class CrossAccountDeploymentService {
       console.log(`      🔄 Replacing video_id: ${oldId} → ${newId}`);
       spec.video_data.video_id = newId;
 
-      // CRITICAL FIX: Remove redundant thumbnail fields
-      // Facebook returns these on READ but rejects them on CREATE (Error 1443051)
-      // "Only one of image_url and image_hash should be specified in the field video_data"
-      if (spec.video_data.image_url) {
-        console.log(`      🧹 Removing image_url from video_data (redundant field)`);
+      // CRITICAL FIX: Facebook requires EXACTLY ONE thumbnail field
+      // Error 1443051: "Only one of image_url and image_hash should be specified"
+      // Error 1443226: "Please specify one of image_hash or image_url"
+      // Solution: Keep image_hash (permanent), remove image_url (temporary URL)
+      if (spec.video_data.image_url && spec.video_data.image_hash) {
+        console.log(`      🧹 Removing image_url from video_data (keeping image_hash)`);
         delete spec.video_data.image_url;
-      }
-      if (spec.video_data.image_hash) {
-        console.log(`      🧹 Removing image_hash from video_data (redundant field)`);
-        delete spec.video_data.image_hash;
       }
     }
 
