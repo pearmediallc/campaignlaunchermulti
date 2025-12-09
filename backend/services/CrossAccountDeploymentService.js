@@ -96,9 +96,10 @@ class CrossAccountDeploymentService {
             { params: { fields: 'source,title,description', access_token: sourceApi.accessToken } }
           );
 
-          if (videoData.source) {
+          if (videoData.data && videoData.data.source) {
+            console.log(`    ✓ Video source URL found: ${videoData.data.source.substring(0, 50)}...`);
             const cached = await this.downloadAndCacheMedia(
-              videoData.source,
+              videoData.data.source,
               'video',
               videoId,
               deploymentId
@@ -111,9 +112,14 @@ class CrossAccountDeploymentService {
               message: creative.object_story_spec.video_data.message,
               callToAction: creative.object_story_spec.video_data.call_to_action
             });
+            console.log(`    ✅ Video cached successfully: ${videoId}`);
+          } else {
+            console.error(`    ❌ No video source found in API response for ${videoId}`);
+            console.error(`    Response structure:`, JSON.stringify(videoData, null, 2).substring(0, 500));
           }
         } catch (videoError) {
           console.error(`  ⚠️  Could not download video ${videoId}:`, videoError.message);
+          console.error(`  Stack:`, videoError.stack);
         }
       }
 
@@ -130,9 +136,11 @@ class CrossAccountDeploymentService {
             { params: { hashes: [imageHash], access_token: sourceApi.accessToken } }
           );
 
-          if (imageData && imageData.data && imageData.data[imageHash]) {
-            const imageUrl = imageData.data[imageHash].url || imageData.data[imageHash].permalink_url;
+          // Response structure: { data: { data: { [hash]: { url, permalink_url } } } }
+          if (imageData && imageData.data && imageData.data.data && imageData.data.data[imageHash]) {
+            const imageUrl = imageData.data.data[imageHash].url || imageData.data.data[imageHash].permalink_url;
             if (imageUrl) {
+              console.log(`    ✓ Image URL found: ${imageUrl.substring(0, 50)}...`);
               const cached = await this.downloadAndCacheMedia(
                 imageUrl,
                 'image',
@@ -144,10 +152,17 @@ class CrossAccountDeploymentService {
                 originalHash: imageHash,
                 ...cached
               });
+              console.log(`    ✅ Image cached successfully: ${imageHash}`);
+            } else {
+              console.error(`    ❌ No image URL found for hash ${imageHash}`);
             }
+          } else {
+            console.error(`    ❌ Image not found in API response for hash ${imageHash}`);
+            console.error(`    Response structure:`, JSON.stringify(imageData, null, 2).substring(0, 500));
           }
         } catch (imageError) {
           console.error(`  ⚠️  Could not download image ${imageHash}:`, imageError.message);
+          console.error(`  Stack:`, imageError.stack);
         }
       }
 
