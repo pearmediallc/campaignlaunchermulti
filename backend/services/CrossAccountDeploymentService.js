@@ -73,7 +73,41 @@ class CrossAccountDeploymentService {
   }
 
   /**
-   * Extract media from creative spec and download
+   * Check if media file exists in uploads directory (from original upload)
+   */
+  async checkCachedUploadFile(mediaId, mediaType) {
+    try {
+      const uploadsDir = path.join(__dirname, '../uploads');
+      const files = await fs.readdir(uploadsDir);
+
+      // Look for files that might match this media ID
+      // Uploaded files are named like: media-1765304000321-604289530.mp4
+      for (const file of files) {
+        if (file.includes('media-') && (mediaType === 'video' ? file.endsWith('.mp4') : (file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png')))) {
+          const filePath = path.join(uploadsDir, file);
+          const stats = await fs.stat(filePath);
+
+          // Check if file was recently created (within last 30 minutes)
+          // This ensures we're using the right file for this deployment
+          const fileAge = Date.now() - stats.mtimeMs;
+          if (fileAge < 30 * 60 * 1000) { // 30 minutes
+            console.log(`    💾 Found cached upload file: ${file}`);
+            console.log(`       File age: ${Math.floor(fileAge / 1000 / 60)} minutes`);
+            return filePath;
+          }
+        }
+      }
+
+      console.log(`    ℹ️  No recent cached upload found for ${mediaType} ${mediaId}`);
+      return null;
+    } catch (error) {
+      console.warn(`    ⚠️  Error checking cached uploads:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Extract media from creative spec and download (or use cached upload)
    */
   async extractAndCacheMediaFromCreative(creative, sourceApi, deploymentId) {
     const mediaCache = {
@@ -88,22 +122,51 @@ class CrossAccountDeploymentService {
         const videoId = creative.object_story_spec.video_data.video_id;
         console.log(`  🎬 Found video in creative: ${videoId}`);
 
-        // Get video URL from Facebook
-        try {
-          const videoData = await sourceApi.makeApiCallWithRotation(
-            'GET',
-            `${sourceApi.baseURL}/${videoId}`,
-            { params: { fields: 'source,title,description', access_token: sourceApi.accessToken } }
-          );
+        // OPTIMIZATION: Check if we have the original uploaded file cached
+        const cachedUploadPath = await this.checkCachedUploadFile(videoId, 'video');
 
-          if (videoData.data && videoData.data.source) {
-            console.log(`    ✓ Video source URL found: ${videoData.data.source.substring(0, 50)}...`);
-            const cached = await this.downloadAndCacheMedia(
-              videoData.data.source,
-              'video',
-              videoId,
-              deploymentId
+        if (cachedUploadPath && await fs.access(cachedUploadPath).then(() => true).catch(() => false)) {
+          // Use cached upload file directly!
+          console.log(`    ✅ Using cached upload file (no download needed!)`);
+          const stats = await fs.stat(cachedUploadPath);
+          const filename = path.basename(cachedUploadPath);
+
+          // Copy to deployment cache so cleanup works correctly
+          const deploymentDir = path.join(this.tempDir, deploymentId);
+          await fs.mkdir(deploymentDir, { recursive: true });
+          const cachedPath = path.join(deploymentDir, filename);
+          await fs.copyFile(cachedUploadPath, cachedPath);
+
+          mediaCache.videos.push({
+            originalId: videoId,
+            localPath: cachedPath,
+            size: stats.size,
+            filename,
+            title: creative.object_story_spec.video_data.title,
+            message: creative.object_story_spec.video_data.message,
+            callToAction: creative.object_story_spec.video_data.call_to_action
+          });
+
+          console.log(`    ✅ Video cached successfully from upload: ${videoId}`);
+        } else {
+          // Fallback: Download from Facebook
+          console.log(`    📥 Cached upload not found - downloading from Facebook...`);
+
+          try {
+            const videoData = await sourceApi.makeApiCallWithRotation(
+              'GET',
+              `${sourceApi.baseURL}/${videoId}`,
+              { params: { fields: 'source,title,description', access_token: sourceApi.accessToken } }
             );
+
+            if (videoData.data && videoData.data.source) {
+              console.log(`    ✓ Video source URL found: ${videoData.data.source.substring(0, 50)}...`);
+              const cached = await this.downloadAndCacheMedia(
+                videoData.data.source,
+                'video',
+                videoId,
+                deploymentId
+              );
 
             mediaCache.videos.push({
               originalId: videoId,
@@ -112,14 +175,15 @@ class CrossAccountDeploymentService {
               message: creative.object_story_spec.video_data.message,
               callToAction: creative.object_story_spec.video_data.call_to_action
             });
-            console.log(`    ✅ Video cached successfully: ${videoId}`);
-          } else {
-            console.error(`    ❌ No video source found in API response for ${videoId}`);
-            console.error(`    Response structure:`, JSON.stringify(videoData, null, 2).substring(0, 500));
+              console.log(`    ✅ Video cached successfully: ${videoId}`);
+            } else {
+              console.error(`    ❌ No video source found in API response for ${videoId}`);
+              console.error(`    Response structure:`, JSON.stringify(videoData, null, 2).substring(0, 500));
+            }
+          } catch (videoError) {
+            console.error(`  ⚠️  Could not download video ${videoId}:`, videoError.message);
+            console.error(`  Stack:`, videoError.stack);
           }
-        } catch (videoError) {
-          console.error(`  ⚠️  Could not download video ${videoId}:`, videoError.message);
-          console.error(`  Stack:`, videoError.stack);
         }
       }
 
@@ -128,41 +192,68 @@ class CrossAccountDeploymentService {
         const imageHash = creative.object_story_spec.link_data.image_hash;
         console.log(`  🖼️  Found image hash in creative: ${imageHash}`);
 
-        // Get image URL from Facebook using ad account's images endpoint
-        try {
-          const imageData = await sourceApi.makeApiCallWithRotation(
-            'GET',
-            `${sourceApi.baseURL}/act_${sourceApi.adAccountId}/adimages`,
-            { params: { hashes: [imageHash], access_token: sourceApi.accessToken } }
-          );
+        // OPTIMIZATION: Check if we have the original uploaded file cached
+        const cachedUploadPath = await this.checkCachedUploadFile(imageHash, 'image');
 
-          // Response structure: { data: { data: { [hash]: { url, permalink_url } } } }
-          if (imageData && imageData.data && imageData.data.data && imageData.data.data[imageHash]) {
-            const imageUrl = imageData.data.data[imageHash].url || imageData.data.data[imageHash].permalink_url;
-            if (imageUrl) {
-              console.log(`    ✓ Image URL found: ${imageUrl.substring(0, 50)}...`);
-              const cached = await this.downloadAndCacheMedia(
-                imageUrl,
-                'image',
-                imageHash,
-                deploymentId
-              );
+        if (cachedUploadPath && await fs.access(cachedUploadPath).then(() => true).catch(() => false)) {
+          // Use cached upload file directly!
+          console.log(`    ✅ Using cached upload file (no download needed!)`);
+          const stats = await fs.stat(cachedUploadPath);
+          const filename = path.basename(cachedUploadPath);
 
-              mediaCache.images.push({
-                originalHash: imageHash,
-                ...cached
-              });
-              console.log(`    ✅ Image cached successfully: ${imageHash}`);
+          // Copy to deployment cache so cleanup works correctly
+          const deploymentDir = path.join(this.tempDir, deploymentId);
+          await fs.mkdir(deploymentDir, { recursive: true });
+          const cachedPath = path.join(deploymentDir, filename);
+          await fs.copyFile(cachedUploadPath, cachedPath);
+
+          mediaCache.images.push({
+            originalHash: imageHash,
+            localPath: cachedPath,
+            size: stats.size,
+            filename
+          });
+
+          console.log(`    ✅ Image cached successfully from upload: ${imageHash}`);
+        } else {
+          // Fallback: Download from Facebook
+          console.log(`    📥 Cached upload not found - downloading from Facebook...`);
+
+          try {
+            const imageData = await sourceApi.makeApiCallWithRotation(
+              'GET',
+              `${sourceApi.baseURL}/act_${sourceApi.adAccountId}/adimages`,
+              { params: { hashes: [imageHash], access_token: sourceApi.accessToken } }
+            );
+
+            // Response structure: { data: { data: { [hash]: { url, permalink_url } } } }
+            if (imageData && imageData.data && imageData.data.data && imageData.data.data[imageHash]) {
+              const imageUrl = imageData.data.data[imageHash].url || imageData.data.data[imageHash].permalink_url;
+              if (imageUrl) {
+                console.log(`    ✓ Image URL found: ${imageUrl.substring(0, 50)}...`);
+                const cached = await this.downloadAndCacheMedia(
+                  imageUrl,
+                  'image',
+                  imageHash,
+                  deploymentId
+                );
+
+                mediaCache.images.push({
+                  originalHash: imageHash,
+                  ...cached
+                });
+                console.log(`    ✅ Image cached successfully: ${imageHash}`);
+              } else {
+                console.error(`    ❌ No image URL found for hash ${imageHash}`);
+              }
             } else {
-              console.error(`    ❌ No image URL found for hash ${imageHash}`);
+              console.error(`    ❌ Image not found in API response for hash ${imageHash}`);
+              console.error(`    Response structure:`, JSON.stringify(imageData, null, 2).substring(0, 500));
             }
-          } else {
-            console.error(`    ❌ Image not found in API response for hash ${imageHash}`);
-            console.error(`    Response structure:`, JSON.stringify(imageData, null, 2).substring(0, 500));
+          } catch (imageError) {
+            console.error(`  ⚠️  Could not download image ${imageHash}:`, imageError.message);
+            console.error(`  Stack:`, imageError.stack);
           }
-        } catch (imageError) {
-          console.error(`  ⚠️  Could not download image ${imageHash}:`, imageError.message);
-          console.error(`  Stack:`, imageError.stack);
         }
       }
 
@@ -266,6 +357,45 @@ class CrossAccountDeploymentService {
       console.log(`  🧹 Cleaned up cached media for deployment ${deploymentId}`);
     } catch (error) {
       console.warn(`  ⚠️  Failed to cleanup cache:`, error.message);
+    }
+  }
+
+  /**
+   * Cleanup uploaded media files after deployment completes
+   * This removes files from /uploads/ directory that were used for this deployment
+   */
+  async cleanupUploadedFiles() {
+    try {
+      const uploadsDir = path.join(__dirname, '../uploads');
+      const files = await fs.readdir(uploadsDir);
+
+      let cleanedCount = 0;
+
+      // Remove files older than 30 minutes
+      for (const file of files) {
+        if (file.includes('media-')) {
+          const filePath = path.join(uploadsDir, file);
+          try {
+            const stats = await fs.stat(filePath);
+            const fileAge = Date.now() - stats.mtimeMs;
+
+            // Delete files older than 30 minutes
+            if (fileAge > 30 * 60 * 1000) {
+              await fs.unlink(filePath);
+              cleanedCount++;
+              console.log(`    🗑️  Deleted old upload: ${file} (age: ${Math.floor(fileAge / 1000 / 60)} min)`);
+            }
+          } catch (error) {
+            console.warn(`    ⚠️  Could not delete ${file}:`, error.message);
+          }
+        }
+      }
+
+      if (cleanedCount > 0) {
+        console.log(`  🧹 Cleaned up ${cleanedCount} old uploaded files`);
+      }
+    } catch (error) {
+      console.warn(`  ⚠️  Failed to cleanup uploaded files:`, error.message);
     }
   }
 
@@ -470,6 +600,9 @@ class CrossAccountDeploymentService {
 
     // Cleanup cached media files
     await this.cleanupDeploymentCache(deploymentId);
+
+    // Cleanup old uploaded files (30+ minutes old)
+    await this.cleanupUploadedFiles();
 
     // FINAL VERIFICATION: Confirm campaign was created in correct account
     console.log(`\n🔍 FINAL VERIFICATION: Confirming campaign is in correct account...`);
