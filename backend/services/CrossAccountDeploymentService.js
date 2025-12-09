@@ -1,6 +1,10 @@
 const db = require('../models');
 const FacebookAPI = require('./facebookApi');
 const { decryptToken } = require('../routes/facebookSDKAuth');
+const axios = require('axios');
+const fs = require('fs').promises;
+const path = require('path');
+const crypto = require('crypto');
 
 /**
  * Cross-Account Campaign Deployment Service
@@ -17,6 +21,237 @@ const { decryptToken } = require('../routes/facebookSDKAuth');
 class CrossAccountDeploymentService {
   constructor() {
     this.deploymentJobs = new Map(); // Track active deployment jobs
+    this.mediaCache = new Map(); // Cache for downloaded media files
+    this.tempDir = path.join(__dirname, '../temp/deployments'); // Temp directory for cached media
+  }
+
+  /**
+   * Download media from Facebook and cache it locally
+   */
+  async downloadAndCacheMedia(mediaUrl, mediaType, mediaId, deploymentId) {
+    try {
+      console.log(`  📥 Downloading ${mediaType} from Facebook...`);
+
+      // Create deployment-specific temp directory
+      const deploymentDir = path.join(this.tempDir, deploymentId);
+      await fs.mkdir(deploymentDir, { recursive: true });
+
+      // Generate unique filename
+      const extension = mediaType === 'video' ? 'mp4' : 'jpg';
+      const filename = `${mediaType}_${mediaId}_${Date.now()}.${extension}`;
+      const localPath = path.join(deploymentDir, filename);
+
+      // Download media
+      const response = await axios({
+        method: 'GET',
+        url: mediaUrl,
+        responseType: 'stream',
+        timeout: 120000 // 2 minute timeout for large files
+      });
+
+      // Save to file
+      const writer = require('fs').createWriteStream(localPath);
+      response.data.pipe(writer);
+
+      await new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+      const stats = await fs.stat(localPath);
+      console.log(`  ✅ ${mediaType} cached: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
+
+      return {
+        localPath,
+        size: stats.size,
+        filename
+      };
+    } catch (error) {
+      console.error(`  ❌ Failed to download ${mediaType}:`, error.message);
+      throw new Error(`Failed to download ${mediaType} from Facebook: ${error.message}`);
+    }
+  }
+
+  /**
+   * Extract media from creative spec and download
+   */
+  async extractAndCacheMediaFromCreative(creative, sourceApi, deploymentId) {
+    const mediaCache = {
+      images: [],
+      videos: [],
+      metadata: {}
+    };
+
+    try {
+      // Check for video in object_story_spec
+      if (creative.object_story_spec?.video_data?.video_id) {
+        const videoId = creative.object_story_spec.video_data.video_id;
+        console.log(`  🎬 Found video in creative: ${videoId}`);
+
+        // Get video URL from Facebook
+        try {
+          const videoData = await sourceApi.makeApiCallWithRotation(
+            'GET',
+            `${sourceApi.baseURL}/${videoId}`,
+            { params: { fields: 'source,title,description', access_token: sourceApi.accessToken } }
+          );
+
+          if (videoData.source) {
+            const cached = await this.downloadAndCacheMedia(
+              videoData.source,
+              'video',
+              videoId,
+              deploymentId
+            );
+
+            mediaCache.videos.push({
+              originalId: videoId,
+              ...cached,
+              title: creative.object_story_spec.video_data.title,
+              message: creative.object_story_spec.video_data.message,
+              callToAction: creative.object_story_spec.video_data.call_to_action
+            });
+          }
+        } catch (videoError) {
+          console.error(`  ⚠️  Could not download video ${videoId}:`, videoError.message);
+        }
+      }
+
+      // Check for image in object_story_spec
+      if (creative.object_story_spec?.link_data?.image_hash) {
+        const imageHash = creative.object_story_spec.link_data.image_hash;
+        console.log(`  🖼️  Found image hash in creative: ${imageHash}`);
+
+        // Get image URL from Facebook using ad account's images endpoint
+        try {
+          const imageData = await sourceApi.makeApiCallWithRotation(
+            'GET',
+            `${sourceApi.baseURL}/act_${sourceApi.adAccountId}/adimages`,
+            { params: { hashes: [imageHash], access_token: sourceApi.accessToken } }
+          );
+
+          if (imageData && imageData.data && imageData.data[imageHash]) {
+            const imageUrl = imageData.data[imageHash].url || imageData.data[imageHash].permalink_url;
+            if (imageUrl) {
+              const cached = await this.downloadAndCacheMedia(
+                imageUrl,
+                'image',
+                imageHash,
+                deploymentId
+              );
+
+              mediaCache.images.push({
+                originalHash: imageHash,
+                ...cached
+              });
+            }
+          }
+        } catch (imageError) {
+          console.error(`  ⚠️  Could not download image ${imageHash}:`, imageError.message);
+        }
+      }
+
+      // Store creative metadata
+      mediaCache.metadata = {
+        primaryText: creative.object_story_spec?.link_data?.message || creative.object_story_spec?.video_data?.message,
+        headline: creative.object_story_spec?.link_data?.name,
+        description: creative.object_story_spec?.link_data?.description,
+        callToAction: creative.object_story_spec?.link_data?.call_to_action || creative.object_story_spec?.video_data?.call_to_action,
+        link: creative.object_story_spec?.link_data?.link || creative.object_story_spec?.video_data?.call_to_action?.value?.link
+      };
+
+      return mediaCache;
+    } catch (error) {
+      console.error(`  ❌ Failed to extract media from creative:`, error.message);
+      return mediaCache;
+    }
+  }
+
+  /**
+   * Upload cached media to target account
+   */
+  async uploadCachedMediaToTarget(cachedMedia, targetApi, targetAccountId) {
+    const uploadedMedia = {
+      images: {},
+      videos: {}
+    };
+
+    try {
+      // Upload images
+      for (const image of cachedMedia.images) {
+        console.log(`    📤 Uploading image to target account...`);
+        try {
+          const newHash = await targetApi.uploadImage(image.localPath);
+          if (newHash) {
+            uploadedMedia.images[image.originalHash] = newHash;
+            console.log(`      ✅ Image uploaded: ${image.originalHash} → ${newHash}`);
+          }
+        } catch (uploadError) {
+          console.error(`      ❌ Failed to upload image:`, uploadError.message);
+        }
+      }
+
+      // Upload videos
+      for (const video of cachedMedia.videos) {
+        console.log(`    📤 Uploading video to target account...`);
+        try {
+          const newVideoId = await targetApi.uploadVideo(video.localPath);
+          if (newVideoId) {
+            uploadedMedia.videos[video.originalId] = newVideoId;
+            console.log(`      ✅ Video uploaded: ${video.originalId} → ${newVideoId}`);
+
+            // Wait for video processing
+            console.log(`      ⏳ Waiting for video to be processed...`);
+            await targetApi.waitForVideoProcessing(newVideoId);
+          }
+        } catch (uploadError) {
+          console.error(`      ❌ Failed to upload video:`, uploadError.message);
+        }
+      }
+
+      return uploadedMedia;
+    } catch (error) {
+      console.error(`  ❌ Failed to upload media to target:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Replace media IDs in creative spec with target account's media IDs
+   */
+  replaceMediaInCreativeSpec(creativeSpec, uploadedMedia) {
+    const spec = JSON.parse(JSON.stringify(creativeSpec)); // Deep clone
+
+    // Replace video ID
+    if (spec.video_data?.video_id && uploadedMedia.videos[spec.video_data.video_id]) {
+      const oldId = spec.video_data.video_id;
+      const newId = uploadedMedia.videos[oldId];
+      console.log(`      🔄 Replacing video_id: ${oldId} → ${newId}`);
+      spec.video_data.video_id = newId;
+    }
+
+    // Replace image hash
+    if (spec.link_data?.image_hash && uploadedMedia.images[spec.link_data.image_hash]) {
+      const oldHash = spec.link_data.image_hash;
+      const newHash = uploadedMedia.images[oldHash];
+      console.log(`      🔄 Replacing image_hash: ${oldHash} → ${newHash}`);
+      spec.link_data.image_hash = newHash;
+    }
+
+    return spec;
+  }
+
+  /**
+   * Cleanup cached media files for a deployment
+   */
+  async cleanupDeploymentCache(deploymentId) {
+    try {
+      const deploymentDir = path.join(this.tempDir, deploymentId);
+      await fs.rm(deploymentDir, { recursive: true, force: true });
+      console.log(`  🧹 Cleaned up cached media for deployment ${deploymentId}`);
+    } catch (error) {
+      console.warn(`  ⚠️  Failed to cleanup cache:`, error.message);
+    }
   }
 
   /**
@@ -198,19 +433,28 @@ class CrossAccountDeploymentService {
 
     // Step 3: Create campaign in target account
     console.log(`\n🚀 Step 3: Creating campaign in target account...`);
+
+    // Generate deployment ID for media caching
+    const deploymentId = `deploy_${sourceCampaignId}_${Date.now()}`;
+
     const newCampaign = await this.createCampaignFromStructure(
       targetFacebookApi,
       campaignStructure,
       target,
       accountInfo,  // Pass account info to createCampaignFromStructure
       sourceAccount.pixelId, // Source pixel ID for replacement
-      effectivePixelId // Target pixel ID to use
+      effectivePixelId, // Target pixel ID to use
+      deploymentId, // Deployment ID for media caching
+      sourceFacebookApi // Source API for downloading media
     );
 
     console.log(`✅ Campaign deployed successfully to target account!`);
     console.log(`  New Campaign ID: ${newCampaign.campaignId}`);
     console.log(`  Ad Sets Created: ${newCampaign.adSetsCount}`);
     console.log(`  Ads Created: ${newCampaign.adsCount}`);
+
+    // Cleanup cached media files
+    await this.cleanupDeploymentCache(deploymentId);
 
     // FINAL VERIFICATION: Confirm campaign was created in correct account
     console.log(`\n🔍 FINAL VERIFICATION: Confirming campaign is in correct account...`);
@@ -414,7 +658,7 @@ class CrossAccountDeploymentService {
   /**
    * Create campaign from structure in target account
    */
-  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null, sourcePixelId = null, targetPixelId = null) {
+  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null, sourcePixelId = null, targetPixelId = null, deploymentId = null, sourceApi = null) {
     console.log(`  🏗️  Creating campaign structure...`);
     console.log(`  🎨 Pixel Configuration:`);
     console.log(`    Source Pixel: ${sourcePixelId || 'none'}`);
@@ -426,6 +670,48 @@ class CrossAccountDeploymentService {
     const newCampaignName = `${structure.campaign.name} - Page ${pageIdLast6}`;
 
     console.log(`  📝 Using unique campaign name for page ${target.pageId}: ${newCampaignName}`);
+
+    // MEDIA CACHING: Extract and download media from source before creating ads
+    let cachedMedia = null;
+    let uploadedMedia = null;
+
+    if (sourceApi && deploymentId && structure.ads.length > 0) {
+      console.log(`\n📥 MEDIA CACHING: Extracting media from source creative...`);
+
+      // Find first ad with valid creative
+      const firstAdWithCreative = structure.ads.find(ad => ad.creative && ad.creative.object_story_spec);
+
+      if (firstAdWithCreative) {
+        try {
+          cachedMedia = await this.extractAndCacheMediaFromCreative(
+            firstAdWithCreative.creative,
+            sourceApi,
+            deploymentId
+          );
+
+          console.log(`  ✅ Media extracted:`, {
+            images: cachedMedia.images.length,
+            videos: cachedMedia.videos.length
+          });
+
+          // Upload cached media to target account
+          if (cachedMedia.images.length > 0 || cachedMedia.videos.length > 0) {
+            console.log(`\n📤 MEDIA UPLOAD: Uploading cached media to target account...`);
+            uploadedMedia = await this.uploadCachedMediaToTarget(cachedMedia, facebookApi, target.adAccountId);
+
+            console.log(`  ✅ Media uploaded to target:`, {
+              images: Object.keys(uploadedMedia.images).length,
+              videos: Object.keys(uploadedMedia.videos).length
+            });
+          }
+        } catch (mediaError) {
+          console.error(`  ⚠️  Media caching failed (will attempt ad creation anyway):`, mediaError.message);
+          // Continue with deployment - some ads might work without media replacement
+        }
+      } else {
+        console.log(`  ℹ️  No ads with creative spec found - skipping media caching`);
+      }
+    }
 
     // Log account currency for budget handling
     if (accountInfo) {
@@ -591,6 +877,14 @@ class CrossAccountDeploymentService {
         if (creativeSpec.page_id) {
           console.log(`      🔄 Replacing page_id: ${creativeSpec.page_id} → ${target.pageId}`);
           creativeSpec.page_id = target.pageId;
+        }
+
+        // CRITICAL: Replace media IDs with target account's uploaded media
+        if (uploadedMedia) {
+          console.log(`      🎬 Replacing media IDs with target account's media...`);
+          creativeSpec = this.replaceMediaInCreativeSpec(creativeSpec, uploadedMedia);
+        } else if (creativeSpec.video_data?.video_id || creativeSpec.link_data?.image_hash) {
+          console.warn(`      ⚠️  Creative has media but no uploaded media available - ad may fail!`);
         }
 
         // CRITICAL: Replace pixel_id if needed (cross-account deployment)
