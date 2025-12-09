@@ -33,22 +33,29 @@ router.get('/targets', authenticate, requireFacebookAuth, async (req, res) => {
     const currentPage = facebookAuth.selectedPage;
     const currentPixel = facebookAuth.selectedPixel;
 
-    // Generate all possible combinations
+    // Generate all possible combinations with available pixels
     const combinations = [];
     for (const account of adAccounts) {
       for (const page of pages) {
-        // IMPORTANT: Do NOT assign pixel here!
-        // Pixel will be selected by user based on target account during deployment
-        // For same-account deployments, source pixel will be used
+        // Return ALL available pixels for user to choose from
+        // For same-account deployments, source pixel will be used automatically by backend
         // For cross-account deployments, user must select appropriate pixel
+
+        // Get all pixels - in reality these should be filtered per account but
+        // Facebook allows sharing pixels across accounts in Business Manager
+        const availablePixels = pixels.map(p => ({
+          id: p.id,
+          name: p.name || `Pixel ${p.id}`
+        }));
 
         combinations.push({
           adAccountId: account.id,
           adAccountName: account.name || account.id,
           pageId: page.id,
           pageName: page.name || page.id,
-          pixelId: null, // User will select pixel if needed for cross-account deployment
+          pixelId: null, // Will be selected by user in UI
           pixelName: null,
+          availablePixels, // NEW: Array of pixels user can choose from
           isCurrent: account.id === currentAdAccount?.id && page.id === currentPage?.id,
           status: 'ready' // Can add budget checks, permission checks here
         });

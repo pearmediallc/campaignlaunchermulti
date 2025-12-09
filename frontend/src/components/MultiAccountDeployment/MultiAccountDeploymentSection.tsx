@@ -42,6 +42,11 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 
+interface Pixel {
+  id: string;
+  name: string;
+}
+
 interface DeploymentTarget {
   adAccountId: string;
   adAccountName: string;
@@ -49,6 +54,7 @@ interface DeploymentTarget {
   pageName: string;
   pixelId?: string | null;
   pixelName?: string | null;
+  availablePixels?: Pixel[];
   isCurrent: boolean;
   status: string;
 }
@@ -160,6 +166,22 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
 
   const isSelected = (target: DeploymentTarget) => {
     return selectedTargets.has(`${target.adAccountId}-${target.pageId}`);
+  };
+
+  const handlePixelChange = (target: DeploymentTarget, pixelId: string | null) => {
+    // Update the target's pixel in the targets array
+    const updatedTargets = targets.map(t => {
+      if (t.adAccountId === target.adAccountId && t.pageId === target.pageId) {
+        const selectedPixel = t.availablePixels?.find(p => p.id === pixelId);
+        return {
+          ...t,
+          pixelId: pixelId,
+          pixelName: selectedPixel?.name || null
+        };
+      }
+      return t;
+    });
+    setTargets(updatedTargets);
   };
 
   const selectedCount = selectedTargets.size;
@@ -493,17 +515,33 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
                             {target.pageId}
                           </Typography>
                         </TableCell>
-                        <TableCell>
-                          {target.pixelId ? (
-                            <>
-                              <Typography variant="body2">{target.pixelName}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {target.pixelId}
-                              </Typography>
-                            </>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {target.availablePixels && target.availablePixels.length > 0 ? (
+                            <FormControl size="small" fullWidth>
+                              <Select
+                                value={target.pixelId || ''}
+                                onChange={(e) => handlePixelChange(target, e.target.value || null)}
+                                displayEmpty
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MenuItem value="">
+                                  <em>No pixel</em>
+                                </MenuItem>
+                                {target.availablePixels.map((pixel) => (
+                                  <MenuItem key={pixel.id} value={pixel.id}>
+                                    <Box>
+                                      <Typography variant="body2">{pixel.name}</Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {pixel.id}
+                                      </Typography>
+                                    </Box>
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
                           ) : (
                             <Typography variant="caption" color="text.secondary">
-                              No pixel
+                              No pixels available
                             </Typography>
                           )}
                         </TableCell>
