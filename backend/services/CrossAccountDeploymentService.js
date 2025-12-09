@@ -124,10 +124,32 @@ class CrossAccountDeploymentService {
     console.log(`  Source Campaign: ${sourceCampaignId}`);
     console.log(`  Source Account: ${sourceAccount.adAccountId}`);
     console.log(`  Source Page: ${sourceAccount.pageId}`);
+    console.log(`  Source Pixel: ${sourceAccount.pixelId || 'none'}`);
     console.log(`  ─────────────────────────────────────`);
     console.log(`  Target Account: ${target.adAccountId}`);
     console.log(`  Target Page: ${target.pageId}`);
-    console.log(`  Target Pixel: ${target.pixelId || 'none'}`);
+    console.log(`  Target Pixel: ${target.pixelId || 'none (will use source pixel if same account)'}`);
+
+    // Determine which pixel to use
+    const isSameAccount = sourceAccount.adAccountId === target.adAccountId ||
+                          `act_${sourceAccount.adAccountId}` === target.adAccountId ||
+                          sourceAccount.adAccountId === `act_${target.adAccountId}`;
+
+    let effectivePixelId;
+    if (isSameAccount) {
+      // Same account: use source pixel
+      effectivePixelId = sourceAccount.pixelId;
+      console.log(`  ℹ️  Same account deployment - using source pixel: ${effectivePixelId || 'none'}`);
+    } else {
+      // Different account: use target pixel (must be provided)
+      effectivePixelId = target.pixelId;
+      console.log(`  🔄 Cross-account deployment - using target pixel: ${effectivePixelId || 'none'}`);
+
+      if (!effectivePixelId && sourceAccount.pixelId) {
+        console.warn(`  ⚠️  WARNING: Source has pixel ${sourceAccount.pixelId} but target has none!`);
+        console.warn(`  ⚠️  This may cause deployment to fail if pixel is required.`);
+      }
+    }
 
     // Step 1: Read campaign structure from source account
     console.log(`\n📖 Step 1: Reading source campaign structure...`);
@@ -152,12 +174,13 @@ class CrossAccountDeploymentService {
     console.log(`  ⚠️  CRITICAL: Creating API instance for TARGET account`);
     console.log(`  Target Ad Account: ${target.adAccountId}`);
     console.log(`  Target Page: ${target.pageId}`);
+    console.log(`  Effective Pixel: ${effectivePixelId || 'none'}`);
 
     const targetFacebookApi = new FacebookAPI({
       accessToken: userAccessToken,
       adAccountId: target.adAccountId.replace('act_', ''),
       pageId: target.pageId,
-      pixelId: target.pixelId || sourceAccount.pixelId
+      pixelId: effectivePixelId
     });
 
     // CRITICAL VERIFICATION: Double-check API instance is pointing to correct account
@@ -179,7 +202,9 @@ class CrossAccountDeploymentService {
       targetFacebookApi,
       campaignStructure,
       target,
-      accountInfo  // Pass account info to createCampaignFromStructure
+      accountInfo,  // Pass account info to createCampaignFromStructure
+      sourceAccount.pixelId, // Source pixel ID for replacement
+      effectivePixelId // Target pixel ID to use
     );
 
     console.log(`✅ Campaign deployed successfully to target account!`);
@@ -218,6 +243,84 @@ class CrossAccountDeploymentService {
     }
 
     return newCampaign;
+  }
+
+  /**
+   * Replace pixel ID in creative spec (handles all possible locations)
+   */
+  replacePixelInCreativeSpec(creativeSpec, sourcePixelId, targetPixelId) {
+    if (!creativeSpec) return creativeSpec;
+
+    console.log(`\n🔄 PIXEL REPLACEMENT IN CREATIVE SPEC:`);
+    console.log(`  Source Pixel: ${sourcePixelId || 'none'}`);
+    console.log(`  Target Pixel: ${targetPixelId || 'none'}`);
+
+    // Deep clone to avoid mutation
+    const newSpec = JSON.parse(JSON.stringify(creativeSpec));
+    const replacements = [];
+
+    // Helper to get nested value
+    const getNestedValue = (obj, path) => {
+      return path.split('.').reduce((current, key) => current?.[key], obj);
+    };
+
+    // Helper to set nested value
+    const setNestedValue = (obj, path, value) => {
+      const keys = path.split('.');
+      const lastKey = keys.pop();
+      const target = keys.reduce((current, key) => {
+        if (!current[key]) current[key] = {};
+        return current[key];
+      }, obj);
+      target[lastKey] = value;
+    };
+
+    // Check all possible locations for pixel ID
+    const pixelPaths = [
+      'link_data.pixel_id',
+      'video_data.pixel_id',
+      'call_to_action.value.pixel_id'
+    ];
+
+    pixelPaths.forEach(path => {
+      const currentValue = getNestedValue(newSpec, path);
+      if (currentValue) {
+        console.log(`  Found pixel at ${path}: ${currentValue}`);
+
+        // If there's a source pixel and it matches, replace it
+        if (sourcePixelId && currentValue === sourcePixelId) {
+          if (targetPixelId) {
+            setNestedValue(newSpec, path, targetPixelId);
+            replacements.push({ path, from: currentValue, to: targetPixelId });
+            console.log(`    ✓ Replaced: ${currentValue} → ${targetPixelId}`);
+          } else {
+            console.warn(`    ⚠️  No target pixel provided - keeping source pixel ${currentValue}`);
+          }
+        } else if (currentValue !== targetPixelId && targetPixelId) {
+          // Pixel exists but doesn't match source - might be a different pixel
+          console.warn(`    ⚠️  Found unexpected pixel: ${currentValue} (expected ${sourcePixelId})`);
+        }
+      }
+    });
+
+    if (replacements.length === 0) {
+      console.log(`  ℹ️  No pixel found in creative spec (might be valid if no tracking needed)`);
+    } else {
+      console.log(`  ✅ Made ${replacements.length} pixel replacement(s)`);
+    }
+
+    // CRITICAL: Verify no source pixel remains (only if we had a source pixel and it's different from target)
+    if (sourcePixelId && targetPixelId && sourcePixelId !== targetPixelId) {
+      const specString = JSON.stringify(newSpec);
+      if (specString.includes(sourcePixelId)) {
+        console.error(`  ❌ SOURCE PIXEL STILL IN SPEC!`);
+        console.error(`  Spec:`, JSON.stringify(newSpec, null, 2));
+        throw new Error(`Failed to replace all instances of source pixel ${sourcePixelId}`);
+      }
+      console.log(`  ✅ VERIFIED: No source pixel remains in spec`);
+    }
+
+    return newSpec;
   }
 
   /**
@@ -311,8 +414,11 @@ class CrossAccountDeploymentService {
   /**
    * Create campaign from structure in target account
    */
-  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null) {
+  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null, sourcePixelId = null, targetPixelId = null) {
     console.log(`  🏗️  Creating campaign structure...`);
+    console.log(`  🎨 Pixel Configuration:`);
+    console.log(`    Source Pixel: ${sourcePixelId || 'none'}`);
+    console.log(`    Target Pixel: ${targetPixelId || 'none'}`);
 
     // CRITICAL: Make campaign name unique to avoid conflicts when deploying to same account with different pages
     // Use page ID in name to ensure uniqueness
@@ -402,14 +508,20 @@ class CrossAccountDeploymentService {
       if (adSet.promoted_object) {
         const promotedObject = { ...adSet.promoted_object };
 
-        // Replace with target's pixel and page
-        if (target.pixelId) {
-          promotedObject.pixel_id = target.pixelId;
-          console.log(`      🎯 Using target pixel: ${target.pixelId}`);
+        // Replace with target's pixel (use targetPixelId parameter, not target.pixelId which might be null)
+        if (targetPixelId) {
+          promotedObject.pixel_id = targetPixelId;
+          console.log(`      🎯 Replacing promoted_object pixel: ${adSet.promoted_object.pixel_id || 'none'} → ${targetPixelId}`);
+        } else if (adSet.promoted_object.pixel_id) {
+          // Source had pixel but target doesn't - remove it
+          delete promotedObject.pixel_id;
+          console.log(`      ⚠️  Removing pixel from promoted_object (source had ${adSet.promoted_object.pixel_id}, target has none)`);
         }
+
+        // Replace page_id
         if (target.pageId) {
           promotedObject.page_id = target.pageId;
-          console.log(`      📄 Using target page: ${target.pageId}`);
+          console.log(`      📄 Replacing promoted_object page: ${adSet.promoted_object.page_id || 'none'} → ${target.pageId}`);
         }
 
         adSetData.promoted_object = JSON.stringify(promotedObject);
@@ -477,11 +589,19 @@ class CrossAccountDeploymentService {
 
         // CRITICAL: Replace page_id with target page
         if (creativeSpec.page_id) {
-          console.log(`      🔄 Replacing page_id: ${creativeSpec.page_id} -> ${target.pageId}`);
+          console.log(`      🔄 Replacing page_id: ${creativeSpec.page_id} → ${target.pageId}`);
           creativeSpec.page_id = target.pageId;
         }
 
-        console.log(`      📋 Creative spec after page replacement:`, JSON.stringify(creativeSpec).substring(0, 200));
+        // CRITICAL: Replace pixel_id if needed (cross-account deployment)
+        if (sourcePixelId && targetPixelId && sourcePixelId !== targetPixelId) {
+          console.log(`      🎨 Cross-account: Replacing pixel in creative spec...`);
+          creativeSpec = this.replacePixelInCreativeSpec(creativeSpec, sourcePixelId, targetPixelId);
+        } else if (sourcePixelId && !targetPixelId) {
+          console.warn(`      ⚠️  Source has pixel but target doesn't - attempting deployment anyway`);
+        }
+
+        console.log(`      📋 Creative spec after replacements:`, JSON.stringify(creativeSpec).substring(0, 200));
       } else if (ad.creative && ad.creative.id) {
         // We only have creative ID - this WON'T work across accounts!
         console.error(`      ❌ CRITICAL: Only have creative ID (${ad.creative.id}), cannot copy across accounts`);
@@ -510,11 +630,20 @@ class CrossAccountDeploymentService {
 
     console.log(`  ✅ All ads created`);
 
+    // Final pixel verification summary
+    console.log(`\n📊 PIXEL DEPLOYMENT SUMMARY:`);
+    console.log(`  Source Pixel: ${sourcePixelId || 'none'}`);
+    console.log(`  Target Pixel Used: ${targetPixelId || 'none'}`);
+    console.log(`  Campaign: ${newCampaignId}`);
+    console.log(`  Ad Sets: ${structure.adSets.length}`);
+    console.log(`  Ads: ${structure.ads.length}`);
+
     return {
       campaignId: newCampaignId,
       campaignName: newCampaignName,
       adSetsCount: structure.adSets.length,
-      adsCount: structure.ads.length
+      adsCount: structure.ads.length,
+      pixelUsed: targetPixelId
     };
   }
 

@@ -37,16 +37,18 @@ router.get('/targets', authenticate, requireFacebookAuth, async (req, res) => {
     const combinations = [];
     for (const account of adAccounts) {
       for (const page of pages) {
-        // Find compatible pixel (optional)
-        const compatiblePixel = pixels.find(p => true); // All pixels are compatible
+        // IMPORTANT: Do NOT assign pixel here!
+        // Pixel will be selected by user based on target account during deployment
+        // For same-account deployments, source pixel will be used
+        // For cross-account deployments, user must select appropriate pixel
 
         combinations.push({
           adAccountId: account.id,
           adAccountName: account.name || account.id,
           pageId: page.id,
           pageName: page.name || page.id,
-          pixelId: compatiblePixel?.id || null,
-          pixelName: compatiblePixel?.name || null,
+          pixelId: null, // User will select pixel if needed for cross-account deployment
+          pixelName: null,
           isCurrent: account.id === currentAdAccount?.id && page.id === currentPage?.id,
           status: 'ready' // Can add budget checks, permission checks here
         });
@@ -257,6 +259,61 @@ router.get('/deployment/:deploymentId/status', authenticate, async (req, res) =>
 
   } catch (error) {
     console.error('❌ Error fetching deployment status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Get pixels accessible by a specific ad account
+ * GET /api/campaigns/deployment/pixels?adAccountId=act_xxx
+ */
+router.get('/pixels', authenticate, requireFacebookAuth, async (req, res) => {
+  try {
+    const { adAccountId } = req.query;
+
+    console.log(`\n🎨 Fetching pixels for ad account: ${adAccountId}`);
+
+    if (!adAccountId) {
+      return res.status(400).json({
+        success: false,
+        error: 'adAccountId query parameter is required'
+      });
+    }
+
+    const facebookAuth = await db.FacebookAuth.findOne({
+      where: { userId: req.user.id, isActive: true }
+    });
+
+    if (!facebookAuth) {
+      return res.status(404).json({
+        success: false,
+        error: 'No active Facebook authentication found'
+      });
+    }
+
+    // Get all pixels from user's Facebook auth
+    const allPixels = facebookAuth.pixels || [];
+
+    // In a real implementation, we would query Facebook API to get pixels specifically accessible by this account
+    // For now, we return all user's pixels (Facebook allows sharing pixels across accounts in Business Manager)
+    const accountPixels = allPixels.map(pixel => ({
+      id: pixel.id,
+      name: pixel.name || `Pixel ${pixel.id}`
+    }));
+
+    console.log(`✅ Found ${accountPixels.length} pixels accessible by account ${adAccountId}`);
+
+    res.json({
+      success: true,
+      adAccountId,
+      pixels: accountPixels
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching account pixels:', error);
     res.status(500).json({
       success: false,
       error: error.message
