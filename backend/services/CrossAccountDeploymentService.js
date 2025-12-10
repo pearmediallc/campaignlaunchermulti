@@ -465,12 +465,17 @@ class CrossAccountDeploymentService {
       console.log(`      🔍 Looking for thumbnail mapping: ${oldHash}`);
 
       if (uploadedMedia.videoThumbnails[oldHash]) {
+        // SUCCESS: We have the uploaded thumbnail - use it
         const newHash = uploadedMedia.videoThumbnails[oldHash];
         console.log(`      ✅ FOUND! Replacing video thumbnail hash: ${oldHash} → ${newHash}`);
         spec.video_data.image_hash = newHash;
       } else {
-        console.error(`      ❌ CRITICAL: Video thumbnail hash ${oldHash} NOT FOUND in uploaded media!`);
-        console.error(`      Available keys in videoThumbnails:`, Object.keys(uploadedMedia.videoThumbnails || {}));
+        // FALLBACK: Thumbnail upload failed or not available
+        // SOLUTION: Remove image_hash entirely - Facebook will auto-generate thumbnail from video
+        console.warn(`      ⚠️  Video thumbnail hash ${oldHash} NOT FOUND in uploaded media`);
+        console.warn(`      Available keys:`, Object.keys(uploadedMedia.videoThumbnails || {}));
+        console.warn(`      🎬 FALLBACK: Removing image_hash - Facebook will auto-generate thumbnail from video`);
+        delete spec.video_data.image_hash;
       }
     }
 
