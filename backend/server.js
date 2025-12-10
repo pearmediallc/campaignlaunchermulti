@@ -33,7 +33,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://connect.facebook.net"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
-      connectSrc: ["'self'", "https://graph.facebook.com", "https://www.facebook.com", "https://creative-library.onrender.com", "https://*.cloudfront.net", "https://facebookswipefile-2gxnqoptoa-uc.a.run.app"],
+      connectSrc: ["'self'", "https://graph.facebook.com", "https://www.facebook.com", "https://creative-library.onrender.com", "https://*.cloudfront.net", "https://facebookswipefile-2gxnqoptoa-uc.a.run.app", "https://facebookswipefile-443507027642.us-central1.run.app"],
       fontSrc: ["'self'", "data:"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'", "blob:"],
