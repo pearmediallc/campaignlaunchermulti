@@ -1112,6 +1112,8 @@ class CrossAccountDeploymentService {
 
     const adSetMapping = new Map(); // Map old ID to new ID
     const createdAdSetIds = []; // Store created ad set IDs for ad creation
+    const failedAdSets = []; // Track failed ad sets for error reporting
+    let successfulAdSets = 0;
 
     for (let i = 0; i < numberOfAdSets; i++) {
       // Use template ad set for strategy mode, otherwise use actual ad set from structure
@@ -1128,10 +1130,26 @@ class CrossAccountDeploymentService {
 
       console.log(`    Creating ad set ${adSetNumber}/${numberOfAdSets}: ${adSet.name} ${adSetNumber}`);
 
+      // SAFETY: Ensure optimization goal is compatible with campaign objective
+      let optimizationGoal = adSet.optimization_goal;
+
+      // Known problematic combinations that Facebook API rejects
+      if (structure.campaign.objective === 'OUTCOME_SALES' && optimizationGoal === 'OFFSITE_CONVERSIONS') {
+        console.log(`      ⚠️  Incompatible: OUTCOME_SALES + OFFSITE_CONVERSIONS`);
+        console.log(`      🔄 Converting optimization goal: OFFSITE_CONVERSIONS → OUTCOME_SALES`);
+        optimizationGoal = 'OUTCOME_SALES';
+      } else if (structure.campaign.objective === 'OUTCOME_LEADS' && optimizationGoal === 'OFFSITE_CONVERSIONS') {
+        console.log(`      🔄 Converting optimization goal: OFFSITE_CONVERSIONS → OUTCOME_LEADS`);
+        optimizationGoal = 'OUTCOME_LEADS';
+      } else if (structure.campaign.objective === 'OUTCOME_TRAFFIC' && optimizationGoal === 'LINK_CLICKS') {
+        console.log(`      🔄 Converting optimization goal: LINK_CLICKS → OUTCOME_TRAFFIC`);
+        optimizationGoal = 'OUTCOME_TRAFFIC';
+      }
+
       const adSetData = {
         name: strategyInfo ? `${adSet.name} ${adSetNumber}` : adSet.name, // Add number for strategy mode
         campaign_id: newCampaignId,
-        optimization_goal: adSet.optimization_goal,
+        optimization_goal: optimizationGoal, // Use safe optimization goal
         billing_event: adSet.billing_event,
         targeting: typeof adSet.targeting === 'string' ? adSet.targeting : JSON.stringify(adSet.targeting), // CRITICAL: Must be JSON string
         status: 'PAUSED',
@@ -1156,6 +1174,13 @@ class CrossAccountDeploymentService {
         if (target.pageId) {
           promotedObject.page_id = target.pageId;
           console.log(`      📄 Replacing promoted_object page: ${adSet.promoted_object.page_id || 'none'} → ${target.pageId}`);
+        }
+
+        // CRITICAL FIX: Final enforcement - ensure target pixel is used if provided
+        // This catches any edge cases where pixel wasn't replaced correctly
+        if (targetPixelId && promotedObject.pixel_id !== targetPixelId) {
+          console.log(`      🔒 ENFORCING target pixel: ${promotedObject.pixel_id} → ${targetPixelId}`);
+          promotedObject.pixel_id = targetPixelId;
         }
 
         adSetData.promoted_object = JSON.stringify(promotedObject);
@@ -1203,22 +1228,54 @@ class CrossAccountDeploymentService {
         lifetime_budget: adSetData.lifetime_budget
       });
 
-      const adSetResponse = await facebookApi.makeApiCallWithRotation(
-        'POST',
-        `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/adsets`,
-        { params: adSetData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
-      );
+      // ERROR RESILIENCE: Wrap in try-catch to continue on failure
+      try {
+        const adSetResponse = await facebookApi.makeApiCallWithRotation(
+          'POST',
+          `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/adsets`,
+          { params: adSetData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
+        );
 
-      const newAdSetId = adSetResponse.data.id;
-      adSetMapping.set(adSet.id, newAdSetId);
-      createdAdSetIds.push(newAdSetId); // Store for ad creation
+        const newAdSetId = adSetResponse.data.id;
+        adSetMapping.set(adSet.id, newAdSetId);
+        createdAdSetIds.push(newAdSetId); // Store for ad creation
+        successfulAdSets++;
+        console.log(`      ✅ Ad set ${adSetNumber} created successfully: ${newAdSetId}`);
+      } catch (adSetError) {
+        console.error(`      ❌ Failed to create ad set ${adSetNumber}:`, adSetError.message);
+        failedAdSets.push({
+          number: adSetNumber,
+          name: adSetData.name,
+          error: adSetError.message,
+          errorCode: adSetError.response?.data?.error?.code,
+          errorSubcode: adSetError.response?.data?.error?.error_subcode
+        });
+        // Push null to maintain index alignment for ad creation
+        createdAdSetIds.push(null);
+        // Continue to next ad set - don't stop the entire deployment
+      }
+
+      // RATE LIMITING: Add delay every 10 ad sets to prevent Facebook throttling
+      if ((i + 1) % 10 === 0 && i + 1 < numberOfAdSets) {
+        console.log(`      ⏸️  Pausing 2 seconds (created ${i + 1}/${numberOfAdSets} ad sets)...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
-    console.log(`  ✅ All ad sets created`);
+    // Ad set creation summary
+    console.log(`  📊 Ad set creation complete: ${successfulAdSets}/${numberOfAdSets} successful`);
+    if (failedAdSets.length > 0) {
+      console.warn(`  ⚠️  ${failedAdSets.length} ad sets failed to create`);
+      failedAdSets.forEach(failed => {
+        console.warn(`    - Ad Set ${failed.number}: ${failed.error}`);
+      });
+    }
 
     // Create ads (replicate template ad for each ad set in strategy mode)
     const numberOfAds = strategyInfo ? numberOfAdSets : structure.ads.length;
     const templateAd = structure.ads[0]; // Use first ad as template
+    const failedAds = []; // Track failed ads
+    let successfulAds = 0;
 
     console.log(`  🎨 Creating ${numberOfAds} ads...`);
     if (strategyInfo) {
@@ -1295,32 +1352,72 @@ class CrossAccountDeploymentService {
       };
 
       console.log(`      📤 Creating ad with creative spec...`);
-      await facebookApi.makeApiCallWithRotation(
-        'POST',
-        `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/ads`,
-        { params: adData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
-      );
+
+      // ERROR RESILIENCE: Wrap in try-catch to continue on failure
+      try {
+        await facebookApi.makeApiCallWithRotation(
+          'POST',
+          `${facebookApi.baseURL}/act_${facebookApi.adAccountId}/ads`,
+          { params: adData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
+        );
+        successfulAds++;
+        console.log(`      ✅ Ad ${adNumber} created successfully`);
+      } catch (adError) {
+        console.error(`      ❌ Failed to create ad ${adNumber}:`, adError.message);
+        failedAds.push({
+          number: adNumber,
+          name: adData.name,
+          adSetId: newAdSetId,
+          error: adError.message,
+          errorCode: adError.response?.data?.error?.code,
+          errorSubcode: adError.response?.data?.error?.error_subcode
+        });
+        // Continue to next ad - don't stop the entire deployment
+      }
+
+      // RATE LIMITING: Add delay every 10 ads to prevent Facebook throttling
+      if ((i + 1) % 10 === 0 && i + 1 < numberOfAds) {
+        console.log(`      ⏸️  Pausing 2 seconds (created ${i + 1}/${numberOfAds} ads)...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
-    console.log(`  ✅ All ads created`);
+    // Ad creation summary
+    console.log(`  📊 Ad creation complete: ${successfulAds}/${numberOfAds} successful`);
+    if (failedAds.length > 0) {
+      console.warn(`  ⚠️  ${failedAds.length} ads failed to create`);
+      failedAds.forEach(failed => {
+        console.warn(`    - Ad ${failed.number}: ${failed.error}`);
+      });
+    }
 
     // Final pixel verification summary
-    console.log(`\n📊 PIXEL DEPLOYMENT SUMMARY:`);
+    console.log(`\n📊 DEPLOYMENT SUMMARY:`);
     console.log(`  Source Pixel: ${sourcePixelId || 'none'}`);
     console.log(`  Target Pixel Used: ${targetPixelId || 'none'}`);
     console.log(`  Campaign: ${newCampaignId}`);
-    console.log(`  Ad Sets: ${numberOfAdSets}`);
-    console.log(`  Ads: ${numberOfAds}`);
+    console.log(`  Ad Sets: ${successfulAdSets}/${numberOfAdSets} created`);
+    console.log(`  Ads: ${successfulAds}/${numberOfAds} created`);
     if (strategyInfo) {
-      console.log(`  Strategy: 1-${numberOfAdSets}-${numberOfAds} (${numberOfAds} ads across ${numberOfAdSets} ad sets)`);
+      console.log(`  Strategy: 1-${numberOfAdSets}-${numberOfAds} requested`);
+    }
+    if (failedAdSets.length > 0 || failedAds.length > 0) {
+      console.warn(`  ⚠️  Deployment had failures - see details above`);
     }
 
     return {
       campaignId: newCampaignId,
       campaignName: newCampaignName,
-      adSetsCount: numberOfAdSets,
-      adsCount: numberOfAds,
-      pixelUsed: targetPixelId
+      adSetsCount: successfulAdSets,
+      adSetsRequested: numberOfAdSets,
+      adsCount: successfulAds,
+      adsRequested: numberOfAds,
+      pixelUsed: targetPixelId,
+      failures: {
+        adSets: failedAdSets,
+        ads: failedAds
+      },
+      status: (failedAdSets.length === 0 && failedAds.length === 0) ? 'success' : 'partial'
     };
   }
 
