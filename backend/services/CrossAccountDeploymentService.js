@@ -745,10 +745,14 @@ class CrossAccountDeploymentService {
       const actualAccountId = verifyResponse.data.account_id;
       const expectedAccountId = target.adAccountId.startsWith('act_') ? target.adAccountId : `act_${target.adAccountId}`;
 
+      // Normalize both IDs (remove act_ prefix for comparison)
+      const normalizedActual = actualAccountId.replace('act_', '');
+      const normalizedExpected = expectedAccountId.replace('act_', '');
+
       console.log(`  Campaign account_id: ${actualAccountId}`);
       console.log(`  Expected account_id: ${expectedAccountId}`);
 
-      if (actualAccountId !== expectedAccountId) {
+      if (normalizedActual !== normalizedExpected) {
         throw new Error(`CRITICAL ERROR: Campaign was created in wrong account! Expected ${expectedAccountId}, got ${actualAccountId}`);
       }
 
@@ -868,22 +872,36 @@ class CrossAccountDeploymentService {
       lifetime_budget: campaign.lifetime_budget
     });
 
-    // Get ad sets
+    // Get ad sets (with pagination support for campaigns with many ad sets)
     console.log(`  📊 Fetching ad sets...`);
-    const adSetsResponse = await facebookApi.makeApiCallWithRotation(
-      'GET',
-      `${facebookApi.baseURL}/${campaignId}/adsets`,
-      {
-        params: {
-          fields: 'name,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,status,attribution_spec,promoted_object',
-          limit: 200,
-          access_token: facebookApi.accessToken
-        }
-      }
-    );
+    const adSets = [];
+    let adSetsUrl = `${facebookApi.baseURL}/${campaignId}/adsets`;
 
-    const adSets = adSetsResponse.data.data || [];
-    console.log(`  ✅ Ad sets fetched: ${adSets.length}`);
+    do {
+      const adSetsResponse = await facebookApi.makeApiCallWithRotation(
+        'GET',
+        adSetsUrl,
+        {
+          params: {
+            fields: 'name,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,status,attribution_spec,promoted_object',
+            limit: 100,
+            access_token: facebookApi.accessToken
+          }
+        }
+      );
+
+      const fetchedAdSets = adSetsResponse.data.data || [];
+      adSets.push(...fetchedAdSets);
+
+      // Check for next page
+      adSetsUrl = adSetsResponse.data.paging?.next || null;
+
+      if (adSetsUrl) {
+        console.log(`  📄 Fetched ${fetchedAdSets.length} ad sets, continuing pagination...`);
+      }
+    } while (adSetsUrl);
+
+    console.log(`  ✅ Total ad sets fetched: ${adSets.length}`);
 
     // Log first ad set details for debugging
     if (adSets.length > 0) {
@@ -898,24 +916,39 @@ class CrossAccountDeploymentService {
       });
     }
 
-    // Get ads for each ad set
-    console.log(`  📊 Fetching ads...`);
+    // Get ads for each ad set (with pagination support)
+    console.log(`  📊 Fetching ads from ${adSets.length} ad sets...`);
     const ads = [];
 
-    for (const adSet of adSets) {
-      const adsResponse = await facebookApi.makeApiCallWithRotation(
-        'GET',
-        `${facebookApi.baseURL}/${adSet.id}/ads`,
-        {
-          params: {
-            fields: 'name,adset_id,creative{id,object_story_spec,asset_feed_spec,image_hash,video_id},status',  // FIXED: Expand creative to get full spec
-            limit: 100,
-            access_token: facebookApi.accessToken
-          }
-        }
-      );
+    for (let i = 0; i < adSets.length; i++) {
+      const adSet = adSets[i];
+      console.log(`  📄 Fetching ads from ad set ${i + 1}/${adSets.length}: ${adSet.name}`);
 
-      ads.push(...(adsResponse.data.data || []));
+      let adsUrl = `${facebookApi.baseURL}/${adSet.id}/ads`;
+
+      do {
+        const adsResponse = await facebookApi.makeApiCallWithRotation(
+          'GET',
+          adsUrl,
+          {
+            params: {
+              fields: 'name,adset_id,creative{id,object_story_spec,asset_feed_spec,image_hash,video_id},status',  // FIXED: Expand creative to get full spec
+              limit: 100,
+              access_token: facebookApi.accessToken
+            }
+          }
+        );
+
+        const fetchedAds = adsResponse.data.data || [];
+        ads.push(...fetchedAds);
+
+        // Check for next page
+        adsUrl = adsResponse.data.paging?.next || null;
+
+        if (adsUrl) {
+          console.log(`    📄 Fetched ${fetchedAds.length} ads, continuing pagination...`);
+        }
+      } while (adsUrl);
     }
 
     console.log(`  ✅ Ads fetched: ${ads.length}`);
