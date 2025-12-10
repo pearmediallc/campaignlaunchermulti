@@ -1130,21 +1130,11 @@ class CrossAccountDeploymentService {
 
       console.log(`    Creating ad set ${adSetNumber}/${numberOfAdSets}: ${adSet.name} ${adSetNumber}`);
 
-      // SAFETY: Ensure optimization goal is compatible with campaign objective
-      let optimizationGoal = adSet.optimization_goal;
-
-      // Known problematic combinations that Facebook API rejects
-      if (structure.campaign.objective === 'OUTCOME_SALES' && optimizationGoal === 'OFFSITE_CONVERSIONS') {
-        console.log(`      ⚠️  Incompatible: OUTCOME_SALES + OFFSITE_CONVERSIONS`);
-        console.log(`      🔄 Converting optimization goal: OFFSITE_CONVERSIONS → OUTCOME_SALES`);
-        optimizationGoal = 'OUTCOME_SALES';
-      } else if (structure.campaign.objective === 'OUTCOME_LEADS' && optimizationGoal === 'OFFSITE_CONVERSIONS') {
-        console.log(`      🔄 Converting optimization goal: OFFSITE_CONVERSIONS → OUTCOME_LEADS`);
-        optimizationGoal = 'OUTCOME_LEADS';
-      } else if (structure.campaign.objective === 'OUTCOME_TRAFFIC' && optimizationGoal === 'LINK_CLICKS') {
-        console.log(`      🔄 Converting optimization goal: LINK_CLICKS → OUTCOME_TRAFFIC`);
-        optimizationGoal = 'OUTCOME_TRAFFIC';
-      }
+      // Use optimization goal from source ad set (no conversion needed)
+      // Facebook API accepts OFFSITE_CONVERSIONS, VALUE, LINK_CLICKS, etc. as valid optimization goals
+      // Campaign objective (OUTCOME_SALES, OUTCOME_LEADS, etc.) is separate from optimization goal
+      const optimizationGoal = adSet.optimization_goal;
+      console.log(`      🎯 Optimization goal: ${optimizationGoal} (for campaign objective: ${structure.campaign.objective})`);
 
       const adSetData = {
         name: strategyInfo ? `${adSet.name} ${adSetNumber}` : adSet.name, // Add number for strategy mode
