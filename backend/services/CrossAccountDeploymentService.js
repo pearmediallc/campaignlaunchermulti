@@ -1101,16 +1101,35 @@ class CrossAccountDeploymentService {
     const newCampaignId = campaignResponse.data.id;
     console.log(`  ✅ Campaign created: ${newCampaignId}`);
 
-    // Create ad sets
-    console.log(`  📦 Creating ${structure.adSets.length} ad sets...`);
-    const adSetMapping = new Map(); // Map old ID to new ID
+    // Create ad sets (use strategy info if provided for 1-50-1 replication)
+    const numberOfAdSets = strategyInfo ? strategyInfo.numberOfAdSets : structure.adSets.length;
+    const templateAdSet = structure.adSets[0]; // Use first ad set as template
 
-    for (let i = 0; i < structure.adSets.length; i++) {
-      const adSet = structure.adSets[i];
-      console.log(`    Creating ad set ${i + 1}/${structure.adSets.length}: ${adSet.name}`);
+    console.log(`  📦 Creating ${numberOfAdSets} ad sets...`);
+    if (strategyInfo) {
+      console.log(`  🎯 Strategy Mode: Replicating template ad set ${numberOfAdSets} times`);
+    }
+
+    const adSetMapping = new Map(); // Map old ID to new ID
+    const createdAdSetIds = []; // Store created ad set IDs for ad creation
+
+    for (let i = 0; i < numberOfAdSets; i++) {
+      // Use template ad set for strategy mode, otherwise use actual ad set from structure
+      const adSet = strategyInfo ? templateAdSet : structure.adSets[i];
+      const adSetNumber = i + 1;
+
+      // Apply custom budget if provided in strategy info
+      let customBudget = null;
+      if (strategyInfo?.customBudgets && strategyInfo.customBudgets[i]) {
+        customBudget = strategyInfo.customBudgets[i];
+      } else if (strategyInfo?.adSetBudget) {
+        customBudget = strategyInfo.adSetBudget;
+      }
+
+      console.log(`    Creating ad set ${adSetNumber}/${numberOfAdSets}: ${adSet.name} ${adSetNumber}`);
 
       const adSetData = {
-        name: adSet.name,
+        name: strategyInfo ? `${adSet.name} ${adSetNumber}` : adSet.name, // Add number for strategy mode
         campaign_id: newCampaignId,
         optimization_goal: adSet.optimization_goal,
         billing_event: adSet.billing_event,
@@ -1153,8 +1172,21 @@ class CrossAccountDeploymentService {
       }
 
       if (adSet.bid_amount) adSetData.bid_amount = adSet.bid_amount;
-      if (adSet.daily_budget) adSetData.daily_budget = adSet.daily_budget;
-      if (adSet.lifetime_budget) adSetData.lifetime_budget = adSet.lifetime_budget;
+
+      // Apply custom budget if provided, otherwise use template budget
+      if (customBudget) {
+        if (customBudget.daily) {
+          adSetData.daily_budget = parseInt(customBudget.daily) * 100; // Convert to cents
+          console.log(`      💰 Applying custom daily budget: $${customBudget.daily}`);
+        } else if (customBudget.lifetime) {
+          adSetData.lifetime_budget = parseInt(customBudget.lifetime) * 100; // Convert to cents
+          console.log(`      💰 Applying custom lifetime budget: $${customBudget.lifetime}`);
+        }
+      } else {
+        if (adSet.daily_budget) adSetData.daily_budget = adSet.daily_budget;
+        if (adSet.lifetime_budget) adSetData.lifetime_budget = adSet.lifetime_budget;
+      }
+
       if (adSet.start_time) adSetData.start_time = adSet.start_time;
       if (adSet.end_time) adSetData.end_time = adSet.end_time;
 
@@ -1166,7 +1198,9 @@ class CrossAccountDeploymentService {
         bid_strategy: adSetData.bid_strategy,
         promoted_object: adSetData.promoted_object,
         attribution_spec: adSetData.attribution_spec ? 'Present' : 'Missing',
-        targeting: adSetData.targeting ? 'Present' : 'Missing'
+        targeting: adSetData.targeting ? 'Present' : 'Missing',
+        daily_budget: adSetData.daily_budget,
+        lifetime_budget: adSetData.lifetime_budget
       });
 
       const adSetResponse = await facebookApi.makeApiCallWithRotation(
@@ -1175,24 +1209,35 @@ class CrossAccountDeploymentService {
         { params: adSetData }  // Facebook Graph API accepts POST params as query string (same as facebookApi.js)
       );
 
-      adSetMapping.set(adSet.id, adSetResponse.data.id);
+      const newAdSetId = adSetResponse.data.id;
+      adSetMapping.set(adSet.id, newAdSetId);
+      createdAdSetIds.push(newAdSetId); // Store for ad creation
     }
 
     console.log(`  ✅ All ad sets created`);
 
-    // Create ads
-    console.log(`  🎨 Creating ${structure.ads.length} ads...`);
+    // Create ads (replicate template ad for each ad set in strategy mode)
+    const numberOfAds = strategyInfo ? numberOfAdSets : structure.ads.length;
+    const templateAd = structure.ads[0]; // Use first ad as template
 
-    for (let i = 0; i < structure.ads.length; i++) {
-      const ad = structure.ads[i];
-      const newAdSetId = adSetMapping.get(ad.adset_id);
+    console.log(`  🎨 Creating ${numberOfAds} ads...`);
+    if (strategyInfo) {
+      console.log(`  ℹ️  Strategy mode: Will replicate template ad "${templateAd.name}" ${numberOfAdSets} times (1 per ad set)`);
+    }
+
+    for (let i = 0; i < numberOfAds; i++) {
+      const ad = strategyInfo ? templateAd : structure.ads[i];
+      const adNumber = i + 1;
+
+      // In strategy mode, use createdAdSetIds; otherwise use the mapping
+      const newAdSetId = strategyInfo ? createdAdSetIds[i] : adSetMapping.get(ad.adset_id);
 
       if (!newAdSetId) {
         console.warn(`    ⚠️  Skipping ad ${ad.name} - parent ad set not found`);
         continue;
       }
 
-      console.log(`    Creating ad ${i + 1}/${structure.ads.length}: ${ad.name}`);
+      console.log(`    Creating ad ${adNumber}/${numberOfAds}: ${ad.name}${strategyInfo ? ` ${adNumber}` : ''}`);
 
       // CRITICAL: Cannot copy creative ID across accounts - must create new creative or use object_story_spec directly
       // Check if we have the full creative spec
@@ -1240,7 +1285,7 @@ class CrossAccountDeploymentService {
       // CRITICAL FIX: Creative parameter must be stringified object with object_story_spec property
       // NOT the spec itself stringified (same pattern as batchDuplication.js:245-247)
       const adData = {
-        name: ad.name,
+        name: strategyInfo ? `${ad.name} ${adNumber}` : ad.name, // Add number in strategy mode
         adset_id: newAdSetId,
         creative: JSON.stringify({
           object_story_spec: creativeSpec  // Wrap spec in object
@@ -1264,14 +1309,17 @@ class CrossAccountDeploymentService {
     console.log(`  Source Pixel: ${sourcePixelId || 'none'}`);
     console.log(`  Target Pixel Used: ${targetPixelId || 'none'}`);
     console.log(`  Campaign: ${newCampaignId}`);
-    console.log(`  Ad Sets: ${structure.adSets.length}`);
-    console.log(`  Ads: ${structure.ads.length}`);
+    console.log(`  Ad Sets: ${numberOfAdSets}`);
+    console.log(`  Ads: ${numberOfAds}`);
+    if (strategyInfo) {
+      console.log(`  Strategy: 1-${numberOfAdSets}-${numberOfAds} (${numberOfAds} ads across ${numberOfAdSets} ad sets)`);
+    }
 
     return {
       campaignId: newCampaignId,
       campaignName: newCampaignName,
-      adSetsCount: structure.adSets.length,
-      adsCount: structure.ads.length,
+      adSetsCount: numberOfAdSets,
+      adsCount: numberOfAds,
       pixelUsed: targetPixelId
     };
   }
