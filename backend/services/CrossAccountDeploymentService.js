@@ -433,6 +433,13 @@ class CrossAccountDeploymentService {
   replaceMediaInCreativeSpec(creativeSpec, uploadedMedia) {
     const spec = JSON.parse(JSON.stringify(creativeSpec)); // Deep clone
 
+    // CRITICAL DEBUG: Log what we're working with
+    console.log(`      🔍 MEDIA REPLACEMENT DEBUG:`);
+    console.log(`         Creative has video_data.image_hash: ${spec.video_data?.image_hash || 'NO'}`);
+    console.log(`         Uploaded videoThumbnails mapping:`, Object.keys(uploadedMedia.videoThumbnails || {}).length > 0 ? uploadedMedia.videoThumbnails : 'EMPTY');
+    console.log(`         Uploaded images mapping:`, Object.keys(uploadedMedia.images || {}).length > 0 ? uploadedMedia.images : 'EMPTY');
+    console.log(`         Uploaded videos mapping:`, Object.keys(uploadedMedia.videos || {}).length > 0 ? uploadedMedia.videos : 'EMPTY');
+
     // Replace video ID
     if (spec.video_data?.video_id && uploadedMedia.videos[spec.video_data.video_id]) {
       const oldId = spec.video_data.video_id;
@@ -453,11 +460,18 @@ class CrossAccountDeploymentService {
     // CRITICAL: Replace video thumbnail hash (video_data.image_hash)
     // This is DIFFERENT from main image hash (link_data.image_hash)
     // Video thumbnails are account-specific and must be uploaded to each target account
-    if (spec.video_data?.image_hash && uploadedMedia.videoThumbnails[spec.video_data.image_hash]) {
+    if (spec.video_data?.image_hash) {
       const oldHash = spec.video_data.image_hash;
-      const newHash = uploadedMedia.videoThumbnails[oldHash];
-      console.log(`      🔄 Replacing video thumbnail hash: ${oldHash} → ${newHash}`);
-      spec.video_data.image_hash = newHash;
+      console.log(`      🔍 Looking for thumbnail mapping: ${oldHash}`);
+
+      if (uploadedMedia.videoThumbnails[oldHash]) {
+        const newHash = uploadedMedia.videoThumbnails[oldHash];
+        console.log(`      ✅ FOUND! Replacing video thumbnail hash: ${oldHash} → ${newHash}`);
+        spec.video_data.image_hash = newHash;
+      } else {
+        console.error(`      ❌ CRITICAL: Video thumbnail hash ${oldHash} NOT FOUND in uploaded media!`);
+        console.error(`      Available keys in videoThumbnails:`, Object.keys(uploadedMedia.videoThumbnails || {}));
+      }
     }
 
     // Replace main image hash (link_data.image_hash - main creative image, NOT video thumbnail)
