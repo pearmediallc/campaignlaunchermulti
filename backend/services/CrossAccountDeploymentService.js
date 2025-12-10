@@ -75,15 +75,31 @@ class CrossAccountDeploymentService {
   /**
    * Check if media file exists in uploads directory (from original upload)
    */
-  async checkCachedUploadFile(mediaId, mediaType) {
+  async checkCachedUploadFile(mediaId, mediaType, isThumbnail = false) {
     try {
       const uploadsDir = path.join(__dirname, '../uploads');
       const files = await fs.readdir(uploadsDir);
 
       // Look for files that might match this media ID
-      // Uploaded files are named like: media-1765304000321-604289530.mp4
+      // Uploaded files are named like:
+      // - Videos: media-1765304000321-604289530.mp4
+      // - Images: media-1765304000321-604289530.jpg
+      // - Video Thumbnails: videoThumbnail-1765304000321-604289530.jpg
       for (const file of files) {
-        if (file.includes('media-') && (mediaType === 'video' ? file.endsWith('.mp4') : (file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png')))) {
+        let isMatch = false;
+
+        if (isThumbnail) {
+          // Look specifically for video thumbnail files
+          isMatch = file.startsWith('videoThumbnail-') && (file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png'));
+        } else if (mediaType === 'video') {
+          // Look for video files (NOT thumbnails)
+          isMatch = file.includes('media-') && file.endsWith('.mp4');
+        } else if (mediaType === 'image') {
+          // Look for image files (NOT thumbnails)
+          isMatch = file.includes('media-') && (file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png'));
+        }
+
+        if (isMatch) {
           const filePath = path.join(uploadsDir, file);
           const stats = await fs.stat(filePath);
 
@@ -91,14 +107,16 @@ class CrossAccountDeploymentService {
           // This ensures we're using the right file for this deployment
           const fileAge = Date.now() - stats.mtimeMs;
           if (fileAge < 30 * 60 * 1000) { // 30 minutes
-            console.log(`    💾 Found cached upload file: ${file}`);
+            const fileType = isThumbnail ? 'video thumbnail' : mediaType;
+            console.log(`    💾 Found cached upload file (${fileType}): ${file}`);
             console.log(`       File age: ${Math.floor(fileAge / 1000 / 60)} minutes`);
             return filePath;
           }
         }
       }
 
-      console.log(`    ℹ️  No recent cached upload found for ${mediaType} ${mediaId}`);
+      const fileType = isThumbnail ? 'video thumbnail' : mediaType;
+      console.log(`    ℹ️  No recent cached upload found for ${fileType} ${mediaId}`);
       return null;
     } catch (error) {
       console.warn(`    ⚠️  Error checking cached uploads:`, error.message);
@@ -113,6 +131,7 @@ class CrossAccountDeploymentService {
     const mediaCache = {
       images: [],
       videos: [],
+      videoThumbnails: [], // Custom video thumbnails (video_data.image_hash)
       metadata: {}
     };
 
@@ -187,7 +206,78 @@ class CrossAccountDeploymentService {
         }
       }
 
-      // Check for image in object_story_spec
+      // CRITICAL: Check for video thumbnail in video_data (separate from main image!)
+      // Video thumbnails are custom thumbnails uploaded as videoThumbnail-*.jpg
+      if (creative.object_story_spec?.video_data?.image_hash) {
+        const thumbnailHash = creative.object_story_spec.video_data.image_hash;
+        console.log(`  🖼️  Found video thumbnail hash: ${thumbnailHash}`);
+
+        // OPTIMIZATION: Check if we have the original uploaded thumbnail file cached
+        const cachedUploadPath = await this.checkCachedUploadFile(thumbnailHash, 'image', true); // true = isThumbnail
+
+        if (cachedUploadPath && await fs.access(cachedUploadPath).then(() => true).catch(() => false)) {
+          // Use cached upload file directly!
+          console.log(`    ✅ Using cached thumbnail upload file (no download needed!)`);
+          const stats = await fs.stat(cachedUploadPath);
+          const filename = path.basename(cachedUploadPath);
+
+          // Copy to deployment cache so cleanup works correctly
+          const deploymentDir = path.join(this.tempDir, deploymentId);
+          await fs.mkdir(deploymentDir, { recursive: true });
+          const cachedPath = path.join(deploymentDir, filename);
+          await fs.copyFile(cachedUploadPath, cachedPath);
+
+          mediaCache.videoThumbnails.push({
+            originalHash: thumbnailHash,
+            localPath: cachedPath,
+            size: stats.size,
+            filename
+          });
+
+          console.log(`    ✅ Video thumbnail cached successfully from upload: ${thumbnailHash}`);
+        } else {
+          // Fallback: Download from Facebook
+          console.log(`    📥 Cached thumbnail upload not found - downloading from Facebook...`);
+
+          try {
+            const imageData = await sourceApi.makeApiCallWithRotation(
+              'GET',
+              `${sourceApi.baseURL}/act_${sourceApi.adAccountId}/adimages`,
+              { params: { hashes: [thumbnailHash], access_token: sourceApi.accessToken } }
+            );
+
+            // Response structure: { data: { data: { [hash]: { url, permalink_url } } } }
+            if (imageData && imageData.data && imageData.data.data && imageData.data.data[thumbnailHash]) {
+              const imageUrl = imageData.data.data[thumbnailHash].url || imageData.data.data[thumbnailHash].permalink_url;
+              if (imageUrl) {
+                console.log(`    ✓ Thumbnail URL found: ${imageUrl.substring(0, 50)}...`);
+                const cached = await this.downloadAndCacheMedia(
+                  imageUrl,
+                  'image',
+                  thumbnailHash,
+                  deploymentId
+                );
+
+                mediaCache.videoThumbnails.push({
+                  originalHash: thumbnailHash,
+                  ...cached
+                });
+                console.log(`    ✅ Video thumbnail cached successfully: ${thumbnailHash}`);
+              } else {
+                console.error(`    ❌ No thumbnail URL found for hash ${thumbnailHash}`);
+              }
+            } else {
+              console.error(`    ❌ Thumbnail not found in API response for hash ${thumbnailHash}`);
+              console.error(`    Response structure:`, JSON.stringify(imageData, null, 2).substring(0, 500));
+            }
+          } catch (thumbnailError) {
+            console.error(`  ⚠️  Could not download video thumbnail ${thumbnailHash}:`, thumbnailError.message);
+            console.error(`  Stack:`, thumbnailError.stack);
+          }
+        }
+      }
+
+      // Check for image in object_story_spec (main creative image, NOT video thumbnail)
       if (creative.object_story_spec?.link_data?.image_hash) {
         const imageHash = creative.object_story_spec.link_data.image_hash;
         console.log(`  🖼️  Found image hash in creative: ${imageHash}`);
@@ -279,21 +369,36 @@ class CrossAccountDeploymentService {
   async uploadCachedMediaToTarget(cachedMedia, targetApi, targetAccountId) {
     const uploadedMedia = {
       images: {},
-      videos: {}
+      videos: {},
+      videoThumbnails: {} // Map of old hash → new hash for video thumbnails
     };
 
     try {
-      // Upload images
+      // Upload main images (link_data.image_hash)
       for (const image of cachedMedia.images) {
-        console.log(`    📤 Uploading image to target account...`);
+        console.log(`    📤 Uploading main image to target account...`);
         try {
           const newHash = await targetApi.uploadImage(image.localPath);
           if (newHash) {
             uploadedMedia.images[image.originalHash] = newHash;
-            console.log(`      ✅ Image uploaded: ${image.originalHash} → ${newHash}`);
+            console.log(`      ✅ Main image uploaded: ${image.originalHash} → ${newHash}`);
           }
         } catch (uploadError) {
-          console.error(`      ❌ Failed to upload image:`, uploadError.message);
+          console.error(`      ❌ Failed to upload main image:`, uploadError.message);
+        }
+      }
+
+      // Upload video thumbnails (video_data.image_hash) - MUST be uploaded before videos
+      for (const thumbnail of cachedMedia.videoThumbnails) {
+        console.log(`    📤 Uploading video thumbnail to target account...`);
+        try {
+          const newHash = await targetApi.uploadImage(thumbnail.localPath);
+          if (newHash) {
+            uploadedMedia.videoThumbnails[thumbnail.originalHash] = newHash;
+            console.log(`      ✅ Video thumbnail uploaded: ${thumbnail.originalHash} → ${newHash}`);
+          }
+        } catch (uploadError) {
+          console.error(`      ❌ Failed to upload video thumbnail:`, uploadError.message);
         }
       }
 
@@ -345,11 +450,21 @@ class CrossAccountDeploymentService {
       }
     }
 
-    // Replace image hash
+    // CRITICAL: Replace video thumbnail hash (video_data.image_hash)
+    // This is DIFFERENT from main image hash (link_data.image_hash)
+    // Video thumbnails are account-specific and must be uploaded to each target account
+    if (spec.video_data?.image_hash && uploadedMedia.videoThumbnails[spec.video_data.image_hash]) {
+      const oldHash = spec.video_data.image_hash;
+      const newHash = uploadedMedia.videoThumbnails[oldHash];
+      console.log(`      🔄 Replacing video thumbnail hash: ${oldHash} → ${newHash}`);
+      spec.video_data.image_hash = newHash;
+    }
+
+    // Replace main image hash (link_data.image_hash - main creative image, NOT video thumbnail)
     if (spec.link_data?.image_hash && uploadedMedia.images[spec.link_data.image_hash]) {
       const oldHash = spec.link_data.image_hash;
       const newHash = uploadedMedia.images[oldHash];
-      console.log(`      🔄 Replacing image_hash: ${oldHash} → ${newHash}`);
+      console.log(`      🔄 Replacing main image hash: ${oldHash} → ${newHash}`);
       spec.link_data.image_hash = newHash;
     }
 
@@ -848,17 +963,19 @@ class CrossAccountDeploymentService {
 
           console.log(`  ✅ Media extracted:`, {
             images: cachedMedia.images.length,
-            videos: cachedMedia.videos.length
+            videos: cachedMedia.videos.length,
+            videoThumbnails: cachedMedia.videoThumbnails.length
           });
 
           // Upload cached media to target account
-          if (cachedMedia.images.length > 0 || cachedMedia.videos.length > 0) {
+          if (cachedMedia.images.length > 0 || cachedMedia.videos.length > 0 || cachedMedia.videoThumbnails.length > 0) {
             console.log(`\n📤 MEDIA UPLOAD: Uploading cached media to target account...`);
             uploadedMedia = await this.uploadCachedMediaToTarget(cachedMedia, facebookApi, target.adAccountId);
 
             console.log(`  ✅ Media uploaded to target:`, {
               images: Object.keys(uploadedMedia.images).length,
-              videos: Object.keys(uploadedMedia.videos).length
+              videos: Object.keys(uploadedMedia.videos).length,
+              videoThumbnails: Object.keys(uploadedMedia.videoThumbnails).length
             });
           }
         } catch (mediaError) {
