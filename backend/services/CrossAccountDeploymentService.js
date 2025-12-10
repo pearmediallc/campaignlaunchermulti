@@ -623,7 +623,7 @@ class CrossAccountDeploymentService {
    * CRITICAL: Clone campaign to a specific account/page combination
    * This is the core method that must NEVER mix up accounts
    */
-  async cloneCampaignToTarget(sourceCampaignId, sourceAccount, target, userAccessToken) {
+  async cloneCampaignToTarget(sourceCampaignId, sourceAccount, target, userAccessToken, strategyInfo = null) {
     console.log(`\n🎯 CLONING CAMPAIGN TO TARGET:`);
     console.log(`  Source Campaign: ${sourceCampaignId}`);
     console.log(`  Source Account: ${sourceAccount.adAccountId}`);
@@ -633,6 +633,11 @@ class CrossAccountDeploymentService {
     console.log(`  Target Account: ${target.adAccountId}`);
     console.log(`  Target Page: ${target.pageId}`);
     console.log(`  Target Pixel: ${target.pixelId || 'none (will use source pixel if same account)'}`);
+
+    if (strategyInfo) {
+      console.log(`  🎯 Strategy: 1-${strategyInfo.numberOfAdSets}-1`);
+      console.log(`  📊 Will create ${strategyInfo.numberOfAdSets} ad sets with custom budgets`);
+    }
 
     // Determine which pixel to use
     const isSameAccount = sourceAccount.adAccountId === target.adAccountId ||
@@ -664,14 +669,20 @@ class CrossAccountDeploymentService {
       pixelId: sourceAccount.pixelId
     });
 
-    // Get full campaign details
-    const campaignStructure = await this.readCampaignStructure(sourceFacebookApi, sourceCampaignId);
+    // Get full campaign details (only fetch first ad set and ad as template)
+    const campaignStructure = await this.readCampaignStructure(sourceFacebookApi, sourceCampaignId, strategyInfo ? true : false);
     console.log(`✅ Campaign structure read:`, {
       name: campaignStructure.campaign.name,
       adSets: campaignStructure.adSets.length,
       ads: campaignStructure.ads.length,
-      objective: campaignStructure.campaign.objective
+      objective: campaignStructure.campaign.objective,
+      isTemplate: !!strategyInfo
     });
+
+    // If strategy info is provided, we'll replicate the structure
+    if (strategyInfo) {
+      console.log(`  📊 Will replicate structure based on strategy: 1-${strategyInfo.numberOfAdSets}-1`);
+    }
 
     // Step 2: Create FacebookAPI instance for TARGET account
     console.log(`\n🔄 Step 2: Switching to target account...`);
@@ -714,7 +725,8 @@ class CrossAccountDeploymentService {
       sourceAccount.pixelId, // Source pixel ID for replacement
       effectivePixelId, // Target pixel ID to use
       deploymentId, // Deployment ID for media caching
-      sourceFacebookApi // Source API for downloading media
+      sourceFacebookApi, // Source API for downloading media
+      strategyInfo // Pass strategy info for 1-50-1 replication
     );
 
     console.log(`✅ Campaign deployed successfully to target account!`);
@@ -845,9 +857,13 @@ class CrossAccountDeploymentService {
 
   /**
    * Read complete campaign structure from source
+   * @param {boolean} templateOnly - If true, only read first ad set and ad as template
    */
-  async readCampaignStructure(facebookApi, campaignId) {
+  async readCampaignStructure(facebookApi, campaignId, templateOnly = false) {
     console.log(`  📊 Fetching campaign details...`);
+    if (templateOnly) {
+      console.log(`  ℹ️  Template mode: Will only fetch first ad set and ad as template`);
+    }
 
     // Get campaign
     const campaignResponse = await facebookApi.makeApiCallWithRotation(
@@ -884,7 +900,7 @@ class CrossAccountDeploymentService {
         {
           params: {
             fields: 'name,optimization_goal,billing_event,bid_strategy,bid_amount,daily_budget,lifetime_budget,start_time,end_time,targeting,status,attribution_spec,promoted_object',
-            limit: 100,
+            limit: templateOnly ? 1 : 100, // Only fetch 1 if template mode
             access_token: facebookApi.accessToken
           }
         }
@@ -893,8 +909,8 @@ class CrossAccountDeploymentService {
       const fetchedAdSets = adSetsResponse.data.data || [];
       adSets.push(...fetchedAdSets);
 
-      // Check for next page
-      adSetsUrl = adSetsResponse.data.paging?.next || null;
+      // Check for next page (skip if template mode)
+      adSetsUrl = templateOnly ? null : (adSetsResponse.data.paging?.next || null);
 
       if (adSetsUrl) {
         console.log(`  📄 Fetched ${fetchedAdSets.length} ad sets, continuing pagination...`);
@@ -933,7 +949,7 @@ class CrossAccountDeploymentService {
           {
             params: {
               fields: 'name,adset_id,creative{id,object_story_spec,asset_feed_spec,image_hash,video_id},status',  // FIXED: Expand creative to get full spec
-              limit: 100,
+              limit: templateOnly ? 1 : 100, // Only fetch 1 if template mode
               access_token: facebookApi.accessToken
             }
           }
@@ -942,8 +958,8 @@ class CrossAccountDeploymentService {
         const fetchedAds = adsResponse.data.data || [];
         ads.push(...fetchedAds);
 
-        // Check for next page
-        adsUrl = adsResponse.data.paging?.next || null;
+        // Check for next page (skip if template mode)
+        adsUrl = templateOnly ? null : (adsResponse.data.paging?.next || null);
 
         if (adsUrl) {
           console.log(`    📄 Fetched ${fetchedAds.length} ads, continuing pagination...`);
@@ -963,7 +979,7 @@ class CrossAccountDeploymentService {
   /**
    * Create campaign from structure in target account
    */
-  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null, sourcePixelId = null, targetPixelId = null, deploymentId = null, sourceApi = null) {
+  async createCampaignFromStructure(facebookApi, structure, target, accountInfo = null, sourcePixelId = null, targetPixelId = null, deploymentId = null, sourceApi = null, strategyInfo = null) {
     console.log(`  🏗️  Creating campaign structure...`);
     console.log(`  🎨 Pixel Configuration:`);
     console.log(`    Source Pixel: ${sourcePixelId || 'none'}`);
@@ -975,6 +991,12 @@ class CrossAccountDeploymentService {
     const newCampaignName = `${structure.campaign.name} - Page ${pageIdLast6}`;
 
     console.log(`  📝 Using unique campaign name for page ${target.pageId}: ${newCampaignName}`);
+
+    // If strategy info is provided, replicate the structure
+    if (strategyInfo) {
+      console.log(`  🎯 Strategy Mode: Will create ${strategyInfo.numberOfAdSets} ad sets`);
+      console.log(`  📊 Custom budgets:`, strategyInfo.customBudgets ? `${strategyInfo.customBudgets.length} custom` : 'Standard');
+    }
 
     // MEDIA CACHING: Extract and download media from source before creating ads
     let cachedMedia = null;
@@ -1257,12 +1279,17 @@ class CrossAccountDeploymentService {
   /**
    * Deploy campaign to multiple targets
    */
-  async deployToMultipleTargets(userId, sourceCampaignId, sourceAccount, targets, processingMode = 'parallel') {
+  async deployToMultipleTargets(userId, sourceCampaignId, sourceAccount, targets, processingMode = 'parallel', strategyInfo = null) {
     console.log(`\n🚀 MULTI-ACCOUNT DEPLOYMENT INITIATED`);
     console.log(`  User ID: ${userId}`);
     console.log(`  Source Campaign: ${sourceCampaignId}`);
     console.log(`  Targets: ${targets.length}`);
     console.log(`  Mode: ${processingMode}`);
+
+    if (strategyInfo) {
+      console.log(`  Strategy: 1-${strategyInfo.numberOfAdSets || '?'}-1`);
+      console.log(`  Will create ${strategyInfo.numberOfAdSets} ad sets in each target account`);
+    }
 
     // Validate all targets first
     console.log(`\n🔐 Validating all targets...`);
@@ -1331,7 +1358,8 @@ class CrossAccountDeploymentService {
             sourceCampaignId,
             sourceAccount,
             target,
-            userAccessToken
+            userAccessToken,
+            strategyInfo
           );
 
           // Create deployed campaign record
@@ -1400,7 +1428,8 @@ class CrossAccountDeploymentService {
             sourceCampaignId,
             sourceAccount,
             target,
-            userAccessToken
+            userAccessToken,
+            strategyInfo
           );
 
           await db.DeployedCampaign.create({

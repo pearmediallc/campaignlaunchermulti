@@ -750,12 +750,22 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           pixelId: selectedPixelId
         };
 
+        // Pass the original campaign data so target accounts get the SAME structure
+        // This includes the number of ad sets (50 for 1-50-1 strategy)
+        const strategyInfo = {
+          numberOfAdSets: 50, // 1-50-1 strategy always has 50 ad sets
+          adSetBudget: campaignData.adSetBudget,
+          customBudgets: campaignData.customBudgets,
+          campaignData: campaignData // Pass full campaign data for recreation
+        };
+
         const deploymentResult = await CrossAccountDeploymentService.deployToMultipleTargets(
           req.user.id,
           initialResult.campaignId,
           sourceAccount,
           targets,
-          mode
+          mode,
+          strategyInfo // Pass strategy info
         );
 
         console.log(`\n✅ MULTI-ACCOUNT DEPLOYMENT COMPLETED!`);
