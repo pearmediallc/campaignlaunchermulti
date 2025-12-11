@@ -868,7 +868,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         const strategyInfo = {
           strategyType: 'for-ads', // Identify as Strategy For Ads
           adSetCount: campaignData.duplicationSettings?.adSetCount || 0,
-          campaignData: campaignData, // Pass full campaign data for batch recreation
+          campaignData: {
+            ...campaignData,
+            // Ensure all dynamic features are passed
+            dynamicTextEnabled: campaignData.dynamicTextEnabled,
+            primaryTextVariations: campaignData.primaryTextVariations,
+            headlineVariations: campaignData.headlineVariations
+          }, // Pass full campaign data for batch recreation
           mediaHashes: initialResult.mediaHashes // Pass media hashes for dynamic creatives
         };
 
@@ -1044,7 +1050,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               {
                 ...campaignData,
                 mediaHashes: result.mediaHashes, // Pass media hashes for dynamic creatives
-                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled // Pass dynamic creative flag
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled, // Pass dynamic creative flag
+                dynamicTextEnabled: campaignData.dynamicTextEnabled, // Pass dynamic text flag
+                primaryTextVariations: campaignData.primaryTextVariations, // Pass text variations
+                headlineVariations: campaignData.headlineVariations, // Pass headline variations
+                primaryText: campaignData.primaryText, // Pass main primary text
+                headline: campaignData.headline, // Pass main headline
+                description: campaignData.description, // Pass description
+                url: campaignData.url, // Pass URL
+                displayLink: campaignData.displayLink, // Pass display link
+                callToAction: campaignData.callToAction // Pass CTA
               }
             );
 

@@ -1119,7 +1119,7 @@ class BatchDuplicationService {
         `${this.baseURL}/${originalAdSetId}`,
         {
           params: {
-            fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap,start_time,end_time,pacing_type,destination_type',
+            fields: 'name,targeting,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,promoted_object,attribution_spec,daily_min_spend_target,daily_spend_cap,start_time,end_time,pacing_type,destination_type,is_dynamic_creative',
             access_token: this.accessToken
           }
         }
@@ -1175,13 +1175,27 @@ class BatchDuplicationService {
         });
 
         // Second: Create ad operation (immediately after its ad set)
+        // Prepare text variations if dynamic text is enabled
+        const textVariations = (formData.dynamicTextEnabled || formData.dynamicCreativeEnabled) ? {
+          primaryTexts: formData.primaryTextVariations || (formData.primaryText ? [formData.primaryText] : []),
+          headlines: formData.headlineVariations || (formData.headline ? [formData.headline] : []),
+          primaryText: formData.primaryText,
+          headline: formData.headline,
+          description: formData.description,
+          url: formData.url,
+          displayLink: formData.displayLink,
+          callToAction: formData.callToAction
+        } : null;
+
         const adBody = this.prepareAdBodyForDuplicate(
           formData.campaignName || 'Campaign',
           postId,
           i + 1,
           `{result=create-adset-${i}:$.id}`, // Reference the ad set from same batch
           formData.mediaHashes, // Pass media hashes for dynamic creatives
-          formData.dynamicCreativeEnabled // Pass dynamic creative flag
+          formData.dynamicCreativeEnabled || formData.dynamicTextEnabled, // Pass dynamic flag
+          textVariations, // Pass text variations
+          formData // Pass full campaign data
         );
 
         allOperations.push({
@@ -1385,6 +1399,11 @@ class BatchDuplicationService {
       body.destination_type = originalAdSet.destination_type;
     }
 
+    // CRITICAL: Preserve dynamic creative flag for text/media variations
+    if (originalAdSet.is_dynamic_creative !== undefined) {
+      body.is_dynamic_creative = originalAdSet.is_dynamic_creative;
+    }
+
     return this.encodeBody(body);
   }
 
@@ -1392,7 +1411,7 @@ class BatchDuplicationService {
    * Prepare ad body for duplicate
    * Supports BOTH regular ads (post ID) and dynamic creatives (asset_feed_spec)
    */
-  prepareAdBodyForDuplicate(campaignName, postId, copyNumber, adSetIdRef, mediaHashes = null, isDynamicCreative = false) {
+  prepareAdBodyForDuplicate(campaignName, postId, copyNumber, adSetIdRef, mediaHashes = null, isDynamicCreative = false, textVariations = null, campaignData = null) {
     const body = {
       name: `${campaignName} - Ad Copy ${copyNumber}`,
       adset_id: adSetIdRef,
@@ -1406,39 +1425,75 @@ class BatchDuplicationService {
         page_id: this.pageId
       });
     }
-    // APPROACH 2: Dynamic creative with media hashes (100% root effect via shared asset_feed_spec)
-    else if (mediaHashes && isDynamicCreative) {
-      // Build asset_feed_spec from media hashes
-      // All ads share the same media hashes = 100% root effect for dynamic creatives
+    // APPROACH 2: Dynamic creative/text with asset_feed_spec (100% root effect via shared assets)
+    else if ((mediaHashes || textVariations) && isDynamicCreative) {
+      // Build asset_feed_spec from media hashes AND text variations
+      // All ads share the same assets = 100% root effect for dynamic creatives
       const assetFeedSpec = {
         page_id: this.pageId
       };
 
+      // Add text variations (primary texts and headlines)
+      if (textVariations) {
+        // Primary texts (bodies)
+        if (textVariations.primaryTexts && textVariations.primaryTexts.length > 0) {
+          assetFeedSpec.bodies = textVariations.primaryTexts.map(text => ({ text }));
+        } else if (textVariations.primaryText) {
+          assetFeedSpec.bodies = [{ text: textVariations.primaryText }];
+        }
+
+        // Headlines (titles)
+        if (textVariations.headlines && textVariations.headlines.length > 0) {
+          assetFeedSpec.titles = textVariations.headlines.map(headline => ({ text: headline }));
+        } else if (textVariations.headline) {
+          assetFeedSpec.titles = [{ text: textVariations.headline }];
+        }
+
+        // Descriptions
+        if (textVariations.description) {
+          assetFeedSpec.descriptions = [{ text: textVariations.description }];
+        }
+
+        // Link URLs
+        if (textVariations.url) {
+          assetFeedSpec.link_urls = [{ website_url: textVariations.url }];
+          if (textVariations.displayLink) {
+            assetFeedSpec.link_urls[0].display_url = textVariations.displayLink;
+          }
+        }
+
+        // Call to action
+        if (textVariations.callToAction) {
+          assetFeedSpec.call_to_action_types = [textVariations.callToAction];
+        }
+      }
+
       // Add images if present
-      if (mediaHashes.dynamicImages && mediaHashes.dynamicImages.length > 0) {
-        assetFeedSpec.images = mediaHashes.dynamicImages.map(hash => ({ hash }));
-      } else if (mediaHashes.imageHash) {
-        assetFeedSpec.images = [{ hash: mediaHashes.imageHash }];
+      if (mediaHashes) {
+        if (mediaHashes.dynamicImages && mediaHashes.dynamicImages.length > 0) {
+          assetFeedSpec.images = mediaHashes.dynamicImages.map(hash => ({ hash }));
+        } else if (mediaHashes.imageHash) {
+          assetFeedSpec.images = [{ hash: mediaHashes.imageHash }];
+        }
+
+        // Add videos if present
+        if (mediaHashes.dynamicVideos && mediaHashes.dynamicVideos.length > 0) {
+          assetFeedSpec.videos = mediaHashes.dynamicVideos.map(id => ({ video_id: id }));
+        } else if (mediaHashes.videoId) {
+          assetFeedSpec.videos = [{ video_id: mediaHashes.videoId }];
+        }
       }
 
-      // Add videos if present
-      if (mediaHashes.dynamicVideos && mediaHashes.dynamicVideos.length > 0) {
-        assetFeedSpec.videos = mediaHashes.dynamicVideos.map(id => ({ video_id: id }));
-      } else if (mediaHashes.videoId) {
-        assetFeedSpec.videos = [{ video_id: mediaHashes.videoId }];
-      }
+      // Determine ad format based on media
+      const hasVideos = assetFeedSpec.videos && assetFeedSpec.videos.length > 0;
+      const hasImages = assetFeedSpec.images && assetFeedSpec.images.length > 0;
 
-      // Add carousel cards if present
-      if (mediaHashes.carouselCards && mediaHashes.carouselCards.length > 0) {
-        assetFeedSpec.link_urls = mediaHashes.carouselCards.map(card => ({
-          website_url: card.link
-        }));
-        assetFeedSpec.bodies = mediaHashes.carouselCards.map(card => ({
-          text: card.description
-        }));
-        assetFeedSpec.titles = mediaHashes.carouselCards.map(card => ({
-          text: card.headline
-        }));
+      if (hasVideos && hasImages) {
+        assetFeedSpec.ad_formats = ['AUTOMATIC_FORMAT'];
+      } else if (hasVideos) {
+        assetFeedSpec.ad_formats = ['SINGLE_VIDEO'];
+      } else if (hasImages) {
+        assetFeedSpec.ad_formats = ['SINGLE_IMAGE'];
       }
 
       body.creative = JSON.stringify({
