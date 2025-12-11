@@ -732,14 +732,115 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       const CrossAccountDeploymentService = require('../services/CrossAccountDeploymentService');
 
       try {
-        // Create the campaign in the CURRENT account first
-        console.log(`\n📝 Step 1: Creating campaign in current account (${selectedAdAccountId})...`);
-        const initialResult = await userFacebookApi.createStrategy150Campaign(campaignData);
+        // Create the campaign in the CURRENT account first using BATCH API
+        console.log(`\n📝 Step 1: Creating campaign in current account using BATCH API (${selectedAdAccountId})...`);
 
-        console.log(`✅ Campaign created successfully in current account!`);
+        // Upload media first for batch
+        let uploadedImageHash, uploadedVideoId, uploadedVideoThumbnail;
+
+        if (campaignData.imagePath) {
+          console.log(`📸 Uploading image: ${campaignData.imagePath}`);
+          uploadedImageHash = await userFacebookApi.uploadImage(campaignData.imagePath);
+          console.log(`✅ Image uploaded: ${uploadedImageHash}`);
+        }
+
+        if (campaignData.videoPath) {
+          console.log(`📹 Uploading video: ${campaignData.videoPath}`);
+          uploadedVideoId = await userFacebookApi.uploadVideoSmart(campaignData.videoPath);
+          console.log(`✅ Video uploaded: ${uploadedVideoId}`);
+
+          if (campaignData.videoThumbnailPath) {
+            console.log(`📸 Uploading video thumbnail: ${campaignData.videoThumbnailPath}`);
+            uploadedVideoThumbnail = await userFacebookApi.uploadImage(campaignData.videoThumbnailPath);
+            console.log(`✅ Thumbnail uploaded: ${uploadedVideoThumbnail}`);
+          }
+        }
+
+        if (campaignData.imagePaths && campaignData.imagePaths.length > 0) {
+          console.log(`📸 Uploading ${campaignData.imagePaths.length} carousel images...`);
+          const carouselHashes = [];
+          for (const imagePath of campaignData.imagePaths) {
+            const hash = await userFacebookApi.uploadImage(imagePath);
+            if (hash) carouselHashes.push(hash);
+          }
+          console.log(`✅ ${carouselHashes.length} carousel images uploaded`);
+          campaignData.carouselImages = carouselHashes;
+        }
+
+        // Initialize Batch Service
+        const BatchDuplicationService = require('../services/batchDuplication');
+        const batchService = new BatchDuplicationService(
+          decryptedToken,
+          selectedAdAccountId.replace('act_', ''),
+          selectedPageId,
+          selectedPixelId
+        );
+
+        // Prepare template data for batch creation
+        const templateData = {
+          ...campaignData,
+          imageHash: uploadedImageHash,
+          videoId: uploadedVideoId,
+          videoThumbnail: uploadedVideoThumbnail,
+          imagePath: undefined,
+          videoPath: undefined,
+          videoThumbnailPath: undefined
+        };
+
+        // Execute batch creation (1 campaign + 50 ad sets + 50 ads)
+        console.log('🚀 Creating 1-50-1 structure via BATCH API...');
+        const batchResult = await batchService.createFromTemplateBatch(
+          templateData,
+          50,  // 50 ad sets
+          1    // 1 ad per ad set
+        );
+
+        // Transform batch result to match expected format
+        const campaignResult = batchResult.results[0];
+        let campaignId = null;
+        if (campaignResult && campaignResult.code === 200 && campaignResult.body) {
+          const body = JSON.parse(campaignResult.body);
+          campaignId = body.id;
+        }
+
+        const adSetIds = [];
+        const adIds = [];
+        for (let i = 1; i < batchResult.results.length; i++) {
+          const result = batchResult.results[i];
+          const isAdSet = (i - 1) % 2 === 0;
+          if (result && result.code === 200 && result.body) {
+            const body = JSON.parse(result.body);
+            if (body.id) {
+              if (isAdSet) {
+                adSetIds.push(body.id);
+              } else {
+                adIds.push(body.id);
+              }
+            }
+          }
+        }
+
+        const initialResult = {
+          campaignId: campaignId,
+          adSetId: adSetIds[0],
+          adId: adIds[0],
+          campaign: { id: campaignId, name: campaignData.campaignName },
+          adSet: { id: adSetIds[0] },
+          ad: { id: adIds[0] },
+          allAdSets: adSetIds,
+          allAds: adIds,
+          batchStats: {
+            operations: batchResult.operations,
+            batchesExecuted: batchResult.batchesExecuted,
+            apiCallsSaved: batchResult.apiCallsSaved
+          }
+        };
+
+        console.log(`✅ Campaign created successfully via BATCH API in current account!`);
         console.log(`  Campaign ID: ${initialResult.campaignId}`);
-        console.log(`  Ad Set ID: ${initialResult.adSetId}`);
-        console.log(`  Ad ID: ${initialResult.adId}`);
+        console.log(`  Ad Sets: ${adSetIds.length}`);
+        console.log(`  Ads: ${adIds.length}`);
+        console.log(`  API Calls Saved: ${batchResult.apiCallsSaved}`);
 
         // Now deploy to other accounts
         console.log(`\n📝 Step 2: Deploying to ${targets.length} additional accounts...`);
