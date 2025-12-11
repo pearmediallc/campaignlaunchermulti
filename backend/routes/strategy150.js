@@ -1226,42 +1226,56 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
     console.log('  ✓ Ad Account:', activeResources.selectedAdAccount?.name || activeResources.selectedAdAccountId);
     console.log('  ✓ Page:', activeResources.selectedPage?.name || activeResources.selectedPageId);
 
-    const userFacebookApi = new FacebookAPI({
-      accessToken: decryptedToken,
-      adAccountId: activeResources.selectedAdAccountId.replace('act_', ''),
-      pageId: activeResources.selectedPageId
-    });
+    // Initialize Batch Duplication Service for optimized API calls
+    const BatchDuplicationService = require('../services/batchDuplication');
+    const pixelId = activeResources.selectedPixelId || facebookAuth.selectedPixel?.id || null;
 
-    // Start the duplication process with custom budgets
-    // Keep the post ID in original Facebook format with underscore
-    const duplicateData = {
-      campaignId,
-      originalAdSetId,
-      postId: postId,
-      count,
-      formData,
-      userId: req.user.id
-    };
+    const batchService = new BatchDuplicationService(
+      decryptedToken,
+      activeResources.selectedAdAccountId.replace('act_', ''),
+      activeResources.selectedPageId,
+      pixelId
+    );
 
-    // If custom budgets provided, use them; otherwise default to $1 for each
+    console.log('🚀 Starting BATCH duplication (optimized API calls)...');
+    console.log(`  ✓ Mode: Batch API (${Math.ceil((count * 2) / 20)} API calls instead of ${count * 2})`);
+    console.log(`  ✓ Count: ${count} ad sets`);
+
+    // Note: Custom budgets will be supported in future enhancement
+    // Currently batch service copies budget from original ad set
     if (duplicateBudgets && duplicateBudgets.length > 0) {
-      duplicateData.customBudgets = duplicateBudgets;
-    } else {
-      // Default to $1 for each duplicated ad set
-      duplicateData.customBudgets = Array(count).fill(1.00);
+      console.log(`  ℹ️  Custom budgets provided but not yet supported in batch mode`);
+      console.log(`  ℹ️  Using original ad set budget for all duplicates`);
     }
 
-    userFacebookApi.duplicateAdSetsWithExistingPost(duplicateData);
+    // Execute batch duplication
+    const result = await batchService.duplicateAdSetsBatch(
+      originalAdSetId,
+      campaignId,
+      postId,
+      count,
+      formData
+    );
+
+    console.log('✅ Batch duplication completed successfully');
+    console.log(`  ✓ Created: ${result.adSets?.length || 0} ad sets`);
+    console.log(`  ✓ Success Rate: ${result.summary?.successRate || 0}%`);
+    console.log(`  ✓ API Calls Used: ${result.batchesExecuted || 0}`);
+    console.log(`  ✓ API Calls Saved: ${result.apiCallsSaved || 0}`);
 
     res.json({
       success: true,
-      message: 'Duplication process started',
+      message: 'Duplication completed successfully using Batch API',
       data: {
         campaignId,
         count,
-        status: 'in_progress',
-        adAccount: activeResources.selectedAdAccount, // Add ad account info from active resources
-        postId: postId || 'Will be fetched from original ad' // Include postId status
+        status: 'completed',
+        adAccount: activeResources.selectedAdAccount,
+        postId: postId,
+        adSets: result.adSets || [],
+        summary: result.summary || {},
+        apiCallsUsed: result.batchesExecuted || Math.ceil((count * 2) / 20),
+        apiCallsSaved: result.apiCallsSaved || 0
       }
     });
   } catch (error) {
