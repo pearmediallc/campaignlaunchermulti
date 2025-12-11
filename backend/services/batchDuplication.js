@@ -1063,24 +1063,31 @@ class BatchDuplicationService {
   // ============================================================================
 
   /**
-   * Duplicate ad sets using batch API for Strategy 150
+   * Duplicate ad sets using batch API for Strategy 150, Strategy For All, and Strategy For Ads
    * Replaces sequential /copies endpoint with efficient batch operations
    *
    * @param {string} originalAdSetId - ID of the original ad set to duplicate
    * @param {string} campaignId - Campaign ID to create ad sets in
-   * @param {string} postId - Facebook post ID to reuse in ads
+   * @param {string} postId - Facebook post ID to reuse in ads (for regular ads) OR null for dynamic creatives
    * @param {number} count - Number of duplicates to create (default: 49)
-   * @param {Object} formData - Original form data for naming
+   * @param {Object} formData - Original form data for naming + optional mediaHashes for dynamic creatives
+   * @param {Object} formData.mediaHashes - Media hashes for dynamic creatives (imageHash, videoId, dynamicImages, etc.)
+   * @param {boolean} formData.dynamicCreativeEnabled - Flag indicating dynamic creative is enabled
    * @returns {Object} Batch execution results
    */
   async duplicateAdSetsBatch(originalAdSetId, campaignId, postId, count = 49, formData = {}) {
     try {
       console.log('🚀 ========================================');
-      console.log('🚀 BATCH AD SET DUPLICATION - STRATEGY 150');
+      console.log('🚀 BATCH AD SET DUPLICATION');
       console.log('🚀 ========================================');
       console.log(`📊 Creating ${count} duplicates of ad set ${originalAdSetId}`);
       console.log(`📊 Campaign: ${campaignId}`);
-      console.log(`📊 Post ID: ${postId}`);
+      console.log(`📊 Creative Type: ${formData.dynamicCreativeEnabled ? 'Dynamic Creative (asset_feed_spec)' : 'Regular Ad (post_id)'}`);
+      if (postId) {
+        console.log(`📊 Post ID: ${postId}`);
+      } else if (formData.mediaHashes) {
+        console.log(`📊 Media Hashes: Provided for asset_feed_spec`);
+      }
       console.log(`📊 Total operations: ${count + count} (ad sets + ads)`);
 
       // Step 1: Fetch campaign and original ad set data
@@ -1172,7 +1179,9 @@ class BatchDuplicationService {
           formData.campaignName || 'Campaign',
           postId,
           i + 1,
-          `{result=create-adset-${i}:$.id}` // Reference the ad set from same batch
+          `{result=create-adset-${i}:$.id}`, // Reference the ad set from same batch
+          formData.mediaHashes, // Pass media hashes for dynamic creatives
+          formData.dynamicCreativeEnabled // Pass dynamic creative flag
         );
 
         allOperations.push({
@@ -1380,18 +1389,69 @@ class BatchDuplicationService {
   }
 
   /**
-   * Prepare ad body for duplicate (reusing existing post)
+   * Prepare ad body for duplicate
+   * Supports BOTH regular ads (post ID) and dynamic creatives (asset_feed_spec)
    */
-  prepareAdBodyForDuplicate(campaignName, postId, copyNumber, adSetIdRef) {
+  prepareAdBodyForDuplicate(campaignName, postId, copyNumber, adSetIdRef, mediaHashes = null, isDynamicCreative = false) {
     const body = {
       name: `${campaignName} - Ad Copy ${copyNumber}`,
       adset_id: adSetIdRef,
-      status: 'ACTIVE',
-      creative: JSON.stringify({
+      status: 'ACTIVE'
+    };
+
+    // APPROACH 1: Regular ad with post ID (100% root effect via shared post)
+    if (postId && !isDynamicCreative) {
+      body.creative = JSON.stringify({
         object_story_id: postId,
         page_id: this.pageId
-      })
-    };
+      });
+    }
+    // APPROACH 2: Dynamic creative with media hashes (100% root effect via shared asset_feed_spec)
+    else if (mediaHashes && isDynamicCreative) {
+      // Build asset_feed_spec from media hashes
+      // All ads share the same media hashes = 100% root effect for dynamic creatives
+      const assetFeedSpec = {
+        page_id: this.pageId
+      };
+
+      // Add images if present
+      if (mediaHashes.dynamicImages && mediaHashes.dynamicImages.length > 0) {
+        assetFeedSpec.images = mediaHashes.dynamicImages.map(hash => ({ hash }));
+      } else if (mediaHashes.imageHash) {
+        assetFeedSpec.images = [{ hash: mediaHashes.imageHash }];
+      }
+
+      // Add videos if present
+      if (mediaHashes.dynamicVideos && mediaHashes.dynamicVideos.length > 0) {
+        assetFeedSpec.videos = mediaHashes.dynamicVideos.map(id => ({ video_id: id }));
+      } else if (mediaHashes.videoId) {
+        assetFeedSpec.videos = [{ video_id: mediaHashes.videoId }];
+      }
+
+      // Add carousel cards if present
+      if (mediaHashes.carouselCards && mediaHashes.carouselCards.length > 0) {
+        assetFeedSpec.link_urls = mediaHashes.carouselCards.map(card => ({
+          website_url: card.link
+        }));
+        assetFeedSpec.bodies = mediaHashes.carouselCards.map(card => ({
+          text: card.description
+        }));
+        assetFeedSpec.titles = mediaHashes.carouselCards.map(card => ({
+          text: card.headline
+        }));
+      }
+
+      body.creative = JSON.stringify({
+        asset_feed_spec: assetFeedSpec
+      });
+    }
+    // FALLBACK: If neither post ID nor media hashes, use post ID (backward compatibility)
+    else if (postId) {
+      body.creative = JSON.stringify({
+        object_story_id: postId,
+        page_id: this.pageId
+      });
+    }
 
     return this.encodeBody(body);
   }

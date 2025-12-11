@@ -864,12 +864,21 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           pixelId: selectedPixelId
         };
 
+        // Pass strategy info for batch deployment
+        const strategyInfo = {
+          strategyType: 'for-ads', // Identify as Strategy For Ads
+          adSetCount: campaignData.duplicationSettings?.adSetCount || 0,
+          campaignData: campaignData, // Pass full campaign data for batch recreation
+          mediaHashes: initialResult.mediaHashes // Pass media hashes for dynamic creatives
+        };
+
         const deploymentResult = await CrossAccountDeploymentService.deployToMultipleTargets(
           req.user.id,
           initialResult.campaignId,
           sourceAccount,
           targets,
-          mode
+          mode,
+          strategyInfo // Pass strategy info for batch deployment
         );
 
         console.log(`\n✅ MULTI-ACCOUNT DEPLOYMENT COMPLETED!`);
@@ -1032,7 +1041,11 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               result.campaign.id,
               result.postId,
               adSetsToCreate,
-              campaignData
+              {
+                ...campaignData,
+                mediaHashes: result.mediaHashes, // Pass media hashes for dynamic creatives
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled // Pass dynamic creative flag
+              }
             );
 
             if (batchResult.summary.successRate >= 90) {
@@ -1402,7 +1415,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         console.log(`\n📊 DUPLICATION TOTALS:`);
         console.log(`  Method: ${usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL'}`);
         console.log(`  Total Ad Sets: ${1 + duplicatedAdSets.length}/${targetAdSetCount} (1 initial + ${duplicatedAdSets.length} duplicates)`);
-        console.log(`  100% Root Effect: All ${1 + duplicatedAdSets.length} ads use post ID ${result.postId}`);
+        if (campaignData.dynamicCreativeEnabled) {
+          console.log(`  100% Root Effect: All ${1 + duplicatedAdSets.length} ad sets use identical targeting`);
+          console.log(`  Creative Type: Dynamic Creative (asset_feed_spec with shared media hashes)`);
+        } else {
+          console.log(`  100% Root Effect: All ${1 + duplicatedAdSets.length} ads use post ID ${result.postId}`);
+        }
         console.log('========================================\n');
 
         if (duplicatedAdSets.length > 0) {

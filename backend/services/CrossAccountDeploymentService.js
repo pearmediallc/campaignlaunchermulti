@@ -738,7 +738,8 @@ class CrossAccountDeploymentService {
 
     // Detect strategy type and use batch method when possible
     const isStrategy150 = strategyInfo && strategyInfo.numberOfAdSets === 50 && strategyInfo.campaignData;
-    const isStrategyForAll = strategyInfo && strategyInfo.campaignData && strategyInfo.adSetCount !== undefined;
+    const isStrategyForAll = strategyInfo && strategyInfo.campaignData && strategyInfo.adSetCount !== undefined && strategyInfo.strategyType !== 'for-ads';
+    const isStrategyForAds = strategyInfo && strategyInfo.strategyType === 'for-ads' && strategyInfo.campaignData;
     let newCampaign;
 
     if (isStrategy150) {
@@ -758,6 +759,17 @@ class CrossAccountDeploymentService {
         target,
         effectivePixelId,
         adSetCount
+      );
+    } else if (isStrategyForAds) {
+      console.log(`  🚀 Using BATCH method for Strategy For Ads deployment...`);
+      const adSetCount = strategyInfo.adSetCount || 0;
+      newCampaign = await this.createStrategyForAdsCampaignBatch(
+        targetFacebookApi,
+        strategyInfo.campaignData,
+        target,
+        effectivePixelId,
+        adSetCount,
+        strategyInfo.mediaHashes
       );
     } else {
       console.log(`  📋 Using STRUCTURE CLONE method for deployment...`);
@@ -1311,6 +1323,179 @@ class CrossAccountDeploymentService {
       adsRequested: 1 + adSetCount,
       pixelUsed: targetPixelId,
       duplicationMethod: usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE'),
+      batchStats: batchResult ? {
+        method: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
+        operations: batchResult.operations,
+        apiCallsSaved: batchResult.apiCallsSaved,
+        successRate: batchResult.summary.successRate
+      } : null,
+      failures: {
+        adSets: [],
+        ads: []
+      },
+      status: batchResult ? (batchResult.summary.successRate === 100 ? 'success' : 'partial') : 'success'
+    };
+  }
+
+  /**
+   * Create Strategy For Ads campaign in target account using BATCH pattern
+   * Supports dynamic ad set count (0-50), dynamic creatives, and ad variations
+   */
+  static async createStrategyForAdsCampaignBatch(facebookApi, campaignData, target, targetPixelId = null, adSetCount = 0, mediaHashes = null) {
+    console.log(`  🚀 BATCH MODE: Creating Strategy For Ads campaign in target account`);
+    console.log(`    Target Ad Account: ${target.adAccountId}`);
+    console.log(`    Target Page: ${target.pageId}`);
+    console.log(`    Target Pixel: ${targetPixelId || 'none'}`);
+    console.log(`    Ad Set Count: ${adSetCount}`);
+    console.log(`    Dynamic Creative: ${campaignData.dynamicCreativeEnabled ? 'Yes' : 'No'}`);
+
+    // Prepare campaign data for target account
+    const targetCampaignData = {
+      ...campaignData,
+      pixelId: targetPixelId // Override pixel for target account
+    };
+
+    const targetApi = new FacebookAPI({
+      accessToken: facebookApi.accessToken,
+      adAccountId: target.adAccountId.replace('act_', ''),
+      pageId: target.pageId,
+      pixelId: targetPixelId
+    });
+
+    // STEP 1: Create initial 1-1-1 structure in target account
+    console.log(`\n  📝 Step 1: Creating initial 1-1-1 structure in target...`);
+    const initialResult = await targetApi.createCampaignStructure(targetCampaignData);
+
+    console.log(`    ✅ Initial structure created`);
+    console.log(`    Campaign: ${initialResult.campaign.id}`);
+    console.log(`    Ad Set: ${initialResult.adSet.id}`);
+    console.log(`    Ad: ${initialResult.ads[0]?.id}`);
+
+    // Use media hashes from initial result OR passed from source
+    const finalMediaHashes = initialResult.mediaHashes || mediaHashes;
+
+    if (initialResult.postId) {
+      console.log(`    Post ID: ${initialResult.postId} (for regular ads)`);
+    } else if (finalMediaHashes) {
+      console.log(`    Media Hashes: Captured for dynamic creatives`);
+    } else {
+      throw new Error('Neither post ID nor media hashes captured. Cannot proceed with batch duplication.');
+    }
+
+    // STEP 2: Batch duplicate if adSetCount > 0
+    let batchResult = null;
+    let usedBatchMethod = false;
+    let totalAdSets = 1;
+    let totalAds = 1;
+
+    if (adSetCount > 0) {
+      console.log(`\n  📝 Step 2: Batch duplicating ${adSetCount} additional ad sets...`);
+
+      try {
+        console.log(`    🚀 Attempting BATCH API method...`);
+
+        const BatchDuplicationService = require('./batchDuplication');
+        const batchService = new BatchDuplicationService(
+          facebookApi.accessToken,
+          target.adAccountId.replace('act_', ''),
+          target.pageId,
+          targetPixelId
+        );
+
+        batchResult = await batchService.duplicateAdSetsBatch(
+          initialResult.adSet.id,
+          initialResult.campaign.id,
+          initialResult.postId, // May be null for dynamic creatives
+          adSetCount,
+          {
+            ...targetCampaignData,
+            mediaHashes: finalMediaHashes, // Pass media hashes for dynamic creatives
+            dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled
+          }
+        );
+
+        if (batchResult.summary.successRate >= 90) {
+          usedBatchMethod = true;
+          totalAdSets = 1 + batchResult.adSets.length;
+          totalAds = 1 + batchResult.ads.length;
+          console.log(`    ✅ BATCH API successful!`);
+          console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+          console.log(`    Ads: ${batchResult.ads.length}/${adSetCount}`);
+          console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
+          console.log(`    API Calls Saved: ${batchResult.apiCallsSaved}`);
+        } else {
+          throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+        }
+
+      } catch (batchError) {
+        console.warn(`    ⚠️  BATCH API failed: ${batchError.message}`);
+        console.log(`    🔄 Falling back to SEQUENTIAL method...`);
+
+        // SEQUENTIAL FALLBACK
+        const DuplicationService = require('./duplication');
+        const duplicationService = new DuplicationService(
+          facebookApi.accessToken,
+          target.adAccountId.replace('act_', ''),
+          target.pageId,
+          targetPixelId
+        );
+
+        const sequentialResults = await duplicationService.duplicateAdSetsSequential(
+          initialResult.campaign.id,
+          initialResult.adSet.id,
+          adSetCount,
+          targetCampaignData
+        );
+
+        // Transform sequential results to batch format
+        batchResult = {
+          adSets: sequentialResults.adSets || [],
+          ads: sequentialResults.ads || [],
+          operations: adSetCount * 2, // Estimate
+          apiCallsSaved: 0, // No savings with sequential
+          summary: {
+            totalExpected: adSetCount,
+            totalSuccess: sequentialResults.adSets?.length || 0,
+            totalAdSetsCreated: sequentialResults.adSets?.length || 0,
+            totalAdsCreated: sequentialResults.ads?.length || 0,
+            totalFailed: adSetCount - (sequentialResults.adSets?.length || 0),
+            successRate: Math.round(((sequentialResults.adSets?.length || 0) / adSetCount) * 100),
+            hasFailures: (sequentialResults.adSets?.length || 0) < adSetCount
+          }
+        };
+
+        totalAdSets = 1 + batchResult.adSets.length;
+        totalAds = 1 + batchResult.ads.length;
+        console.log(`    ✅ SEQUENTIAL method completed`);
+        console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+        console.log(`    Ads: ${batchResult.ads.length}/${adSetCount}`);
+      }
+    }
+
+    console.log(`\n  📊 TARGET ACCOUNT TOTALS:`);
+    console.log(`    ✅ Campaign: ${initialResult.campaign.id}`);
+    console.log(`    ✅ Total Ad Sets: ${totalAdSets}/${1 + adSetCount} (1 initial + ${adSetCount} requested)`);
+    console.log(`    ✅ Total Ads: ${totalAds}/${1 + adSetCount}`);
+
+    if (campaignData.dynamicCreativeEnabled) {
+      console.log(`    ✅ Creative Type: Dynamic Creative (asset_feed_spec)`);
+      console.log(`    ✅ 100% Root Effect: All ad sets use identical targeting`);
+    } else {
+      console.log(`    ✅ Post ID: ${initialResult.postId} (100% root effect)`);
+    }
+
+    console.log(`    ✅ Method Used: ${usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE')}`);
+
+    return {
+      campaignId: initialResult.campaign.id,
+      campaignName: targetCampaignData.campaignName,
+      adSetsCount: totalAdSets,
+      adSetsRequested: 1 + adSetCount,
+      adsCount: totalAds,
+      adsRequested: 1 + adSetCount,
+      pixelUsed: targetPixelId,
+      duplicationMethod: usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE'),
+      isDynamicCreative: campaignData.dynamicCreativeEnabled || false,
       batchStats: batchResult ? {
         method: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
         operations: batchResult.operations,
