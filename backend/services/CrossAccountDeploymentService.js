@@ -736,17 +736,32 @@ class CrossAccountDeploymentService {
     // Generate deployment ID for media caching
     const deploymentId = `deploy_${sourceCampaignId}_${Date.now()}`;
 
-    const newCampaign = await this.createCampaignFromStructure(
-      targetFacebookApi,
-      campaignStructure,
-      target,
-      accountInfo,  // Pass account info to createCampaignFromStructure
-      sourceAccount.pixelId, // Source pixel ID for replacement
-      effectivePixelId, // Target pixel ID to use
-      deploymentId, // Deployment ID for media caching
-      sourceFacebookApi, // Source API for downloading media
-      strategyInfo // Pass strategy info for 1-50-1 replication
-    );
+    // Check if this is Strategy 150 (1-50-1) - use batch method for optimal API usage
+    const isStrategy150 = strategyInfo && strategyInfo.numberOfAdSets === 50 && strategyInfo.campaignData;
+    let newCampaign;
+
+    if (isStrategy150) {
+      console.log(`  🚀 Using BATCH method for Strategy 150 deployment...`);
+      newCampaign = await this.createStrategy150CampaignBatch(
+        targetFacebookApi,
+        strategyInfo.campaignData, // Use original campaign data
+        target,
+        effectivePixelId
+      );
+    } else {
+      console.log(`  📋 Using STRUCTURE CLONE method for deployment...`);
+      newCampaign = await this.createCampaignFromStructure(
+        targetFacebookApi,
+        campaignStructure,
+        target,
+        accountInfo,  // Pass account info to createCampaignFromStructure
+        sourceAccount.pixelId, // Source pixel ID for replacement
+        effectivePixelId, // Target pixel ID to use
+        deploymentId, // Deployment ID for media caching
+        sourceFacebookApi, // Source API for downloading media
+        strategyInfo // Pass strategy info for 1-50-1 replication
+      );
+    }
 
     console.log(`✅ Campaign deployed successfully to target account!`);
     console.log(`  New Campaign ID: ${newCampaign.campaignId}`);
@@ -992,6 +1007,98 @@ class CrossAccountDeploymentService {
       campaign,
       adSets,
       ads
+    };
+  }
+
+  /**
+   * Create Strategy 150 campaign in target account using BATCH pattern
+   * This uses the 1-1-1 + batch duplicate approach for optimal API usage
+   */
+  async createStrategy150CampaignBatch(facebookApi, campaignData, target, targetPixelId = null) {
+    console.log(`  🚀 BATCH MODE: Creating Strategy 150 campaign in target account`);
+    console.log(`    Target Ad Account: ${target.adAccountId}`);
+    console.log(`    Target Page: ${target.pageId}`);
+    console.log(`    Target Pixel: ${targetPixelId || 'none'}`);
+
+    // Create a FacebookAPI instance for the target account
+    const FacebookAPI = require('./facebookApi');
+    const targetApi = new FacebookAPI({
+      accessToken: facebookApi.accessToken,
+      adAccountId: target.adAccountId.replace('act_', ''),
+      pageId: target.pageId,
+      pixelId: targetPixelId
+    });
+
+    // Prepare campaign data for target account
+    const targetCampaignData = {
+      ...campaignData,
+      selectedPageId: target.pageId,
+      selectedAdAccountId: target.adAccountId,
+      selectedPixelId: targetPixelId || campaignData.selectedPixelId,
+      // Make campaign name unique for this page
+      campaignName: `${campaignData.campaignName} - Page ${target.pageId.toString().slice(-6)}`
+    };
+
+    console.log(`  📝 Step 1: Creating initial 1-1-1 structure...`);
+
+    // STEP 1: Create initial 1-1-1 structure
+    const initialResult = await targetApi.createStrategy150Campaign(targetCampaignData);
+
+    console.log(`    ✅ Initial structure created:`);
+    console.log(`      Campaign: ${initialResult.campaign.id}`);
+    console.log(`      Ad Set: ${initialResult.adSet.id}`);
+    console.log(`      Ad: ${initialResult.ads[0].id}`);
+    console.log(`      Post ID: ${initialResult.postId || 'Not captured'}`);
+
+    if (!initialResult.postId) {
+      throw new Error('Post ID not captured from initial ad creation. Cannot proceed with batch duplication for target account.');
+    }
+
+    // STEP 2: Use batch API to duplicate remaining 49
+    console.log(`  📝 Step 2: Batch duplicating remaining 49 ad sets + ads...`);
+
+    const BatchDuplicationService = require('./batchDuplication');
+    const batchService = new BatchDuplicationService(
+      facebookApi.accessToken,
+      target.adAccountId.replace('act_', ''),
+      target.pageId,
+      targetPixelId
+    );
+
+    const batchResult = await batchService.duplicateAdSetsBatch(
+      initialResult.adSet.id,
+      initialResult.campaign.id,
+      initialResult.postId,
+      49,
+      targetCampaignData
+    );
+
+    console.log(`    ✅ Batch duplication complete:`);
+    console.log(`      Ad Sets Created: ${batchResult.adSets.length}/49`);
+    console.log(`      API Calls Used: ${batchResult.batchesExecuted}`);
+    console.log(`      API Calls Saved: ${batchResult.apiCallsSaved}`);
+    console.log(`      Success Rate: ${batchResult.summary.successRate}%`);
+
+    // Return result in same format as createCampaignFromStructure
+    return {
+      campaignId: initialResult.campaign.id,
+      campaignName: targetCampaignData.campaignName,
+      adSetsCount: 1 + batchResult.adSets.length,
+      adSetsRequested: 50,
+      adsCount: 1 + batchResult.adSets.length,
+      adsRequested: 50,
+      pixelUsed: targetPixelId,
+      batchStats: {
+        operations: batchResult.operations,
+        batchesExecuted: batchResult.batchesExecuted,
+        apiCallsSaved: batchResult.apiCallsSaved,
+        successRate: batchResult.summary.successRate
+      },
+      failures: {
+        adSets: batchResult.summary.hasFailures ? [] : [],
+        ads: []
+      },
+      status: batchResult.summary.successRate === 100 ? 'success' : 'partial'
     };
   }
 
