@@ -756,12 +756,49 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       const CrossAccountDeploymentService = require('../services/CrossAccountDeploymentService');
 
       try {
-        // Create the campaign in the CURRENT account first
+        // Create the campaign in the CURRENT account first WITH BATCH
         console.log(`\n📝 Step 1: Creating campaign in current account (${selectedAdAccountId})...`);
+
+        // STEP 1: Create initial 1-1-1 structure
+        console.log(`  📝 Creating initial 1-1-1 structure...`);
         const initialResult = await userFacebookApi.createCampaignStructure(campaignData);
 
+        console.log(`  ✅ Initial structure created!`);
+        console.log(`    Campaign: ${initialResult.campaign.id}`);
+        console.log(`    Post ID: ${initialResult.postId || 'Not captured'}`);
+
+        // STEP 2: Batch duplicate if requested
+        const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
+        if (adSetCount > 0 && initialResult.postId) {
+          console.log(`  📝 Batch duplicating ${adSetCount} additional ad sets...`);
+
+          const BatchDuplicationService = require('../services/batchDuplication');
+          const batchService = new BatchDuplicationService(
+            decryptedToken,
+            selectedAdAccountId.replace('act_', ''),
+            selectedPageId,
+            selectedPixelId
+          );
+
+          try {
+            const batchResult = await batchService.duplicateAdSetsBatch(
+              initialResult.adSet.id,
+              initialResult.campaign.id,
+              initialResult.postId,
+              adSetCount,
+              campaignData
+            );
+
+            initialResult.totalAdSets = 1 + batchResult.adSets.length;
+            initialResult.totalAds = 1 + batchResult.ads.length;
+            console.log(`  ✅ Batch complete! Total: ${initialResult.totalAdSets}/${1 + adSetCount} ad sets`);
+          } catch (batchError) {
+            console.warn(`  ⚠️  Batch failed: ${batchError.message}`);
+          }
+        }
+
         console.log(`✅ Campaign created successfully in current account!`);
-        console.log(`  Campaign ID: ${initialResult.campaignId}`);
+        console.log(`  Campaign ID: ${initialResult.campaignId || initialResult.campaign.id}`);
 
         // Now deploy to other accounts
         console.log(`\n📝 Step 2: Deploying to ${targets.length} additional accounts...`);
@@ -772,12 +809,19 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           pixelId: selectedPixelId
         };
 
+        // Pass strategy info for batch deployment
+        const strategyInfo = {
+          adSetCount: campaignData.duplicationSettings?.adSetCount || 0,
+          campaignData: campaignData // Pass full campaign data for batch recreation
+        };
+
         const deploymentResult = await CrossAccountDeploymentService.deployToMultipleTargets(
           req.user.id,
           initialResult.campaignId,
           sourceAccount,
           targets,
-          mode
+          mode,
+          strategyInfo // Pass strategy info for batch deployment
         );
 
         console.log(`\n✅ MULTI-ACCOUNT DEPLOYMENT COMPLETED!`);

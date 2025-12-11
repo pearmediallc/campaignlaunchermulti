@@ -736,17 +736,28 @@ class CrossAccountDeploymentService {
     // Generate deployment ID for media caching
     const deploymentId = `deploy_${sourceCampaignId}_${Date.now()}`;
 
-    // Check if this is Strategy 150 (1-50-1) - use batch method for optimal API usage
+    // Detect strategy type and use batch method when possible
     const isStrategy150 = strategyInfo && strategyInfo.numberOfAdSets === 50 && strategyInfo.campaignData;
+    const isStrategyForAll = strategyInfo && strategyInfo.campaignData && strategyInfo.adSetCount !== undefined;
     let newCampaign;
 
     if (isStrategy150) {
       console.log(`  🚀 Using BATCH method for Strategy 150 deployment...`);
       newCampaign = await this.createStrategy150CampaignBatch(
         targetFacebookApi,
-        strategyInfo.campaignData, // Use original campaign data
+        strategyInfo.campaignData,
         target,
         effectivePixelId
+      );
+    } else if (isStrategyForAll) {
+      console.log(`  🚀 Using BATCH method for Strategy For All deployment...`);
+      const adSetCount = strategyInfo.adSetCount || 0;
+      newCampaign = await this.createStrategyForAllCampaignBatch(
+        targetFacebookApi,
+        strategyInfo.campaignData,
+        target,
+        effectivePixelId,
+        adSetCount
       );
     } else {
       console.log(`  📋 Using STRUCTURE CLONE method for deployment...`);
@@ -754,12 +765,12 @@ class CrossAccountDeploymentService {
         targetFacebookApi,
         campaignStructure,
         target,
-        accountInfo,  // Pass account info to createCampaignFromStructure
-        sourceAccount.pixelId, // Source pixel ID for replacement
-        effectivePixelId, // Target pixel ID to use
-        deploymentId, // Deployment ID for media caching
-        sourceFacebookApi, // Source API for downloading media
-        strategyInfo // Pass strategy info for 1-50-1 replication
+        accountInfo,
+        sourceAccount.pixelId,
+        effectivePixelId,
+        deploymentId,
+        sourceFacebookApi,
+        strategyInfo
       );
     }
 
@@ -1160,6 +1171,157 @@ class CrossAccountDeploymentService {
         ads: []
       },
       status: batchResult.summary.successRate === 100 ? 'success' : 'partial'
+    };
+  }
+
+  /**
+   * Create Strategy For All campaign in target account using BATCH pattern
+   * Supports dynamic ad set count (0-50)
+   */
+  async createStrategyForAllCampaignBatch(facebookApi, campaignData, target, targetPixelId = null, adSetCount = 49) {
+    console.log(`  🚀 BATCH MODE: Creating Strategy For All campaign in target account`);
+    console.log(`    Target Ad Account: ${target.adAccountId}`);
+    console.log(`    Target Page: ${target.pageId}`);
+    console.log(`    Target Pixel: ${targetPixelId || 'none'}`);
+    console.log(`    Ad Set Count: ${adSetCount}`);
+
+    // Create FacebookAPI instance for target
+    const FacebookAPI = require('./facebookApi');
+    const targetApi = new FacebookAPI({
+      accessToken: facebookApi.accessToken,
+      adAccountId: target.adAccountId.replace('act_', ''),
+      pageId: target.pageId,
+      pixelId: targetPixelId
+    });
+
+    // Prepare campaign data for target
+    const targetCampaignData = {
+      ...campaignData,
+      selectedPageId: target.pageId,
+      selectedAdAccountId: target.adAccountId,
+      selectedPixelId: targetPixelId || campaignData.selectedPixelId,
+      campaignName: `${campaignData.campaignName} - Page ${target.pageId.toString().slice(-6)}`
+    };
+
+    console.log(`  📝 Step 1: Creating initial 1-1-1 structure...`);
+
+    // STEP 1: Create initial 1-1-1
+    const initialResult = await targetApi.createCampaignStructure(targetCampaignData);
+
+    console.log(`    ✅ Initial structure created:`);
+    console.log(`      Campaign: ${initialResult.campaign.id}`);
+    console.log(`      Ad Set: ${initialResult.adSet.id}`);
+    console.log(`      Ad: ${initialResult.ads[0].id}`);
+    console.log(`      Post ID: ${initialResult.postId || 'Not captured'}`);
+
+    if (!initialResult.postId) {
+      throw new Error('Post ID not captured. Cannot proceed with batch duplication for target account.');
+    }
+
+    // STEP 2: Batch duplicate if adSetCount > 0
+    let batchResult = null;
+    let usedBatchMethod = false;
+    let totalAdSets = 1;
+    let totalAds = 1;
+
+    if (adSetCount > 0) {
+      console.log(`  📝 Step 2: Duplicating ${adSetCount} additional ad sets...`);
+
+      try {
+        console.log(`    🚀 Attempting BATCH API method...`);
+
+        const BatchDuplicationService = require('./batchDuplication');
+        const batchService = new BatchDuplicationService(
+          facebookApi.accessToken,
+          target.adAccountId.replace('act_', ''),
+          target.pageId,
+          targetPixelId
+        );
+
+        batchResult = await batchService.duplicateAdSetsBatch(
+          initialResult.adSet.id,
+          initialResult.campaign.id,
+          initialResult.postId,
+          adSetCount,
+          targetCampaignData
+        );
+
+        if (batchResult.summary.successRate >= 90) {
+          usedBatchMethod = true;
+          console.log(`    ✅ BATCH API successful!`);
+          console.log(`      Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+          console.log(`      Ads: ${batchResult.ads.length}/${adSetCount}`);
+          console.log(`      Success Rate: ${batchResult.summary.successRate}%`);
+
+          totalAdSets = 1 + batchResult.adSets.length;
+          totalAds = 1 + batchResult.ads.length;
+        } else {
+          throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+        }
+
+      } catch (batchError) {
+        console.warn(`    ⚠️  BATCH API failed: ${batchError.message}`);
+        console.log(`    🔄 Falling back to SEQUENTIAL method...`);
+
+        const StrategyForAllDuplication = require('./strategyForAllDuplication');
+        const duplicationService = new StrategyForAllDuplication(targetApi);
+
+        const sequentialResults = await duplicationService.duplicateAdSetsSequential(
+          initialResult.adSet.id,
+          initialResult.campaign.id,
+          initialResult.postId,
+          adSetCount,
+          targetCampaignData
+        );
+
+        batchResult = {
+          adSets: sequentialResults.adSets || [],
+          ads: sequentialResults.ads || [],
+          operations: adSetCount * 2,
+          batchesExecuted: adSetCount * 2,
+          apiCallsSaved: 0,
+          summary: {
+            totalExpected: adSetCount,
+            totalSuccess: sequentialResults.adSets?.length || 0,
+            successRate: Math.round(((sequentialResults.adSets?.length || 0) / adSetCount) * 100)
+          }
+        };
+
+        console.log(`    ✅ SEQUENTIAL method completed`);
+        console.log(`      Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+
+        totalAdSets = 1 + batchResult.adSets.length;
+        totalAds = 1 + batchResult.ads.length;
+      }
+    }
+
+    console.log(`\n  📊 TARGET ACCOUNT TOTALS:`);
+    console.log(`    ✅ Campaign: ${initialResult.campaign.id}`);
+    console.log(`    ✅ Total Ad Sets: ${totalAdSets}/${1 + adSetCount} (1 initial + ${adSetCount} requested)`);
+    console.log(`    ✅ Total Ads: ${totalAds}/${1 + adSetCount}`);
+    console.log(`    ✅ Post ID: ${initialResult.postId} (100% root effect)`);
+    console.log(`    ✅ Method Used: ${usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE')}`);
+
+    return {
+      campaignId: initialResult.campaign.id,
+      campaignName: targetCampaignData.campaignName,
+      adSetsCount: totalAdSets,
+      adSetsRequested: 1 + adSetCount,
+      adsCount: totalAds,
+      adsRequested: 1 + adSetCount,
+      pixelUsed: targetPixelId,
+      duplicationMethod: usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE'),
+      batchStats: batchResult ? {
+        method: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
+        operations: batchResult.operations,
+        apiCallsSaved: batchResult.apiCallsSaved,
+        successRate: batchResult.summary.successRate
+      } : null,
+      failures: {
+        adSets: [],
+        ads: []
+      },
+      status: batchResult ? (batchResult.summary.successRate === 100 ? 'success' : 'partial') : 'success'
     };
   }
 
