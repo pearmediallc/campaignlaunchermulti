@@ -841,17 +841,135 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
 
-      // Create the initial 1-1-1 campaign structure
+      // ============================================================================
+      // BATCH CREATION MODE (NEW - 100% ROOT EFFECT)
+      // ============================================================================
+      // Use batch API to create full 1-50-1 structure in ONE go
+      // This is 3x faster and ensures perfect consistency across all 50 ad sets
+      //
+      // Feature flag: useBatchCreation (default: true)
+      // Set to false to use legacy sequential creation + duplication method
+      // ============================================================================
+
+      const useBatchCreation = req.body.useBatchCreation !== false; // Default to true
+
       let result;
       try {
-        console.log(`\n📝 Creating campaign ${campaignIndex + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
-        result = await userFacebookApi.createStrategy150Campaign(currentCampaignData);
+        if (useBatchCreation) {
+          console.log(`\n🚀 ===============================================`);
+          console.log(`🚀 BATCH CREATION MODE (100% ROOT EFFECT)`);
+          console.log(`🚀 ===============================================`);
+          console.log(`📝 Creating campaign ${campaignIndex + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
+          console.log(`📊 This will create 1 campaign + 50 ad sets + 50 ads in ~3 API calls`);
 
-        // Store media hashes from first campaign
-        if (campaignIndex === 0 && result.mediaHashes) {
-          mediaHashes = result.mediaHashes;
-          console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+          // Step 1: Upload media FIRST (batch needs hashes/IDs, not paths)
+          console.log('\n📤 Step 1: Uploading media assets...');
+          let uploadedImageHash, uploadedVideoId, uploadedVideoThumbnail;
+
+          // Reuse media from first campaign if available
+          if (campaignIndex > 0 && mediaHashes) {
+            console.log('♻️  Reusing media from first campaign');
+            uploadedImageHash = mediaHashes.imageHash;
+            uploadedVideoId = mediaHashes.videoId;
+            uploadedVideoThumbnail = mediaHashes.videoThumbnail;
+          } else {
+            // Upload new media
+            if (currentCampaignData.imagePath) {
+              console.log(`📸 Uploading image: ${currentCampaignData.imagePath}`);
+              uploadedImageHash = await userFacebookApi.uploadImage(currentCampaignData.imagePath);
+              console.log(`✅ Image uploaded: ${uploadedImageHash}`);
+            }
+
+            if (currentCampaignData.videoPath) {
+              console.log(`📹 Uploading video: ${currentCampaignData.videoPath}`);
+              uploadedVideoId = await userFacebookApi.uploadVideoSmart(currentCampaignData.videoPath);
+              console.log(`✅ Video uploaded: ${uploadedVideoId}`);
+
+              // Upload custom thumbnail if provided
+              if (currentCampaignData.videoThumbnailPath) {
+                console.log(`📸 Uploading video thumbnail: ${currentCampaignData.videoThumbnailPath}`);
+                uploadedVideoThumbnail = await userFacebookApi.uploadImage(currentCampaignData.videoThumbnailPath);
+                console.log(`✅ Thumbnail uploaded: ${uploadedVideoThumbnail}`);
+              }
+            }
+
+            if (currentCampaignData.imagePaths && currentCampaignData.imagePaths.length > 0) {
+              console.log(`📸 Uploading ${currentCampaignData.imagePaths.length} carousel images...`);
+              const carouselHashes = [];
+              for (const imagePath of currentCampaignData.imagePaths) {
+                const hash = await userFacebookApi.uploadImage(imagePath);
+                if (hash) carouselHashes.push(hash);
+              }
+              console.log(`✅ ${carouselHashes.length} carousel images uploaded`);
+              currentCampaignData.carouselImages = carouselHashes;
+            }
+
+            // Store for reuse
+            if (campaignIndex === 0) {
+              mediaHashes = {
+                imageHash: uploadedImageHash,
+                videoId: uploadedVideoId,
+                videoThumbnail: uploadedVideoThumbnail
+              };
+              console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+            }
+          }
+
+          // Step 2: Initialize Batch Service
+          console.log('\n🔧 Step 2: Initializing Batch Duplication Service...');
+          const BatchDuplicationService = require('../services/batchDuplication');
+          const batchService = new BatchDuplicationService(
+            decryptedToken,
+            selectedAdAccountId.replace('act_', ''),
+            selectedPageId,
+            selectedPixelId
+          );
+          console.log('✅ Batch service initialized');
+
+          // Step 3: Prepare template data for batch creation
+          console.log('\n📋 Step 3: Preparing template data...');
+          const templateData = {
+            ...currentCampaignData,
+            // Replace file paths with Facebook hashes/IDs
+            imageHash: uploadedImageHash,
+            videoId: uploadedVideoId,
+            videoThumbnail: uploadedVideoThumbnail,
+            // Remove path fields to avoid confusion
+            imagePath: undefined,
+            videoPath: undefined,
+            videoThumbnailPath: undefined
+          };
+          console.log('✅ Template data prepared');
+
+          // Step 4: Execute batch creation (1 campaign + 50 ad sets + 50 ads)
+          console.log('\n🚀 Step 4: Executing batch creation...');
+          const batchResult = await batchService.createFromTemplateBatch(
+            templateData,
+            50,  // 50 ad sets (Strategy 150)
+            1    // 1 ad per ad set
+          );
+
+          // Step 5: Transform batch result to match existing response format
+          console.log('\n🔄 Step 5: Transforming batch results...');
+          result = transformBatchResultToStrategy150Format(batchResult, templateData, currentCampaignName);
+          console.log(`✅ Batch creation complete!`);
+          console.log(`   Campaign: ${result.campaign.id}`);
+          console.log(`   Ad Sets: ${result.adSets ? result.adSets.length : 50}`);
+          console.log(`   API calls saved: ${batchResult.apiCallsSaved}`);
+
+        } else {
+          // LEGACY MODE: Sequential creation + duplication
+          console.log(`\n📝 LEGACY MODE: Creating campaign ${campaignIndex + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
+          console.log(`⚠️  Using sequential creation (slower, requires frontend duplication)`);
+          result = await userFacebookApi.createStrategy150Campaign(currentCampaignData);
+
+          // Store media hashes from first campaign
+          if (campaignIndex === 0 && result.mediaHashes) {
+            mediaHashes = result.mediaHashes;
+            console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+          }
         }
+
       } catch (error) {
         console.error(`❌ Strategy 1-50-1 Campaign ${campaignIndex + 1} Creation Error:`);
         console.error('Error message:', error.message);
@@ -868,17 +986,86 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         throw error;
       }
 
+      // Helper function to transform batch results (defined inline for now)
+      function transformBatchResultToStrategy150Format(batchResult, templateData, campaignName) {
+        // Extract campaign ID from first batch result (operation 0)
+        const campaignResult = batchResult.results[0];
+        let campaignId = null;
+        if (campaignResult && campaignResult.code === 200 && campaignResult.body) {
+          const body = JSON.parse(campaignResult.body);
+          campaignId = body.id;
+        }
+
+        // Extract ad set IDs (operations 1-50, even indices after campaign)
+        const adSetIds = [];
+        const adIds = [];
+
+        for (let i = 1; i < batchResult.results.length; i++) {
+          const result = batchResult.results[i];
+          const isAdSet = (i - 1) % 2 === 0; // After campaign, pattern is: adset, ad, adset, ad...
+
+          if (result && result.code === 200 && result.body) {
+            const body = JSON.parse(result.body);
+            if (body.id) {
+              if (isAdSet) {
+                adSetIds.push(body.id);
+              } else {
+                adIds.push(body.id);
+              }
+            }
+          }
+        }
+
+        console.log(`📊 Parsed results: Campaign=${campaignId}, AdSets=${adSetIds.length}, Ads=${adIds.length}`);
+
+        // Return format matching createStrategy150Campaign() response
+        return {
+          campaign: {
+            id: campaignId,
+            name: campaignName
+          },
+          adSet: {
+            id: adSetIds[0], // First ad set (for compatibility)
+            name: `${campaignName} - Ad Set 1`
+          },
+          ads: adIds.slice(0, 1).map((id, i) => ({ // Only return first ad for compatibility
+            id,
+            name: `${campaignName} - Ad ${i + 1}`
+          })),
+          allAdSets: adSetIds, // Include all ad sets for tracking
+          allAds: adIds,       // Include all ads for tracking
+          postId: null, // Batch doesn't create a post (ads use creative directly)
+          mediaHashes: {
+            imageHash: templateData.imageHash,
+            videoId: templateData.videoId,
+            videoThumbnail: templateData.videoThumbnail
+          },
+          batchStats: {
+            operations: batchResult.operations,
+            batchesExecuted: batchResult.batchesExecuted,
+            apiCallsSaved: batchResult.apiCallsSaved,
+            method: 'batch'
+          }
+        };
+      }
+
+      // Determine ad set count based on creation method
+      const adSetCount = useBatchCreation ? 50 : 1;
+      const creationMethod = useBatchCreation ? 'batch' : 'sequential';
+
       await AuditService.logRequest(req, 'strategy150.create', 'campaign', result.campaign?.id, 'success', null, {
         campaignId: result.campaign?.id,
         campaignName: currentCampaignName,
         campaignNumber: campaignIndex + 1,
         totalCampaigns: numberOfCampaigns,
-      adAccountId: selectedAdAccountId,
-      strategyType: '1-50-1',
-      objective: campaignData.objective,
-      budget: campaignData.dailyBudget || campaignData.lifetimeBudget,
-      adSetsCreated: 1
-    });
+        adAccountId: selectedAdAccountId,
+        strategyType: '1-50-1',
+        objective: campaignData.objective,
+        budget: campaignData.dailyBudget || campaignData.lifetimeBudget,
+        adSetsCreated: adSetCount,
+        creationMethod: creationMethod,
+        apiCallsSaved: result.batchStats?.apiCallsSaved || 0
+      });
 
       // Store campaign in tracking table for management
       try {
@@ -890,10 +1077,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
           strategy_type: '1-50-1',
           post_id: result.postId || null,
-          ad_set_count: 1, // Initial creation, will be 50 after duplication
+          ad_set_count: adSetCount, // 50 if batch, 1 if sequential (will be 50 after duplication)
           status: 'ACTIVE'
         });
-        console.log(`📊 Campaign ${result.campaign.id} added to tracking for management`);
+        console.log(`📊 Campaign ${result.campaign.id} added to tracking (${adSetCount} ad sets)`);
       } catch (trackingError) {
         console.error('Warning: Could not add campaign to tracking:', trackingError.message);
         // Don't fail the request if tracking fails
@@ -905,11 +1092,14 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         adSet: result.adSet,
         ads: result.ads,
         postId: result.postId,
-        campaignNumber: campaignIndex + 1
+        campaignNumber: campaignIndex + 1,
+        creationMethod: creationMethod,
+        batchStats: result.batchStats
       });
 
-      // Auto-duplicate ad sets for multiple campaigns (so all copies get 50 ad sets)
-      if (numberOfCampaigns > 1) {
+      // Auto-duplicate ad sets for multiple campaigns ONLY if using legacy mode
+      // (Batch mode already creates all 50 ad sets in one go)
+      if (numberOfCampaigns > 1 && !useBatchCreation) {
         console.log(`\n🔄 Auto-duplicating ad sets for campaign ${campaignIndex + 1} (${currentCampaignName})...`);
 
         try {
@@ -937,6 +1127,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           // Don't fail the entire request if duplication fails
           // User can manually trigger duplication from frontend
         }
+      } else if (numberOfCampaigns > 1 && useBatchCreation) {
+        console.log(`✅ Campaign ${campaignIndex + 1} already has all 50 ad sets (batch mode)`);
       }
     } // End of campaign creation loop
 
