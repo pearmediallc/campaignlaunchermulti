@@ -824,10 +824,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       }
     }
 
-    // Create the initial 1-1-1 campaign structure
+    // STEP 1: Create the initial 1-1-1 campaign structure
+    console.log(`\n📝 Step 1: Creating initial 1-1-1 structure...`);
     let result;
     try {
       result = await userFacebookApi.createCampaignStructure(campaignData);
+      console.log(`✅ Initial 1-1-1 structure created!`);
+      console.log(`  Campaign: ${result.campaign.id}`);
+      console.log(`  Ad Set: ${result.adSet.id}`);
+      console.log(`  Ad: ${result.ads[0]?.id}`);
+      console.log(`  Post ID: ${result.postId || 'Not captured'}`);
     } catch (error) {
       console.error('❌ Strategy for-all Campaign Creation Error:');
       console.error('Error message:', error.message);
@@ -838,6 +844,101 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       throw error;
     }
 
+    // STEP 2: Batch duplicate additional ad sets if requested
+    const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
+    if (adSetCount > 0 && result.postId) {
+      console.log(`\n📝 Step 2: Duplicating ${adSetCount} additional ad sets...`);
+      console.log(`  ℹ️  Using post ID ${result.postId} for 100% root effect`);
+
+      let batchResult = null;
+      let usedBatchMethod = false;
+
+      try {
+        console.log(`  🚀 Attempting BATCH API method...`);
+
+        const BatchDuplicationService = require('../services/batchDuplication');
+        const batchService = new BatchDuplicationService(
+          decryptedToken,
+          selectedAdAccountId.replace('act_', ''),
+          selectedPageId,
+          selectedPixelId
+        );
+
+        batchResult = await batchService.duplicateAdSetsBatch(
+          result.adSet.id,
+          result.campaign.id,
+          result.postId,
+          adSetCount,
+          campaignData
+        );
+
+        if (batchResult.summary.successRate >= 90) {
+          usedBatchMethod = true;
+          console.log(`  ✅ BATCH API successful!`);
+          console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+          console.log(`    Ads: ${batchResult.ads.length}/${adSetCount}`);
+          console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
+        } else {
+          throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+        }
+
+      } catch (batchError) {
+        console.warn(`  ⚠️  BATCH API failed: ${batchError.message}`);
+        console.log(`  🔄 Falling back to SEQUENTIAL method...`);
+
+        const StrategyForAllDuplication = require('../services/strategyForAllDuplication');
+        const duplicationService = new StrategyForAllDuplication(userFacebookApi);
+
+        const sequentialResults = await duplicationService.duplicateAdSetsSequential(
+          result.adSet.id,
+          result.campaign.id,
+          result.postId,
+          adSetCount,
+          campaignData
+        );
+
+        batchResult = {
+          adSets: sequentialResults.adSets || [],
+          ads: sequentialResults.ads || [],
+          operations: adSetCount * 2,
+          batchesExecuted: adSetCount * 2,
+          apiCallsSaved: 0,
+          summary: {
+            totalExpected: adSetCount,
+            totalSuccess: sequentialResults.adSets?.length || 0,
+            successRate: Math.round(((sequentialResults.adSets?.length || 0) / adSetCount) * 100)
+          }
+        };
+
+        console.log(`  ✅ SEQUENTIAL method completed`);
+        console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+      }
+
+      // Update result with batch info
+      result.allAdSets = [result.adSet.id, ...batchResult.adSets.map(as => as.id)];
+      result.allAds = [result.ads[0].id, ...batchResult.ads.map(ad => ad.id)];
+      result.totalAdSets = result.allAdSets.length;
+      result.totalAds = result.allAds.length;
+      result.duplicationMethod = usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL';
+      result.batchStats = {
+        method: result.duplicationMethod,
+        operations: batchResult.operations,
+        apiCallsSaved: batchResult.apiCallsSaved,
+        successRate: batchResult.summary.successRate
+      };
+
+      console.log(`\n📊 CAMPAIGN TOTALS:`);
+      console.log(`  ✅ Total Ad Sets: ${result.totalAdSets}/${1 + adSetCount} (1 initial + ${batchResult.adSets.length} duplicates)`);
+      console.log(`  ✅ Total Ads: ${result.totalAds}/${1 + adSetCount}`);
+      console.log(`  ✅ Method: ${result.duplicationMethod}`);
+    } else if (adSetCount > 0 && !result.postId) {
+      console.warn(`\n⚠️  Post ID not captured - skipping batch duplication`);
+    } else {
+      console.log(`\n✅ No duplication requested (adSetCount = ${adSetCount})`);
+      result.totalAdSets = 1;
+      result.totalAds = 1;
+    }
+
     await AuditService.logRequest(req, 'strategyForAll.create', 'campaign', result.campaign?.id, 'success', null, {
       campaignId: result.campaign?.id,
       campaignName: campaignData.campaignName,
@@ -845,7 +946,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       strategyType: 'for-all',
       objective: campaignData.objective,
       budget: campaignData.dailyBudget || campaignData.lifetimeBudget,
-      adSetsCreated: 1
+      adSetsCreated: result.totalAdSets || 1
     });
 
     // Store campaign in tracking table for management
@@ -858,10 +959,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         ad_account_id: facebookAuth.selectedAdAccount?.id || selectedAdAccountId,
         strategy_type: 'for-all',
         post_id: result.postId || null,
-        ad_set_count: 1, // Initial creation, will be updated to full count after duplication
+        ad_set_count: result.totalAdSets || 1, // Accurate count including duplication
         status: 'ACTIVE'
       });
-      console.log(`📊 Campaign ${result.campaign.id} added to tracking for management`);
+      console.log(`📊 Campaign ${result.campaign.id} added to tracking with ${result.totalAdSets || 1} ad sets`);
     } catch (trackingError) {
       console.error('Warning: Could not add campaign to tracking:', trackingError.message);
       // Don't fail the request if tracking fails
