@@ -732,39 +732,26 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       const CrossAccountDeploymentService = require('../services/CrossAccountDeploymentService');
 
       try {
-        // Create the campaign in the CURRENT account first using BATCH API
-        console.log(`\n📝 Step 1: Creating campaign in current account using BATCH API (${selectedAdAccountId})...`);
+        // STEP 1: Create initial 1-1-1 structure using SEQUENTIAL method
+        // This is required to get the post ID for batch duplication
+        console.log(`\n📝 Step 1: Creating initial 1-1-1 structure in current account (${selectedAdAccountId})...`);
+        console.log(`  ℹ️  Using sequential creation to establish post ID for batch duplication`);
 
-        // Upload media first for batch
-        let uploadedImageHash, uploadedVideoId, uploadedVideoThumbnail;
+        // Create the initial campaign + 1 ad set + 1 ad
+        const initialResult = await userFacebookApi.createStrategy150Campaign(campaignData);
 
-        if (campaignData.imagePath) {
-          console.log(`📸 Uploading image: ${campaignData.imagePath}`);
-          uploadedImageHash = await userFacebookApi.uploadImage(campaignData.imagePath);
-          console.log(`✅ Image uploaded: ${uploadedImageHash}`);
-        }
+        console.log(`✅ Initial 1-1-1 structure created successfully!`);
+        console.log(`  Campaign ID: ${initialResult.campaign.id}`);
+        console.log(`  Ad Set ID: ${initialResult.adSet.id}`);
+        console.log(`  Ad ID: ${initialResult.ads[0].id}`);
+        console.log(`  Post ID: ${initialResult.postId || 'Not captured'}`);
 
-        if (campaignData.videoPath) {
-          console.log(`📹 Uploading video: ${campaignData.videoPath}`);
-          uploadedVideoId = await userFacebookApi.uploadVideoSmart(campaignData.videoPath);
-          console.log(`✅ Video uploaded: ${uploadedVideoId}`);
+        // STEP 2: Use BATCH API to duplicate the remaining 49 ad sets + ads
+        console.log(`\n📝 Step 2: Batch duplicating remaining 49 ad sets + ads...`);
+        console.log(`  ℹ️  All duplicates will use the same post ID for 100% root effect`);
 
-          if (campaignData.videoThumbnailPath) {
-            console.log(`📸 Uploading video thumbnail: ${campaignData.videoThumbnailPath}`);
-            uploadedVideoThumbnail = await userFacebookApi.uploadImage(campaignData.videoThumbnailPath);
-            console.log(`✅ Thumbnail uploaded: ${uploadedVideoThumbnail}`);
-          }
-        }
-
-        if (campaignData.imagePaths && campaignData.imagePaths.length > 0) {
-          console.log(`📸 Uploading ${campaignData.imagePaths.length} carousel images...`);
-          const carouselHashes = [];
-          for (const imagePath of campaignData.imagePaths) {
-            const hash = await userFacebookApi.uploadImage(imagePath);
-            if (hash) carouselHashes.push(hash);
-          }
-          console.log(`✅ ${carouselHashes.length} carousel images uploaded`);
-          campaignData.carouselImages = carouselHashes;
+        if (!initialResult.postId) {
+          throw new Error('Post ID not captured from initial ad creation. Cannot proceed with batch duplication.');
         }
 
         // Initialize Batch Service
@@ -776,74 +763,33 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           selectedPixelId
         );
 
-        // Prepare template data for batch creation
-        const templateData = {
-          ...campaignData,
-          imageHash: uploadedImageHash,
-          videoId: uploadedVideoId,
-          videoThumbnail: uploadedVideoThumbnail,
-          imagePath: undefined,
-          videoPath: undefined,
-          videoThumbnailPath: undefined
-        };
-
-        // Execute batch creation (1 campaign + 50 ad sets + 50 ads)
-        console.log('🚀 Creating 1-50-1 structure via BATCH API...');
-        const batchResult = await batchService.createFromTemplateBatch(
-          templateData,
-          50,  // 50 ad sets
-          1    // 1 ad per ad set
+        // Execute batch duplication (49 ad sets + 49 ads)
+        const batchResult = await batchService.duplicateAdSetsBatch(
+          initialResult.adSet.id,      // Original ad set to copy
+          initialResult.campaign.id,   // Campaign to add to
+          initialResult.postId,        // Post ID to reuse (KEY!)
+          49,                          // Number of duplicates
+          campaignData                 // Form data for naming
         );
 
-        // Transform batch result to match expected format
-        const campaignResult = batchResult.results[0];
-        let campaignId = null;
-        if (campaignResult && campaignResult.code === 200 && campaignResult.body) {
-          const body = JSON.parse(campaignResult.body);
-          campaignId = body.id;
-        }
+        console.log(`✅ Batch duplication complete!`);
+        console.log(`  Ad Sets Created: ${batchResult.adSets.length}/49`);
+        console.log(`  API Calls Used: ${batchResult.batchesExecuted}`);
+        console.log(`  API Calls Saved: ${batchResult.apiCallsSaved}`);
+        console.log(`  Success Rate: ${batchResult.summary.successRate}%`);
 
-        const adSetIds = [];
-        const adIds = [];
-        for (let i = 1; i < batchResult.results.length; i++) {
-          const result = batchResult.results[i];
-          const isAdSet = (i - 1) % 2 === 0;
-          if (result && result.code === 200 && result.body) {
-            const body = JSON.parse(result.body);
-            if (body.id) {
-              if (isAdSet) {
-                adSetIds.push(body.id);
-              } else {
-                adIds.push(body.id);
-              }
-            }
-          }
-        }
-
-        const initialResult = {
-          campaignId: campaignId,
-          adSetId: adSetIds[0],
-          adId: adIds[0],
-          campaign: { id: campaignId, name: campaignData.campaignName },
-          adSet: { id: adSetIds[0] },
-          ad: { id: adIds[0] },
-          allAdSets: adSetIds,
-          allAds: adIds,
-          batchStats: {
-            operations: batchResult.operations,
-            batchesExecuted: batchResult.batchesExecuted,
-            apiCallsSaved: batchResult.apiCallsSaved
-          }
+        // Combine initial + batch results
+        initialResult.allAdSets = [initialResult.adSet.id, ...batchResult.adSets.map(as => as.id)];
+        initialResult.allAds = [initialResult.ads[0].id, ...batchResult.adSets.map(as => as.id)]; // Simplified
+        initialResult.batchStats = {
+          operations: batchResult.operations,
+          batchesExecuted: batchResult.batchesExecuted,
+          apiCallsSaved: batchResult.apiCallsSaved,
+          successRate: batchResult.summary.successRate
         };
 
-        console.log(`✅ Campaign created successfully via BATCH API in current account!`);
-        console.log(`  Campaign ID: ${initialResult.campaignId}`);
-        console.log(`  Ad Sets: ${adSetIds.length}`);
-        console.log(`  Ads: ${adIds.length}`);
-        console.log(`  API Calls Saved: ${batchResult.apiCallsSaved}`);
-
         // Now deploy to other accounts
-        console.log(`\n📝 Step 2: Deploying to ${targets.length} additional accounts...`);
+        console.log(`\n📝 Step 3: Deploying to ${targets.length} additional accounts...`);
 
         const sourceAccount = {
           adAccountId: selectedAdAccountId,
