@@ -1054,41 +1054,102 @@ class CrossAccountDeploymentService {
       throw new Error('Post ID not captured from initial ad creation. Cannot proceed with batch duplication for target account.');
     }
 
-    // STEP 2: Use batch API to duplicate remaining 49
-    console.log(`  📝 Step 2: Batch duplicating remaining 49 ad sets + ads...`);
+    // STEP 2: Use batch API to duplicate remaining 49 (with sequential fallback)
+    console.log(`  📝 Step 2: Duplicating remaining 49 ad sets + ads...`);
 
-    const BatchDuplicationService = require('./batchDuplication');
-    const batchService = new BatchDuplicationService(
-      facebookApi.accessToken,
-      target.adAccountId.replace('act_', ''),
-      target.pageId,
-      targetPixelId
-    );
+    let batchResult = null;
+    let usedBatchMethod = false;
 
-    const batchResult = await batchService.duplicateAdSetsBatch(
-      initialResult.adSet.id,
-      initialResult.campaign.id,
-      initialResult.postId,
-      49,
-      targetCampaignData
-    );
+    try {
+      console.log(`    🚀 Attempting BATCH API method...`);
 
-    console.log(`    ✅ Batch duplication complete:`);
-    console.log(`      Ad Sets Created: ${batchResult.adSets.length}/49`);
-    console.log(`      API Calls Used: ${batchResult.batchesExecuted}`);
-    console.log(`      API Calls Saved: ${batchResult.apiCallsSaved}`);
-    console.log(`      Success Rate: ${batchResult.summary.successRate}%`);
+      const BatchDuplicationService = require('./batchDuplication');
+      const batchService = new BatchDuplicationService(
+        facebookApi.accessToken,
+        target.adAccountId.replace('act_', ''),
+        target.pageId,
+        targetPixelId
+      );
+
+      batchResult = await batchService.duplicateAdSetsBatch(
+        initialResult.adSet.id,
+        initialResult.campaign.id,
+        initialResult.postId,
+        49,
+        targetCampaignData
+      );
+
+      // Check success rate (at least 90%)
+      if (batchResult.summary.successRate >= 90) {
+        usedBatchMethod = true;
+        console.log(`    ✅ BATCH API successful!`);
+        console.log(`      Ad Sets Created: ${batchResult.adSets.length}/49`);
+        console.log(`      Ads Created: ${batchResult.ads.length}/49`);
+        console.log(`      API Calls Used: ${batchResult.batchesExecuted}`);
+        console.log(`      API Calls Saved: ${batchResult.apiCallsSaved}`);
+        console.log(`      Success Rate: ${batchResult.summary.successRate}%`);
+      } else {
+        throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+      }
+
+    } catch (batchError) {
+      console.warn(`    ⚠️  BATCH API failed: ${batchError.message}`);
+      console.log(`    🔄 Falling back to SEQUENTIAL method...`);
+
+      // FALLBACK: Sequential duplication
+      const Strategy150Duplication = require('./strategy150Duplication');
+      const duplicationService = new Strategy150Duplication(targetApi);
+
+      const sequentialResults = await duplicationService.duplicateAdSetsSequential(
+        initialResult.adSet.id,
+        initialResult.campaign.id,
+        initialResult.postId,
+        49,
+        targetCampaignData
+      );
+
+      batchResult = {
+        adSets: sequentialResults.adSets || [],
+        ads: sequentialResults.ads || [],
+        operations: 49 * 2,
+        batchesExecuted: 49 * 2,
+        apiCallsSaved: 0,
+        summary: {
+          totalExpected: 49,
+          totalSuccess: sequentialResults.adSets?.length || 0,
+          totalAdSetsCreated: sequentialResults.adSets?.length || 0,
+          totalAdsCreated: sequentialResults.ads?.length || 0,
+          successRate: Math.round(((sequentialResults.adSets?.length || 0) / 49) * 100)
+        }
+      };
+
+      console.log(`    ✅ SEQUENTIAL method completed`);
+      console.log(`      Ad Sets Created: ${batchResult.adSets.length}/49`);
+      console.log(`      Ads Created: ${batchResult.ads.length}/49`);
+    }
 
     // Return result in same format as createCampaignFromStructure
+    const totalAdSets = 1 + batchResult.adSets.length; // 1 initial + batch
+    const totalAds = 1 + (batchResult.ads?.length || batchResult.adSets.length); // 1 initial + batch
+
+    console.log(`\n  📊 TARGET ACCOUNT TOTALS:`);
+    console.log(`    ✅ Campaign: ${initialResult.campaign.id}`);
+    console.log(`    ✅ Total Ad Sets: ${totalAdSets}/50 (1 initial + ${batchResult.adSets.length} duplicates)`);
+    console.log(`    ✅ Total Ads: ${totalAds}/50 (1 initial + ${batchResult.ads?.length || batchResult.adSets.length} duplicates)`);
+    console.log(`    ✅ Post ID: ${initialResult.postId} (100% root effect)`);
+    console.log(`    ✅ Method Used: ${usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL'}`);
+
     return {
       campaignId: initialResult.campaign.id,
       campaignName: targetCampaignData.campaignName,
-      adSetsCount: 1 + batchResult.adSets.length,
+      adSetsCount: totalAdSets,
       adSetsRequested: 50,
-      adsCount: 1 + batchResult.adSets.length,
+      adsCount: totalAds,
       adsRequested: 50,
       pixelUsed: targetPixelId,
+      duplicationMethod: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
       batchStats: {
+        method: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
         operations: batchResult.operations,
         batchesExecuted: batchResult.batchesExecuted,
         apiCallsSaved: batchResult.apiCallsSaved,

@@ -1291,12 +1291,18 @@ class BatchDuplicationService {
           id,
           name: `${originalAdSet.name} - Copy ${index + 1}`
         })),
+        ads: newAdIds.map((id, index) => ({
+          id,
+          name: `Ad Copy ${index + 1}`
+        })),
         operations: allOperations.length,
         batchesExecuted: Math.ceil(allOperations.length / this.maxBatchSize),
         apiCallsSaved: allOperations.length - Math.ceil(allOperations.length / this.maxBatchSize),
         summary: {
           totalExpected: count,
           totalSuccess: newAdSetIds.length,
+          totalAdSetsCreated: newAdSetIds.length,
+          totalAdsCreated: newAdIds.length,
           totalFailed: count - newAdSetIds.length,
           successRate: Math.round((newAdSetIds.length / count) * 100),
           hasFailures: newAdSetIds.length < count
