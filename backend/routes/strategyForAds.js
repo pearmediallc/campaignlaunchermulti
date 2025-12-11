@@ -1001,22 +1001,64 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       let finalAdSetCount = 1; // Start with the initial ad set created
 
       if (targetAdSetCount > 1) {
-      console.log(`📋 Duplicating ad sets to reach target count: ${targetAdSetCount}`);
+        console.log(`📋 Duplicating ad sets to reach target count: ${targetAdSetCount}`);
+        console.log(`  ℹ️  Using BATCH API for 100% root effect`);
 
-      try {
-        // FIXED: Initial creation always creates 1 ad set
-        // We need targetAdSetCount - 1 additional ad sets
-        const existingAdSetCount = 1; // Initial creation always creates 1
-        const adSetsToCreate = Math.max(0, targetAdSetCount - existingAdSetCount);
+        try {
+          // Calculate ad sets to create
+          const existingAdSetCount = 1; // Initial creation always creates 1
+          const adSetsToCreate = Math.max(0, targetAdSetCount - existingAdSetCount);
 
-        console.log(`📊 Existing ad sets: ${existingAdSetCount}, Target: ${targetAdSetCount}`);
-        console.log(`🔄 Creating ${adSetsToCreate} additional ad sets...`);
+          console.log(`📊 Existing ad sets: ${existingAdSetCount}, Target: ${targetAdSetCount}`);
+          console.log(`🔄 Creating ${adSetsToCreate} additional ad sets...`);
 
-        // Use Facebook API directly to duplicate the ad sets
-        const duplicatedAdSets = [];
-        const failedCreations = []; // Track failed creations for recovery
+          // TRY BATCH FIRST
+          let duplicatedAdSets = [];
+          let usedBatchMethod = false;
 
-        for (let i = 0; i < adSetsToCreate; i++) {
+          try {
+            console.log(`  🚀 Attempting BATCH API method...`);
+
+            const BatchDuplicationService = require('../services/batchDuplication');
+            const batchService = new BatchDuplicationService(
+              decryptedToken,
+              selectedAdAccountId.replace('act_', ''),
+              selectedPageId,
+              selectedPixelId
+            );
+
+            const batchResult = await batchService.duplicateAdSetsBatch(
+              result.adSet.id,
+              result.campaign.id,
+              result.postId,
+              adSetsToCreate,
+              campaignData
+            );
+
+            if (batchResult.summary.successRate >= 90) {
+              usedBatchMethod = true;
+              duplicatedAdSets = batchResult.adSets.map((as, idx) => ({
+                adSet: { id: as.id, name: as.name },
+                ad: { id: batchResult.ads[idx]?.id }
+              }));
+
+              console.log(`  ✅ BATCH API successful!`);
+              console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetsToCreate}`);
+              console.log(`    Ads: ${batchResult.ads.length}/${adSetsToCreate}`);
+              console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
+              console.log(`    API Calls Saved: ${batchResult.apiCallsSaved}`);
+            } else {
+              throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+            }
+
+          } catch (batchError) {
+            console.warn(`  ⚠️  BATCH API failed: ${batchError.message}`);
+            console.log(`  🔄 Falling back to SEQUENTIAL method...`);
+
+            // SEQUENTIAL FALLBACK
+            const failedCreations = [];
+
+            for (let i = 0; i < adSetsToCreate; i++) {
           try {
             // Prepare ad set parameters based on budget level
             const adSetParams = {
@@ -1351,6 +1393,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           console.log(`✅ Target count already achieved: ${currentCount}/${targetCount}`);
         }
 
+          } // End of sequential fallback catch block
+
+          console.log(`  ✅ SEQUENTIAL method completed`);
+          console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetsToCreate}`);
+        } // End of batch try-catch
+
+        console.log(`\n📊 DUPLICATION TOTALS:`);
+        console.log(`  Method: ${usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL'}`);
+        console.log(`  Total Ad Sets: ${1 + duplicatedAdSets.length}/${targetAdSetCount} (1 initial + ${duplicatedAdSets.length} duplicates)`);
+        console.log(`  100% Root Effect: All ${1 + duplicatedAdSets.length} ads use post ID ${result.postId}`);
         console.log('========================================\n');
 
         if (duplicatedAdSets.length > 0) {
