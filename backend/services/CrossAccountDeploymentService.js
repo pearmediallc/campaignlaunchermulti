@@ -1243,7 +1243,7 @@ class CrossAccountDeploymentService {
 
     // STEP 2: Batch duplicate if adSetCount > 0
     let batchResult = null;
-    let usedBatchMethod = false;
+    let duplicationMethod = 'NONE';
     let totalAdSets = 1;
     let totalAds = 1;
 
@@ -1269,11 +1269,22 @@ class CrossAccountDeploymentService {
           targetCampaignData
         );
 
+        // Check for orphaned ad sets (ad set without corresponding ad)
+        const adSetAdMismatch = batchResult.adSets.length !== batchResult.ads.length;
+        const hasOrphans = batchResult.summary.hasOrphans || false;
+
+        if (adSetAdMismatch || hasOrphans) {
+          console.warn(`    ⚠️  Ad set/ad mismatch: ${batchResult.adSets.length} ad sets, ${batchResult.ads.length} ads`);
+          throw new Error(`Orphaned ad sets detected: ${batchResult.summary.totalOrphaned || 0}`);
+        }
+
         if (batchResult.summary.successRate >= 90) {
-          usedBatchMethod = true;
+          duplicationMethod = 'BATCH_API';
           console.log(`    ✅ BATCH API successful!`);
+          console.log(`      Complete Pairs: ${batchResult.summary.totalSuccess}/${adSetCount}`);
           console.log(`      Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
           console.log(`      Ads: ${batchResult.ads.length}/${adSetCount}`);
+          console.log(`      ✅ 1:1 Ratio Verified`);
           console.log(`      Success Rate: ${batchResult.summary.successRate}%`);
 
           totalAdSets = 1 + batchResult.adSets.length;
@@ -1310,6 +1321,7 @@ class CrossAccountDeploymentService {
           }
         };
 
+        duplicationMethod = 'SEQUENTIAL';
         console.log(`    ✅ SEQUENTIAL method completed`);
         console.log(`      Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
 
@@ -1323,7 +1335,7 @@ class CrossAccountDeploymentService {
     console.log(`    ✅ Total Ad Sets: ${totalAdSets}/${1 + adSetCount} (1 initial + ${adSetCount} requested)`);
     console.log(`    ✅ Total Ads: ${totalAds}/${1 + adSetCount}`);
     console.log(`    ✅ Post ID: ${initialResult.postId} (100% root effect)`);
-    console.log(`    ✅ Method Used: ${usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE')}`);
+    console.log(`    ✅ Method Used: ${duplicationMethod}`);
 
     return {
       campaignId: initialResult.campaign.id,
@@ -1333,9 +1345,9 @@ class CrossAccountDeploymentService {
       adsCount: totalAds,
       adsRequested: 1 + adSetCount,
       pixelUsed: targetPixelId,
-      duplicationMethod: usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE'),
+      duplicationMethod: duplicationMethod,
       batchStats: batchResult ? {
-        method: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
+        method: duplicationMethod,
         operations: batchResult.operations,
         apiCallsSaved: batchResult.apiCallsSaved,
         successRate: batchResult.summary.successRate
@@ -1406,6 +1418,7 @@ class CrossAccountDeploymentService {
     let totalAdSets = 1;
     let totalAds = 1;
     let duplicationMethod = 'NONE';
+    let batchResult = null; // Declare at function scope for return object access
 
     // STEP 2: Batch duplicate if adSetCount > 0
     if (adSetCount > 0) {
@@ -1423,7 +1436,7 @@ class CrossAccountDeploymentService {
           targetPixelId
         );
 
-        const batchResult = await batchService.duplicateAdSetsBatch(
+        batchResult = await batchService.duplicateAdSetsBatch(
           adSetId,
           campaignId,
           initialResult.postId || null,  // May be null for dynamic creatives
@@ -1445,15 +1458,34 @@ class CrossAccountDeploymentService {
           }
         );
 
-        // Check success rate (90% threshold)
+        // Check success rate (90% threshold) AND verify ad sets = ads (no orphans)
+        const adSetAdMismatch = batchResult.adSets.length !== batchResult.ads.length;
+        const hasOrphans = batchResult.summary.hasOrphans || false;
+
+        if (adSetAdMismatch || hasOrphans) {
+          console.warn(`    ⚠️  CRITICAL: Ad set/ad count mismatch detected!`);
+          console.warn(`       Ad Sets Created: ${batchResult.adSets.length}`);
+          console.warn(`       Ads Created: ${batchResult.ads.length}`);
+          console.warn(`       Orphaned Ad Sets: ${batchResult.summary.totalOrphaned || 0}`);
+          console.warn(`       This indicates orphaned ad sets without ads - structure integrity violated`);
+
+          if (batchResult.orphanedAdSets && batchResult.orphanedAdSets.length > 0) {
+            console.warn(`       Orphaned Ad Set IDs: ${batchResult.orphanedAdSets.map(o => o.adSetId).join(', ')}`);
+          }
+
+          throw new Error(`Ad set/ad mismatch: ${batchResult.adSets.length} ad sets but ${batchResult.ads.length} ads (${batchResult.summary.totalOrphaned || 0} orphaned)`);
+        }
+
         if (batchResult.summary.successRate >= 90) {
           totalAdSets = 1 + batchResult.adSets.length;
           totalAds = 1 + batchResult.ads.length;
           duplicationMethod = 'BATCH_API';
 
           console.log(`    ✅ BATCH API successful!`);
+          console.log(`       Complete Pairs: ${batchResult.summary.totalSuccess}/${adSetCount}`);
           console.log(`       Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
           console.log(`       Ads: ${batchResult.ads.length}/${adSetCount}`);
+          console.log(`       ✅ 1:1 Ratio Verified (no orphaned ad sets)`);
           console.log(`       Success Rate: ${batchResult.summary.successRate}%`);
           console.log(`       API Calls Saved: ${batchResult.apiCallsSaved}`);
         } else {
@@ -1545,7 +1577,7 @@ class CrossAccountDeploymentService {
       console.log(`    ✅ Post ID: ${initialResult.postId} (100% root effect)`);
     }
 
-    console.log(`    ✅ Method Used: ${usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE')}`);
+    console.log(`    ✅ Method Used: ${duplicationMethod}`);
 
     return {
       campaignId: initialResult.campaign.id,
@@ -1555,10 +1587,10 @@ class CrossAccountDeploymentService {
       adsCount: totalAds,
       adsRequested: 1 + adSetCount,
       pixelUsed: targetPixelId,
-      duplicationMethod: usedBatchMethod ? 'BATCH_API' : (adSetCount > 0 ? 'SEQUENTIAL' : 'NONE'),
+      duplicationMethod: duplicationMethod,
       isDynamicCreative: campaignData.dynamicCreativeEnabled || false,
       batchStats: batchResult ? {
-        method: usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL',
+        method: duplicationMethod,
         operations: batchResult.operations,
         apiCallsSaved: batchResult.apiCallsSaved,
         successRate: batchResult.summary.successRate
