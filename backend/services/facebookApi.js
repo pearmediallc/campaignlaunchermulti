@@ -3138,6 +3138,14 @@ class FacebookAPI {
       console.log('\n🚀 ALL COMPONENTS ARE LIVE AND ACTIVE IN FACEBOOK!');
       console.log('========================================\n');
 
+      // ✅ CRITICAL DEBUG: Log what we're about to return
+      console.log('\n🔍 DEBUG: createCampaignStructure about to return:');
+      console.log('  campaign.id:', campaign?.id);
+      console.log('  adSet.id:', adSet?.id);
+      console.log('  ad.id:', ad?.id);
+      console.log('  ad.postId:', ad?.postId);
+      console.log('  mediaAssets keys:', Object.keys(mediaAssets || {}));
+
       return {
         campaign,
         adSet,
@@ -3151,6 +3159,7 @@ class FacebookAPI {
     } catch (error) {
       console.error('\n❌ STRATEGY 1-50-1 FAILED');
       console.error('📍 Failed at step:', error.message);
+      console.error('📍 Error stack:', error.stack);
       console.error('========================================\n');
       this.handleError(error);
     }
