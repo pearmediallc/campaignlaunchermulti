@@ -854,6 +854,125 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
         console.log(`✅ Campaign created successfully in current account!`);
         console.log(`  Campaign ID: ${initialResult.campaignId}`);
+        console.log(`  Ad Set ID: ${initialResult.adSetId}`);
+        console.log(`  Ad ID: ${initialResult.adId}`);
+        console.log(`  Post ID: ${initialResult.postId || 'N/A (dynamic creative)'}`);
+
+        // STEP 1.5: Batch duplicate ad sets in MAIN account BEFORE deploying to targets
+        const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
+        let mainAccountTotals = {
+          adSets: 1,
+          ads: 1
+        };
+
+        if (adSetCount > 0) {
+          console.log(`\n📝 Step 1.5: Batch duplicating ${adSetCount} ad sets in main account BEFORE deployment...`);
+
+          try {
+            console.log(`  🚀 Attempting BATCH API method for main account...`);
+
+            const BatchDuplicationService = require('../services/batchDuplication');
+            const batchService = new BatchDuplicationService(
+              decryptedToken,
+              selectedAdAccountId.replace('act_', ''),
+              selectedPageId,
+              selectedPixelId
+            );
+
+            const batchResult = await batchService.duplicateAdSetsBatch(
+              initialResult.adSetId,
+              initialResult.campaignId,
+              initialResult.postId, // May be null for dynamic creatives
+              adSetCount,
+              {
+                ...campaignData,
+                mediaHashes: initialResult.mediaHashes, // Pass media hashes for dynamic creatives
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled, // Pass dynamic creative flag
+                dynamicTextEnabled: campaignData.dynamicTextEnabled, // Pass dynamic text flag
+                primaryTextVariations: campaignData.primaryTextVariations, // Pass text variations
+                headlineVariations: campaignData.headlineVariations, // Pass headline variations
+                primaryText: campaignData.primaryText, // Pass main primary text
+                headline: campaignData.headline, // Pass main headline
+                description: campaignData.description, // Pass description
+                url: campaignData.url, // Pass URL
+                displayLink: campaignData.displayLink, // Pass display link
+                callToAction: campaignData.callToAction // Pass CTA
+              }
+            );
+
+            if (batchResult.summary.successRate >= 90) {
+              console.log(`  ✅ BATCH API successful for main account!`);
+              console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+              console.log(`    Ads: ${batchResult.ads.length}/${adSetCount}`);
+              console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
+              console.log(`    API Calls Saved: ${batchResult.apiCallsSaved}`);
+
+              mainAccountTotals.adSets = 1 + batchResult.adSets.length;
+              mainAccountTotals.ads = 1 + batchResult.ads.length;
+
+              // Update initialResult with totals
+              initialResult.totalAdSets = mainAccountTotals.adSets;
+              initialResult.totalAds = mainAccountTotals.ads;
+              initialResult.duplicationMethod = 'BATCH_API';
+            } else {
+              throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+            }
+
+          } catch (batchError) {
+            console.warn(`  ⚠️  BATCH API failed for main account: ${batchError.message}`);
+            console.log(`  🔄 Falling back to SEQUENTIAL method for main account...`);
+
+            // SEQUENTIAL FALLBACK
+            const DuplicationService = require('../services/duplication');
+            const duplicationService = new DuplicationService(
+              decryptedToken,
+              selectedAdAccountId.replace('act_', ''),
+              selectedPageId,
+              selectedPixelId
+            );
+
+            try {
+              const sequentialResults = await duplicationService.duplicateAdSetsSequential(
+                initialResult.campaignId,
+                initialResult.adSetId,
+                adSetCount,
+                campaignData
+              );
+
+              mainAccountTotals.adSets = 1 + (sequentialResults.adSets?.length || 0);
+              mainAccountTotals.ads = 1 + (sequentialResults.ads?.length || 0);
+
+              initialResult.totalAdSets = mainAccountTotals.adSets;
+              initialResult.totalAds = mainAccountTotals.ads;
+              initialResult.duplicationMethod = 'SEQUENTIAL';
+
+              console.log(`  ✅ SEQUENTIAL method completed for main account`);
+              console.log(`    Ad Sets: ${sequentialResults.adSets?.length || 0}/${adSetCount}`);
+              console.log(`    Ads: ${sequentialResults.ads?.length || 0}/${adSetCount}`);
+
+            } catch (sequentialError) {
+              console.error(`  ❌ SEQUENTIAL fallback also failed: ${sequentialError.message}`);
+              console.log(`  ⚠️  Continuing with 1-1-1 structure only in main account`);
+
+              initialResult.totalAdSets = 1;
+              initialResult.totalAds = 1;
+              initialResult.duplicationMethod = 'NONE';
+            }
+          }
+
+          console.log(`\n📊 MAIN ACCOUNT TOTALS:`);
+          console.log(`  Method: ${initialResult.duplicationMethod || 'NONE'}`);
+          console.log(`  Total Ad Sets: ${mainAccountTotals.adSets}/${1 + adSetCount}`);
+          console.log(`  Total Ads: ${mainAccountTotals.ads}/${1 + adSetCount}`);
+          if (campaignData.dynamicCreativeEnabled || campaignData.dynamicTextEnabled) {
+            console.log(`  100% Root Effect: All ad sets use identical targeting`);
+            console.log(`  Creative Type: ${campaignData.dynamicCreativeEnabled ? 'Dynamic Creative (asset_feed_spec)' : 'Dynamic Text'}`);
+          } else if (initialResult.postId) {
+            console.log(`  100% Root Effect: All ${mainAccountTotals.ads} ads use post ID ${initialResult.postId}`);
+          }
+        } else {
+          console.log(`\n📝 Step 1.5: No duplication requested (adSetCount = 0), using 1-1-1 structure only`);
+        }
 
         // Now deploy to other accounts
         console.log(`\n📝 Step 2: Deploying to ${targets.length} additional accounts...`);
@@ -1421,11 +1540,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           console.log(`✅ Target count already achieved: ${currentCount}/${targetCount}`);
         }
 
-          } // End of sequential fallback catch block
+        console.log(`  ✅ SEQUENTIAL method completed`);
+        console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetsToCreate}`);
 
-          console.log(`  ✅ SEQUENTIAL method completed`);
-          console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetsToCreate}`);
-        } // End of batch try-catch
+        } // End of batch catch (sequential fallback)
 
         console.log(`\n📊 DUPLICATION TOTALS:`);
         console.log(`  Method: ${usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL'}`);
