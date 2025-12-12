@@ -688,19 +688,28 @@ class CrossAccountDeploymentService {
       pixelId: sourceAccount.pixelId
     });
 
-    // Get full campaign details (only fetch first ad set and ad as template)
-    const campaignStructure = await this.readCampaignStructure(sourceFacebookApi, sourceCampaignId, strategyInfo ? true : false);
-    console.log(`✅ Campaign structure read:`, {
-      name: campaignStructure.campaign.name,
-      adSets: campaignStructure.adSets.length,
-      ads: campaignStructure.ads.length,
-      objective: campaignStructure.campaign.objective,
-      isTemplate: !!strategyInfo
-    });
+    // Get full campaign details (only for strategies that need to clone from source)
+    // Skip this for fresh-campaign strategies (Strategy for Ads, Strategy for All) where sourceCampaignId is null
+    let campaignStructure = null;
 
-    // If strategy info is provided, we'll replicate the structure
-    if (strategyInfo) {
-      console.log(`  📊 Will replicate structure based on strategy: 1-${strategyInfo.numberOfAdSets}-1`);
+    if (sourceCampaignId) {
+      console.log(`\n📖 Step 1: Reading source campaign structure...`);
+      campaignStructure = await this.readCampaignStructure(sourceFacebookApi, sourceCampaignId, strategyInfo ? true : false);
+      console.log(`✅ Campaign structure read:`, {
+        name: campaignStructure.campaign.name,
+        adSets: campaignStructure.adSets.length,
+        ads: campaignStructure.ads.length,
+        objective: campaignStructure.campaign.objective,
+        isTemplate: !!strategyInfo
+      });
+
+      // If strategy info is provided, we'll replicate the structure
+      if (strategyInfo) {
+        console.log(`  📊 Will replicate structure based on strategy: 1-${strategyInfo.numberOfAdSets}-1`);
+      }
+    } else {
+      console.log(`\n📖 Step 1: Skipping source campaign read (fresh-campaign strategy)...`);
+      console.log(`  ℹ️  Strategy will create fresh campaigns in each target account`);
     }
 
     // Step 2: Create FacebookAPI instance for TARGET account
@@ -734,7 +743,7 @@ class CrossAccountDeploymentService {
     console.log(`\n🚀 Step 3: Creating campaign in target account...`);
 
     // Generate deployment ID for media caching
-    const deploymentId = `deploy_${sourceCampaignId}_${Date.now()}`;
+    const deploymentId = `deploy_${sourceCampaignId || 'fresh'}_${Date.now()}`;
 
     // Detect strategy type and use batch method when possible
     const isStrategy150 = strategyInfo && strategyInfo.numberOfAdSets === 50 && strategyInfo.campaignData;
