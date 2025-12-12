@@ -1352,7 +1352,7 @@ class CrossAccountDeploymentService {
    * Create Strategy For Ads campaign in target account using BATCH pattern
    * Supports dynamic ad set count (0-50), dynamic creatives, and ad variations
    */
-  static async createStrategyForAdsCampaignBatch(facebookApi, campaignData, target, targetPixelId = null, adSetCount = 0, mediaHashes = null) {
+  async createStrategyForAdsCampaignBatch(facebookApi, campaignData, target, targetPixelId = null, adSetCount = 0, mediaHashes = null) {
     console.log(`\n  🎯 ========================================`);
     console.log(`  🎯 STRATEGY FOR ADS - BATCH CREATION`);
     console.log(`  🎯 Target: ${target.adAccountId} / ${target.pageId}`);
