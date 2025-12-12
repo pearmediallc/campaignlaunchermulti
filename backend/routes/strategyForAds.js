@@ -840,222 +840,59 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     if (req.body._multiAccountDeployment) {
       const { targets, mode } = req.body._multiAccountDeployment;
+
       console.log(`\n🚀 MULTI-ACCOUNT DEPLOYMENT REQUESTED`);
+      console.log(`  Strategy: Strategy for Ads`);
       console.log(`  Targets: ${targets?.length || 0}`);
       console.log(`  Mode: ${mode}`);
-      console.log(`  Target details:`, JSON.stringify(targets, null, 2));
 
       const CrossAccountDeploymentService = require('../services/CrossAccountDeploymentService');
 
       try {
-        // Create the campaign in the CURRENT account first
-        console.log(`\n📝 Step 1: Creating campaign in current account (${selectedAdAccountId})...`);
-        const initialResult = await userFacebookApi.createCampaignStructure(campaignData);
-
-        console.log(`✅ Campaign created successfully in current account!`);
-        console.log(`  🔍 DEBUG initialResult structure:`, JSON.stringify(initialResult, null, 2));
-        console.log(`  Campaign ID: ${initialResult.campaignId || initialResult.campaign?.id}`);
-        console.log(`  Ad Set ID: ${initialResult.adSetId || initialResult.adSet?.id}`);
-        console.log(`  Ad ID: ${initialResult.adId || initialResult.ads?.[0]?.id}`);
-        console.log(`  Post ID: ${initialResult.postId || 'N/A (dynamic creative)'}`);
-
-        // FIX: Ensure IDs are properly extracted from nested objects if needed
-        if (!initialResult.campaignId && initialResult.campaign?.id) {
-          initialResult.campaignId = initialResult.campaign.id;
-        }
-        if (!initialResult.adSetId && initialResult.adSet?.id) {
-          initialResult.adSetId = initialResult.adSet.id;
-        }
-        if (!initialResult.adId && initialResult.ads?.[0]?.id) {
-          initialResult.adId = initialResult.ads[0].id;
-        }
-
-        // STEP 1.5: Batch duplicate ad sets in MAIN account BEFORE deploying to targets
-        const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
-        let mainAccountTotals = {
-          adSets: 1,
-          ads: 1
-        };
-
-        if (adSetCount > 0) {
-          console.log(`\n📝 Step 1.5: Batch duplicating ${adSetCount} ad sets in main account BEFORE deployment...`);
-
-          try {
-            console.log(`  🚀 Attempting BATCH API method for main account...`);
-
-            const BatchDuplicationService = require('../services/batchDuplication');
-            const batchService = new BatchDuplicationService(
-              decryptedToken,
-              selectedAdAccountId.replace('act_', ''),
-              selectedPageId,
-              selectedPixelId
-            );
-
-            const batchResult = await batchService.duplicateAdSetsBatch(
-              initialResult.adSetId,
-              initialResult.campaignId,
-              initialResult.postId, // May be null for dynamic creatives
-              adSetCount,
-              {
-                ...campaignData,
-                mediaHashes: initialResult.mediaHashes, // Pass media hashes for dynamic creatives
-                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled, // Pass dynamic creative flag
-                dynamicTextEnabled: campaignData.dynamicTextEnabled, // Pass dynamic text flag
-                primaryTextVariations: campaignData.primaryTextVariations, // Pass text variations
-                headlineVariations: campaignData.headlineVariations, // Pass headline variations
-                primaryText: campaignData.primaryText, // Pass main primary text
-                headline: campaignData.headline, // Pass main headline
-                description: campaignData.description, // Pass description
-                url: campaignData.url, // Pass URL
-                displayLink: campaignData.displayLink, // Pass display link
-                callToAction: campaignData.callToAction // Pass CTA
-              }
-            );
-
-            if (batchResult.summary.successRate >= 90) {
-              console.log(`  ✅ BATCH API successful for main account!`);
-              console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
-              console.log(`    Ads: ${batchResult.ads.length}/${adSetCount}`);
-              console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
-              console.log(`    API Calls Saved: ${batchResult.apiCallsSaved}`);
-
-              mainAccountTotals.adSets = 1 + batchResult.adSets.length;
-              mainAccountTotals.ads = 1 + batchResult.ads.length;
-
-              // Update initialResult with totals
-              initialResult.totalAdSets = mainAccountTotals.adSets;
-              initialResult.totalAds = mainAccountTotals.ads;
-              initialResult.duplicationMethod = 'BATCH_API';
-            } else {
-              throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
-            }
-
-          } catch (batchError) {
-            console.warn(`  ⚠️  BATCH API failed for main account: ${batchError.message}`);
-            console.log(`  🔄 Falling back to SEQUENTIAL method for main account...`);
-
-            // SEQUENTIAL FALLBACK - Use same approach as single-account flow
-            try {
-              const duplicatedAdSets = [];
-              const failedCreations = [];
-
-              for (let i = 0; i < adSetCount; i++) {
-                try {
-                  // Prepare ad set parameters based on budget level
-                  const adSetParams = {
-                    ...campaignData,
-                    campaignId: initialResult.campaignId,
-                    adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
-                  };
-
-                  // Budget handling (CBO vs ABO)
-                  if (campaignData.budgetLevel === 'adset') {
-                    adSetParams.dailyBudget = campaignData.dailyBudget;
-                    adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
-                  } else {
-                    delete adSetParams.dailyBudget;
-                    delete adSetParams.lifetimeBudget;
-                    delete adSetParams.adSetBudget;
-                  }
-
-                  // Create the ad set
-                  const newAdSet = await userFacebookApi.createAdSet(adSetParams);
-
-                  if (newAdSet) {
-                    // Create ad for this ad set
-                    const adParams = {
-                      ...campaignData,
-                      adsetId: newAdSet.id,
-                      adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
-                      postId: initialResult.postId,
-                      displayLink: campaignData.displayLink,
-                      url: campaignData.url,
-                      headline: campaignData.headline,
-                      primaryText: campaignData.primaryText,
-                      description: campaignData.description,
-                      callToAction: campaignData.callToAction,
-                      mediaAssets: initialResult.mediaHashes,
-                      dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
-                      dynamicTextEnabled: campaignData.dynamicTextEnabled,
-                      primaryTextVariations: campaignData.primaryTextVariations,
-                      headlineVariations: campaignData.headlineVariations
-                    };
-
-                    const newAd = await userFacebookApi.createAd(adParams);
-                    duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
-                    console.log(`  ✅ Created ad set ${i + 2} of ${adSetCount + 1}`);
-                  }
-                } catch (adSetError) {
-                  console.error(`  ❌ Failed to create ad set ${i + 2}:`, adSetError.message);
-                  failedCreations.push({ index: i + 2, error: adSetError });
-                }
-              }
-
-              mainAccountTotals.adSets = 1 + duplicatedAdSets.length;
-              mainAccountTotals.ads = 1 + duplicatedAdSets.length;
-
-              initialResult.totalAdSets = mainAccountTotals.adSets;
-              initialResult.totalAds = mainAccountTotals.ads;
-              initialResult.duplicationMethod = 'SEQUENTIAL';
-
-              console.log(`  ✅ SEQUENTIAL method completed for main account`);
-              console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetCount}`);
-              console.log(`    Ads: ${duplicatedAdSets.length}/${adSetCount}`);
-
-            } catch (sequentialError) {
-              console.error(`  ❌ SEQUENTIAL fallback also failed: ${sequentialError.message}`);
-              console.log(`  ⚠️  Continuing with 1-1-1 structure only in main account`);
-
-              initialResult.totalAdSets = 1;
-              initialResult.totalAds = 1;
-              initialResult.duplicationMethod = 'NONE';
-            }
-          }
-
-          console.log(`\n📊 MAIN ACCOUNT TOTALS:`);
-          console.log(`  Method: ${initialResult.duplicationMethod || 'NONE'}`);
-          console.log(`  Total Ad Sets: ${mainAccountTotals.adSets}/${1 + adSetCount}`);
-          console.log(`  Total Ads: ${mainAccountTotals.ads}/${1 + adSetCount}`);
-          if (campaignData.dynamicCreativeEnabled || campaignData.dynamicTextEnabled) {
-            console.log(`  100% Root Effect: All ad sets use identical targeting`);
-            console.log(`  Creative Type: ${campaignData.dynamicCreativeEnabled ? 'Dynamic Creative (asset_feed_spec)' : 'Dynamic Text'}`);
-          } else if (initialResult.postId) {
-            console.log(`  100% Root Effect: All ${mainAccountTotals.ads} ads use post ID ${initialResult.postId}`);
-          }
-        } else {
-          console.log(`\n📝 Step 1.5: No duplication requested (adSetCount = 0), using 1-1-1 structure only`);
-        }
-
-        // Now deploy to other accounts
-        console.log(`\n📝 Step 2: Deploying to ${targets.length} additional accounts...`);
-
         const sourceAccount = {
           adAccountId: selectedAdAccountId,
           pageId: selectedPageId,
           pixelId: selectedPixelId
         };
 
-        // Pass strategy info for batch deployment
+        const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
+
+        // Pass complete strategy info to deployment service
         const strategyInfo = {
-          strategyType: 'for-ads', // Identify as Strategy For Ads
-          adSetCount: campaignData.duplicationSettings?.adSetCount || 0,
+          strategyType: 'for-ads',  // ← CRITICAL: Routes to createStrategyForAdsCampaignBatch
+          adSetCount: adSetCount,
+          numberOfAdSets: adSetCount,
           campaignData: {
             ...campaignData,
-            // Ensure all dynamic features are passed
+            // Pass all dynamic creative settings
+            dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
             dynamicTextEnabled: campaignData.dynamicTextEnabled,
             primaryTextVariations: campaignData.primaryTextVariations,
-            headlineVariations: campaignData.headlineVariations
-          }, // Pass full campaign data for batch recreation
-          mediaHashes: initialResult.mediaHashes // Pass media hashes for dynamic creatives
+            headlineVariations: campaignData.headlineVariations,
+            dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
+            primaryText: campaignData.primaryText,
+            headline: campaignData.headline,
+            description: campaignData.description,
+            url: campaignData.url,
+            displayLink: campaignData.displayLink,
+            callToAction: campaignData.callToAction
+          }
         };
 
+        console.log(`\n📋 Deployment Configuration:`);
+        console.log(`  Ad Sets per account: ${adSetCount + 1} (1 initial + ${adSetCount} duplicates)`);
+        console.log(`  Total accounts: ${targets.length}`);
+        console.log(`  Total campaigns to create: ${targets.length}`);
+        console.log(`  Total ad sets to create: ${(adSetCount + 1) * targets.length}`);
+
+        // Use existing CrossAccountDeploymentService (same as Strategy for All)
         const deploymentResult = await CrossAccountDeploymentService.deployToMultipleTargets(
           req.user.id,
-          initialResult.campaignId,
+          null,  // No source campaign ID (create fresh in each account)
           sourceAccount,
           targets,
           mode,
-          strategyInfo // Pass strategy info for batch deployment
+          strategyInfo
         );
 
         console.log(`\n✅ MULTI-ACCOUNT DEPLOYMENT COMPLETED!`);
@@ -1068,32 +905,36 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           userId: req.user.id,
           action: 'campaign_multi_account_deployment',
           resourceType: 'campaign',
-          resourceId: initialResult.campaignId,
+          resourceId: null,
           details: {
+            strategyType: 'for-ads',
             targetCount: targets.length,
             successful: deploymentResult.successful,
             failed: deploymentResult.failed,
-            mode: mode
+            mode: mode,
+            adSetsPerAccount: adSetCount + 1
           }
         });
 
         return res.json({
           success: true,
-          message: `Multi-account deployment completed! Campaign created in ${deploymentResult.successful + 1} accounts (including current).`,
+          message: `Multi-account deployment completed! Campaigns created in ${deploymentResult.successful} accounts.`,
           data: {
-            ...initialResult,
             multiAccountDeployment: {
               deploymentId: deploymentResult.deploymentId,
               totalTargets: deploymentResult.totalTargets,
               successful: deploymentResult.successful,
               failed: deploymentResult.failed,
-              results: deploymentResult.results
+              results: deploymentResult.results,
+              strategyType: 'for-ads',
+              adSetsPerAccount: adSetCount + 1
             }
           }
         });
 
       } catch (deploymentError) {
         console.error('❌ Multi-account deployment failed:', deploymentError);
+        console.error('Error stack:', deploymentError.stack);
         return res.status(500).json({
           success: false,
           error: 'Multi-account deployment failed',
