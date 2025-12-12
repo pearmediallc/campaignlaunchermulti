@@ -746,18 +746,23 @@ class CrossAccountDeploymentService {
     const deploymentId = `deploy_${sourceCampaignId || 'fresh'}_${Date.now()}`;
 
     // Detect strategy type and use batch method when possible
-    const isStrategy150 = strategyInfo && strategyInfo.numberOfAdSets === 50 && strategyInfo.campaignData;
-    const isStrategyForAll = strategyInfo && strategyInfo.campaignData && strategyInfo.adSetCount !== undefined && strategyInfo.strategyType !== 'for-ads';
+    // IMPORTANT: Check strategyType FIRST before checking numberOfAdSets
+    // Otherwise Strategy for Ads (with 50 ad sets) will match Strategy 150
     const isStrategyForAds = strategyInfo && strategyInfo.strategyType === 'for-ads' && strategyInfo.campaignData;
+    const isStrategyForAll = strategyInfo && strategyInfo.campaignData && strategyInfo.adSetCount !== undefined && strategyInfo.strategyType !== 'for-ads';
+    const isStrategy150 = strategyInfo && strategyInfo.numberOfAdSets === 50 && strategyInfo.campaignData && !strategyInfo.strategyType;
     let newCampaign;
 
-    if (isStrategy150) {
-      console.log(`  🚀 Using BATCH method for Strategy 150 deployment...`);
-      newCampaign = await this.createStrategy150CampaignBatch(
+    if (isStrategyForAds) {
+      console.log(`  🚀 Using BATCH method for Strategy For Ads deployment...`);
+      const adSetCount = strategyInfo.adSetCount || 0;
+      newCampaign = await this.createStrategyForAdsCampaignBatch(
         targetFacebookApi,
         strategyInfo.campaignData,
         target,
-        effectivePixelId
+        effectivePixelId,
+        adSetCount,
+        strategyInfo.mediaHashes
       );
     } else if (isStrategyForAll) {
       console.log(`  🚀 Using BATCH method for Strategy For All deployment...`);
@@ -769,16 +774,13 @@ class CrossAccountDeploymentService {
         effectivePixelId,
         adSetCount
       );
-    } else if (isStrategyForAds) {
-      console.log(`  🚀 Using BATCH method for Strategy For Ads deployment...`);
-      const adSetCount = strategyInfo.adSetCount || 0;
-      newCampaign = await this.createStrategyForAdsCampaignBatch(
+    } else if (isStrategy150) {
+      console.log(`  🚀 Using BATCH method for Strategy 150 deployment...`);
+      newCampaign = await this.createStrategy150CampaignBatch(
         targetFacebookApi,
         strategyInfo.campaignData,
         target,
-        effectivePixelId,
-        adSetCount,
-        strategyInfo.mediaHashes
+        effectivePixelId
       );
     } else {
       console.log(`  📋 Using STRUCTURE CLONE method for deployment...`);
