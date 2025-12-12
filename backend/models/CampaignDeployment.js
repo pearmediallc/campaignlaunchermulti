@@ -18,8 +18,8 @@ module.exports = (sequelize, DataTypes) => {
     },
     sourceCampaignId: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-      comment: 'Original Facebook campaign ID that was deployed'
+      allowNull: true,
+      comment: 'Original Facebook campaign ID that was deployed (null for fresh-campaign strategies)'
     },
     sourceAdAccountId: {
       type: DataTypes.STRING(255),

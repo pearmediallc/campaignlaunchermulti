@@ -26,8 +26,8 @@ module.exports = (sequelize, DataTypes) => {
     },
     sourceCampaignId: {
       type: DataTypes.STRING(255),
-      allowNull: false,
-      comment: 'Original campaign that was cloned'
+      allowNull: true,
+      comment: 'Original campaign that was cloned (null for fresh-campaign strategies)'
     },
     targetCampaignId: {
       type: DataTypes.STRING(255),
