@@ -853,10 +853,22 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         const initialResult = await userFacebookApi.createCampaignStructure(campaignData);
 
         console.log(`✅ Campaign created successfully in current account!`);
-        console.log(`  Campaign ID: ${initialResult.campaignId}`);
-        console.log(`  Ad Set ID: ${initialResult.adSetId}`);
-        console.log(`  Ad ID: ${initialResult.adId}`);
+        console.log(`  🔍 DEBUG initialResult structure:`, JSON.stringify(initialResult, null, 2));
+        console.log(`  Campaign ID: ${initialResult.campaignId || initialResult.campaign?.id}`);
+        console.log(`  Ad Set ID: ${initialResult.adSetId || initialResult.adSet?.id}`);
+        console.log(`  Ad ID: ${initialResult.adId || initialResult.ads?.[0]?.id}`);
         console.log(`  Post ID: ${initialResult.postId || 'N/A (dynamic creative)'}`);
+
+        // FIX: Ensure IDs are properly extracted from nested objects if needed
+        if (!initialResult.campaignId && initialResult.campaign?.id) {
+          initialResult.campaignId = initialResult.campaign.id;
+        }
+        if (!initialResult.adSetId && initialResult.adSet?.id) {
+          initialResult.adSetId = initialResult.adSet.id;
+        }
+        if (!initialResult.adId && initialResult.ads?.[0]?.id) {
+          initialResult.adId = initialResult.ads[0].id;
+        }
 
         // STEP 1.5: Batch duplicate ad sets in MAIN account BEFORE deploying to targets
         const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
@@ -922,33 +934,73 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             console.warn(`  ⚠️  BATCH API failed for main account: ${batchError.message}`);
             console.log(`  🔄 Falling back to SEQUENTIAL method for main account...`);
 
-            // SEQUENTIAL FALLBACK
-            const DuplicationService = require('../services/duplication');
-            const duplicationService = new DuplicationService(
-              decryptedToken,
-              selectedAdAccountId.replace('act_', ''),
-              selectedPageId,
-              selectedPixelId
-            );
-
+            // SEQUENTIAL FALLBACK - Use same approach as single-account flow
             try {
-              const sequentialResults = await duplicationService.duplicateAdSetsSequential(
-                initialResult.campaignId,
-                initialResult.adSetId,
-                adSetCount,
-                campaignData
-              );
+              const duplicatedAdSets = [];
+              const failedCreations = [];
 
-              mainAccountTotals.adSets = 1 + (sequentialResults.adSets?.length || 0);
-              mainAccountTotals.ads = 1 + (sequentialResults.ads?.length || 0);
+              for (let i = 0; i < adSetCount; i++) {
+                try {
+                  // Prepare ad set parameters based on budget level
+                  const adSetParams = {
+                    ...campaignData,
+                    campaignId: initialResult.campaignId,
+                    adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+                  };
+
+                  // Budget handling (CBO vs ABO)
+                  if (campaignData.budgetLevel === 'adset') {
+                    adSetParams.dailyBudget = campaignData.dailyBudget;
+                    adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
+                  } else {
+                    delete adSetParams.dailyBudget;
+                    delete adSetParams.lifetimeBudget;
+                    delete adSetParams.adSetBudget;
+                  }
+
+                  // Create the ad set
+                  const newAdSet = await userFacebookApi.createAdSet(adSetParams);
+
+                  if (newAdSet) {
+                    // Create ad for this ad set
+                    const adParams = {
+                      ...campaignData,
+                      adsetId: newAdSet.id,
+                      adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
+                      postId: initialResult.postId,
+                      displayLink: campaignData.displayLink,
+                      url: campaignData.url,
+                      headline: campaignData.headline,
+                      primaryText: campaignData.primaryText,
+                      description: campaignData.description,
+                      callToAction: campaignData.callToAction,
+                      mediaAssets: initialResult.mediaHashes,
+                      dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                      dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                      primaryTextVariations: campaignData.primaryTextVariations,
+                      headlineVariations: campaignData.headlineVariations
+                    };
+
+                    const newAd = await userFacebookApi.createAd(adParams);
+                    duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+                    console.log(`  ✅ Created ad set ${i + 2} of ${adSetCount + 1}`);
+                  }
+                } catch (adSetError) {
+                  console.error(`  ❌ Failed to create ad set ${i + 2}:`, adSetError.message);
+                  failedCreations.push({ index: i + 2, error: adSetError });
+                }
+              }
+
+              mainAccountTotals.adSets = 1 + duplicatedAdSets.length;
+              mainAccountTotals.ads = 1 + duplicatedAdSets.length;
 
               initialResult.totalAdSets = mainAccountTotals.adSets;
               initialResult.totalAds = mainAccountTotals.ads;
               initialResult.duplicationMethod = 'SEQUENTIAL';
 
               console.log(`  ✅ SEQUENTIAL method completed for main account`);
-              console.log(`    Ad Sets: ${sequentialResults.adSets?.length || 0}/${adSetCount}`);
-              console.log(`    Ads: ${sequentialResults.ads?.length || 0}/${adSetCount}`);
+              console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetCount}`);
+              console.log(`    Ads: ${duplicatedAdSets.length}/${adSetCount}`);
 
             } catch (sequentialError) {
               console.error(`  ❌ SEQUENTIAL fallback also failed: ${sequentialError.message}`);
