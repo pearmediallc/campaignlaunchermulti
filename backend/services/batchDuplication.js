@@ -11,9 +11,10 @@ class BatchDuplicationService {
     this.pageId = pageId; // ADDED: Store pageId to match 1-50-1 pattern
     this.pixelId = pixelId; // ADDED: Store pixelId for tracking
     this.baseURL = 'https://graph.facebook.com/v18.0';
-    // REDUCED: Using 20 operations per batch to avoid Facebook timeouts
-    // Facebook allows 50, but complex operations (ad sets + ads) can timeout
-    this.maxBatchSize = 20; // Reduced from 50 to avoid timeout issues
+    // REDUCED: Using 10 operations per batch to avoid Facebook timeouts
+    // For dynamic creatives with media, payloads are large and can cause socket hang up
+    // 10 operations = 5 ad sets + 5 ads per batch (safer for complex creatives)
+    this.maxBatchSize = 10; // Reduced from 20 to avoid socket hang up with dynamic creatives
 
     // Facebook region IDs for US states (same as facebookApi.js)
     this.stateToRegionId = {
@@ -338,9 +339,10 @@ class BatchDuplicationService {
         throw error;
       }
 
-      // Small delay between batches
+      // Delay between batches to prevent socket hang up
       if (i < batches.length - 1) {
-        await this.delay(500);
+        console.log(`  ⏳ Waiting 2 seconds before next batch...`);
+        await this.delay(2000); // Increased from 500ms to prevent socket hang up
       }
     }
 
