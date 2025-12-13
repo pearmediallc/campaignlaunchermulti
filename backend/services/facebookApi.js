@@ -1499,13 +1499,18 @@ class FacebookAPI {
         name: adName,
         adset_id: adData.adsetId,
         creative: JSON.stringify(creative),
-        tracking_specs: JSON.stringify([{
-          'action.type': ['offsite_conversion'],
-          'fb_pixel': [this.pixelId]
-        }]),
         status: 'ACTIVE',
         access_token: this.accessToken
       };
+
+      // Only add tracking_specs if pixel is available
+      // Tracking is set at ad set level via promoted_object, so this is redundant
+      if (this.pixelId) {
+        params.tracking_specs = JSON.stringify([{
+          'action.type': ['offsite_conversion'],
+          'fb_pixel': [this.pixelId]
+        }]);
+      }
 
       console.log('📤 Posting ad to Facebook API...');
       console.log('  Ad Set ID:', adData.adsetId);

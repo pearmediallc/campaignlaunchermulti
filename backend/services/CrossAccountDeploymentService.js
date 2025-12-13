@@ -669,13 +669,19 @@ class CrossAccountDeploymentService {
       effectivePixelId = sourceAccount.pixelId;
       console.log(`  ℹ️  Same account deployment - using source pixel: ${effectivePixelId || 'none'}`);
     } else {
-      // Different account: use target pixel (must be provided)
-      effectivePixelId = target.pixelId;
-      console.log(`  🔄 Cross-account deployment - using target pixel: ${effectivePixelId || 'none'}`);
+      // Different account: use target pixel if provided, otherwise null
+      // NOTE: Pixel is set at ad set level via promoted_object, not required at ad level
+      effectivePixelId = target.pixelId || null;
+
+      if (effectivePixelId) {
+        console.log(`  🔄 Cross-account deployment - using target pixel: ${effectivePixelId}`);
+      } else {
+        console.log(`  🔄 Cross-account deployment - no pixel specified (will rely on ad set promoted_object)`);
+      }
 
       if (!effectivePixelId && sourceAccount.pixelId) {
         console.warn(`  ⚠️  WARNING: Source has pixel ${sourceAccount.pixelId} but target has none!`);
-        console.warn(`  ⚠️  This may cause deployment to fail if pixel is required.`);
+        console.warn(`  ℹ️  Ad set will use promoted_object for tracking (pixel set at ad set level)`);
       }
     }
 
