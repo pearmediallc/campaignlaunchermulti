@@ -1328,36 +1328,92 @@ class CrossAccountDeploymentService {
         console.warn(`    ⚠️  BATCH API failed: ${batchError.message}`);
         console.log(`    🔄 Falling back to SEQUENTIAL method...`);
 
-        const StrategyForAllDuplication = require('./strategyForAllDuplication');
-        const duplicationService = new StrategyForAllDuplication(targetApi);
+        // SEQUENTIAL FALLBACK - Use inline logic with orphan cleanup
+        try {
+          const duplicatedAdSets = [];
 
-        const sequentialResults = await duplicationService.duplicateAdSetsSequential(
-          initialResult.adSet.id,
-          initialResult.campaign.id,
-          initialResult.postId,
-          adSetCount,
-          targetCampaignData
-        );
+          for (let i = 0; i < adSetCount; i++) {
+            let createdAdSet = null;
 
-        batchResult = {
-          adSets: sequentialResults.adSets || [],
-          ads: sequentialResults.ads || [],
-          operations: adSetCount * 2,
-          batchesExecuted: adSetCount * 2,
-          apiCallsSaved: 0,
-          summary: {
-            totalExpected: adSetCount,
-            totalSuccess: sequentialResults.adSets?.length || 0,
-            successRate: Math.round(((sequentialResults.adSets?.length || 0) / adSetCount) * 100)
+            try {
+              // Create ad set
+              const adSetParams = {
+                ...targetCampaignData,
+                campaignId: initialResult.campaign.id,
+                adSetName: `AdSet ${i + 2}`,
+              };
+
+              // Budget handling (CBO vs ABO)
+              if (targetCampaignData.budgetLevel === 'adset') {
+                adSetParams.dailyBudget = targetCampaignData.dailyBudget;
+                adSetParams.lifetimeBudget = targetCampaignData.lifetimeBudget;
+              } else {
+                delete adSetParams.dailyBudget;
+                delete adSetParams.lifetimeBudget;
+                delete adSetParams.adSetBudget;
+              }
+
+              const newAdSet = await targetApi.createAdSet(adSetParams);
+              createdAdSet = newAdSet; // Track created ad set for cleanup
+
+              if (newAdSet) {
+                try {
+                  // Create ad - NESTED try-catch to handle ad creation failures separately
+                  const adParams = {
+                    ...targetCampaignData,
+                    adsetId: newAdSet.id,
+                    adName: `Ad ${i + 2}`,
+                    postId: initialResult.postId,
+                    displayLink: targetCampaignData.displayLink,
+                    url: targetCampaignData.url,
+                    headline: targetCampaignData.headline,
+                    primaryText: targetCampaignData.primaryText,
+                    description: targetCampaignData.description,
+                    callToAction: targetCampaignData.callToAction
+                  };
+
+                  const newAd = await targetApi.createAd(adParams);
+
+                  // SUCCESS - Both ad set and ad created
+                  duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+                  console.log(`       ✅ Created pair ${i + 2} of ${adSetCount + 1} (ad set + ad)`);
+
+                } catch (adError) {
+                  // Ad creation failed - DELETE the orphaned ad set immediately
+                  console.error(`       ❌ Ad ${i + 2} creation failed: ${adError.message}`);
+                  console.log(`       🗑️  Deleting orphaned ad set ${newAdSet.id}...`);
+
+                  try {
+                    await targetApi.deleteAdSet(newAdSet.id);
+                    console.log(`       ✅ Deleted orphaned ad set ${newAdSet.id}`);
+                  } catch (deleteError) {
+                    console.error(`       ⚠️  Failed to delete orphaned ad set ${newAdSet.id}: ${deleteError.message}`);
+                  }
+
+                  // Continue to next iteration (don't add to duplicatedAdSets)
+                }
+              }
+            } catch (adSetError) {
+              // Ad set creation failed - nothing to clean up
+              console.error(`       ❌ Ad set ${i + 2} creation failed: ${adSetError.message}`);
+              // Continue to next iteration
+            }
           }
-        };
 
-        duplicationMethod = 'SEQUENTIAL';
-        console.log(`    ✅ SEQUENTIAL method completed`);
-        console.log(`      Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
+          totalAdSets = 1 + duplicatedAdSets.length;
+          totalAds = 1 + duplicatedAdSets.length;
+          duplicationMethod = 'SEQUENTIAL';
 
-        totalAdSets = 1 + batchResult.adSets.length;
-        totalAds = 1 + batchResult.ads.length;
+          console.log(`    ✅ SEQUENTIAL method completed`);
+          console.log(`      Ad Sets: ${duplicatedAdSets.length}/${adSetCount} (orphans deleted)`);
+          console.log(`      Ads: ${duplicatedAdSets.length}/${adSetCount}`);
+
+        } catch (sequentialError) {
+          console.error(`    ❌ SEQUENTIAL method failed: ${sequentialError.message}`);
+          totalAdSets = 1; // Only initial ad set
+          totalAds = 1; // Only initial ad
+          duplicationMethod = 'FAILED';
+        }
       }
     }
 
@@ -1544,6 +1600,8 @@ class CrossAccountDeploymentService {
           const duplicatedAdSets = [];
 
           for (let i = 0; i < adSetCount; i++) {
+            let createdAdSet = null;
+
             try {
               // Create ad set
               const adSetParams = {
@@ -1563,33 +1621,54 @@ class CrossAccountDeploymentService {
               }
 
               const newAdSet = await targetApi.createAdSet(adSetParams);
+              createdAdSet = newAdSet; // Track created ad set for cleanup
 
               if (newAdSet) {
-                // Create ad
-                const adParams = {
-                  ...targetCampaignData,
-                  adsetId: newAdSet.id,
-                  adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
-                  postId: initialResult.postId,
-                  displayLink: campaignData.displayLink,
-                  url: campaignData.url,
-                  headline: campaignData.headline,
-                  primaryText: campaignData.primaryText,
-                  description: campaignData.description,
-                  callToAction: campaignData.callToAction,
-                  mediaAssets: capturedMediaHashes,
-                  dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
-                  dynamicTextEnabled: campaignData.dynamicTextEnabled,
-                  primaryTextVariations: campaignData.primaryTextVariations,
-                  headlineVariations: campaignData.headlineVariations
-                };
+                try {
+                  // Create ad - NESTED try-catch to handle ad creation failures separately
+                  const adParams = {
+                    ...targetCampaignData,
+                    adsetId: newAdSet.id,
+                    adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
+                    postId: initialResult.postId,
+                    displayLink: campaignData.displayLink,
+                    url: campaignData.url,
+                    headline: campaignData.headline,
+                    primaryText: campaignData.primaryText,
+                    description: campaignData.description,
+                    callToAction: campaignData.callToAction,
+                    mediaAssets: capturedMediaHashes,
+                    dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                    dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                    primaryTextVariations: campaignData.primaryTextVariations,
+                    headlineVariations: campaignData.headlineVariations
+                  };
 
-                const newAd = await targetApi.createAd(adParams);
-                duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
-                console.log(`       ✅ Created ad set ${i + 2} of ${adSetCount + 1}`);
+                  const newAd = await targetApi.createAd(adParams);
+
+                  // SUCCESS - Both ad set and ad created
+                  duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+                  console.log(`       ✅ Created pair ${i + 2} of ${adSetCount + 1} (ad set + ad)`);
+
+                } catch (adError) {
+                  // Ad creation failed - DELETE the orphaned ad set immediately
+                  console.error(`       ❌ Ad ${i + 2} creation failed: ${adError.message}`);
+                  console.log(`       🗑️  Deleting orphaned ad set ${newAdSet.id}...`);
+
+                  try {
+                    await targetApi.deleteAdSet(newAdSet.id);
+                    console.log(`       ✅ Deleted orphaned ad set ${newAdSet.id}`);
+                  } catch (deleteError) {
+                    console.error(`       ⚠️  Failed to delete orphaned ad set ${newAdSet.id}: ${deleteError.message}`);
+                  }
+
+                  // Continue to next iteration (don't add to duplicatedAdSets)
+                }
               }
             } catch (adSetError) {
-              console.error(`       ❌ Failed to create ad set ${i + 2}:`, adSetError.message);
+              // Ad set creation failed - nothing to clean up
+              console.error(`       ❌ Ad set ${i + 2} creation failed: ${adSetError.message}`);
+              // Continue to next iteration
             }
           }
 

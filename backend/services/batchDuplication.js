@@ -11,10 +11,11 @@ class BatchDuplicationService {
     this.pageId = pageId; // ADDED: Store pageId to match 1-50-1 pattern
     this.pixelId = pixelId; // ADDED: Store pixelId for tracking
     this.baseURL = 'https://graph.facebook.com/v18.0';
-    // REDUCED: Using 10 operations per batch to avoid Facebook timeouts
-    // For dynamic creatives with media, payloads are large and can cause socket hang up
-    // 10 operations = 5 ad sets + 5 ads per batch (safer for complex creatives)
-    this.maxBatchSize = 10; // Reduced from 20 to avoid socket hang up with dynamic creatives
+    // REDUCED: Using 4 operations per batch to avoid Facebook timeouts
+    // For dynamic creatives with media, payloads are VERY large and cause socket hang up
+    // 4 operations = 2 ad sets + 2 ads per batch (maximum reliability)
+    // For 50 ad sets: 100 ops ÷ 4 = 25 batches × 2s delay = 50s total (vs socket hang up failures)
+    this.maxBatchSize = 4; // Reduced from 10 to ensure reliable batch processing
 
     // Facebook region IDs for US states (same as facebookApi.js)
     this.stateToRegionId = {
@@ -1005,13 +1006,10 @@ class BatchDuplicationService {
     body.creative = JSON.stringify(creative);
 
     // ===== TRACKING =====
-    const pixelId = templateData.manualPixelId || templateData.pixel || this.pixelId;
-    if (pixelId) {
-      body.tracking_specs = JSON.stringify([{
-        'action.type': ['offsite_conversion'],
-        'fb_pixel': [pixelId]
-      }]);
-    }
+    // REMOVED: tracking_specs is redundant - pixel tracking is already set at ad set level via promoted_object
+    // Cross-account deployments fail with "Account does not have access to pixel" errors
+    // when trying to set tracking_specs with source account's pixel ID
+    // See: facebookApi.js createAd() - tracking_specs is optional
 
     // ===== URL TAGS =====
     if (templateData.urlTags) {
