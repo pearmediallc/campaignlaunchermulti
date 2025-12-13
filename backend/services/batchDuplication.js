@@ -11,11 +11,15 @@ class BatchDuplicationService {
     this.pageId = pageId; // ADDED: Store pageId to match 1-50-1 pattern
     this.pixelId = pixelId; // ADDED: Store pixelId for tracking
     this.baseURL = 'https://graph.facebook.com/v18.0';
-    // REDUCED: Using 4 operations per batch to avoid Facebook timeouts
+    // ATOMIC PAIRING: Using 2 operations per batch (1 ad set + 1 ad = 1 PAIR)
     // For dynamic creatives with media, payloads are VERY large and cause socket hang up
-    // 4 operations = 2 ad sets + 2 ads per batch (maximum reliability)
-    // For 50 ad sets: 100 ops ÷ 4 = 25 batches × 2s delay = 50s total (vs socket hang up failures)
-    this.maxBatchSize = 4; // Reduced from 10 to ensure reliable batch processing
+    // 2 operations = 1 complete pair (ad set + ad) - ensures atomic success/failure
+    // Benefits:
+    //   - If ad fails, only 1 orphaned ad set (not multiple)
+    //   - Clear success tracking: pair succeeded or failed as unit
+    //   - Prevents sequential from creating duplicate ad sets
+    // For 50 ad sets: 100 ops ÷ 2 = 50 batches × 2s delay = 100s total (reliable + accurate)
+    this.maxBatchSize = 2; // ATOMIC PAIR: 1 ad set + 1 ad per batch
 
     // Facebook region IDs for US states (same as facebookApi.js)
     this.stateToRegionId = {

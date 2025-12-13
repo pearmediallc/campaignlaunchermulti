@@ -1328,20 +1328,34 @@ class CrossAccountDeploymentService {
         console.warn(`    ⚠️  BATCH API failed: ${batchError.message}`);
         console.log(`    🔄 Falling back to SEQUENTIAL method...`);
 
-        // SEQUENTIAL FALLBACK - Use inline logic with orphan cleanup
-        try {
-          const duplicatedAdSets = [];
+        // CRITICAL: Count how many pairs batch already created
+        const pairsAlreadyCreated = (batchResult && batchResult.ads) ? batchResult.ads.length : 0;
+        const pairsNeeded = adSetCount - pairsAlreadyCreated;
 
-          for (let i = 0; i < adSetCount; i++) {
-            let createdAdSet = null;
+        console.log(`    📊 Batch created: ${pairsAlreadyCreated} pairs`);
+        console.log(`    📊 Still need: ${pairsNeeded} pairs to reach target of ${adSetCount}`);
 
-            try {
-              // Create ad set
-              const adSetParams = {
-                ...targetCampaignData,
-                campaignId: initialResult.campaign.id,
-                adSetName: `AdSet ${i + 2}`,
-              };
+        if (pairsNeeded <= 0) {
+          console.log(`    ✅ Target already reached by batch, no sequential needed`);
+          totalAdSets = 1 + pairsAlreadyCreated;
+          totalAds = 1 + pairsAlreadyCreated;
+          duplicationMethod = 'BATCH_API_PARTIAL';
+        } else {
+          // SEQUENTIAL FALLBACK - Create ONLY the remaining pairs needed
+          try {
+            const duplicatedAdSets = [];
+
+            for (let i = 0; i < pairsNeeded; i++) {
+              const pairNumber = pairsAlreadyCreated + i + 1; // Continue numbering from batch
+              let createdAdSet = null;
+
+              try {
+                // Create ad set
+                const adSetParams = {
+                  ...targetCampaignData,
+                  campaignId: initialResult.campaign.id,
+                  adSetName: `AdSet ${pairNumber + 1}`, // Use pairNumber for sequential numbering
+                };
 
               // Budget handling (CBO vs ABO)
               if (targetCampaignData.budgetLevel === 'adset') {
@@ -1362,7 +1376,7 @@ class CrossAccountDeploymentService {
                   const adParams = {
                     ...targetCampaignData,
                     adsetId: newAdSet.id,
-                    adName: `Ad ${i + 2}`,
+                    adName: `Ad ${pairNumber + 1}`, // Use pairNumber for sequential numbering
                     postId: initialResult.postId,
                     displayLink: targetCampaignData.displayLink,
                     url: targetCampaignData.url,
@@ -1376,11 +1390,11 @@ class CrossAccountDeploymentService {
 
                   // SUCCESS - Both ad set and ad created
                   duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
-                  console.log(`       ✅ Created pair ${i + 2} of ${adSetCount + 1} (ad set + ad)`);
+                  console.log(`       ✅ Created pair ${pairNumber + 1} of ${adSetCount + 1} (ad set + ad)`);
 
                 } catch (adError) {
                   // Ad creation failed - DELETE the orphaned ad set immediately
-                  console.error(`       ❌ Ad ${i + 2} creation failed: ${adError.message}`);
+                  console.error(`       ❌ Ad ${pairNumber + 1} creation failed: ${adError.message}`);
                   console.log(`       🗑️  Deleting orphaned ad set ${newAdSet.id}...`);
 
                   try {
@@ -1395,24 +1409,28 @@ class CrossAccountDeploymentService {
               }
             } catch (adSetError) {
               // Ad set creation failed - nothing to clean up
-              console.error(`       ❌ Ad set ${i + 2} creation failed: ${adSetError.message}`);
+              console.error(`       ❌ Ad set ${pairNumber + 1} creation failed: ${adSetError.message}`);
               // Continue to next iteration
             }
+            }
+
+            // CRITICAL: Add batch-created pairs to the total count
+            totalAdSets = 1 + pairsAlreadyCreated + duplicatedAdSets.length;
+            totalAds = 1 + pairsAlreadyCreated + duplicatedAdSets.length;
+            duplicationMethod = pairsAlreadyCreated > 0 ? 'BATCH_API + SEQUENTIAL' : 'SEQUENTIAL';
+
+            console.log(`    ✅ SEQUENTIAL method completed`);
+            console.log(`       Batch created: ${pairsAlreadyCreated} pairs`);
+            console.log(`       Sequential created: ${duplicatedAdSets.length} pairs`);
+            console.log(`       Total pairs: ${pairsAlreadyCreated + duplicatedAdSets.length}/${adSetCount}`);
+
+          } catch (sequentialError) {
+            console.error(`    ❌ SEQUENTIAL method failed: ${sequentialError.message}`);
+            console.log(`    ⚠️  Continuing with partial results from batch`);
+            totalAdSets = 1 + pairsAlreadyCreated;
+            totalAds = 1 + pairsAlreadyCreated;
+            duplicationMethod = 'BATCH_API_PARTIAL';
           }
-
-          totalAdSets = 1 + duplicatedAdSets.length;
-          totalAds = 1 + duplicatedAdSets.length;
-          duplicationMethod = 'SEQUENTIAL';
-
-          console.log(`    ✅ SEQUENTIAL method completed`);
-          console.log(`      Ad Sets: ${duplicatedAdSets.length}/${adSetCount} (orphans deleted)`);
-          console.log(`      Ads: ${duplicatedAdSets.length}/${adSetCount}`);
-
-        } catch (sequentialError) {
-          console.error(`    ❌ SEQUENTIAL method failed: ${sequentialError.message}`);
-          totalAdSets = 1; // Only initial ad set
-          totalAds = 1; // Only initial ad
-          duplicationMethod = 'FAILED';
         }
       }
     }
@@ -1595,20 +1613,34 @@ class CrossAccountDeploymentService {
         console.warn(`    ⚠️  BATCH API failed: ${batchError.message}`);
         console.log(`    🔄 Falling back to SEQUENTIAL method...`);
 
-        // SEQUENTIAL FALLBACK - Use inline logic (no duplication service)
-        try {
-          const duplicatedAdSets = [];
+        // CRITICAL: Count how many pairs batch already created
+        const pairsAlreadyCreated = (batchResult && batchResult.ads) ? batchResult.ads.length : 0;
+        const pairsNeeded = adSetCount - pairsAlreadyCreated;
 
-          for (let i = 0; i < adSetCount; i++) {
-            let createdAdSet = null;
+        console.log(`    📊 Batch created: ${pairsAlreadyCreated} pairs`);
+        console.log(`    📊 Still need: ${pairsNeeded} pairs to reach target of ${adSetCount}`);
 
-            try {
-              // Create ad set
-              const adSetParams = {
-                ...targetCampaignData,
-                campaignId: campaignId,
-                adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
-              };
+        if (pairsNeeded <= 0) {
+          console.log(`    ✅ Target already reached by batch, no sequential needed`);
+          totalAdSets = 1 + pairsAlreadyCreated;
+          totalAds = 1 + pairsAlreadyCreated;
+          duplicationMethod = 'BATCH_API_PARTIAL';
+        } else {
+          // SEQUENTIAL FALLBACK - Create ONLY the remaining pairs needed
+          try {
+            const duplicatedAdSets = [];
+
+            for (let i = 0; i < pairsNeeded; i++) {
+              const pairNumber = pairsAlreadyCreated + i + 1; // Continue numbering from batch
+              let createdAdSet = null;
+
+              try {
+                // Create ad set
+                const adSetParams = {
+                  ...targetCampaignData,
+                  campaignId: campaignId,
+                  adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${pairNumber + 1}`, // Use pairNumber for sequential numbering
+                };
 
               // Budget handling (CBO vs ABO)
               if (campaignData.budgetLevel === 'adset') {
@@ -1629,7 +1661,7 @@ class CrossAccountDeploymentService {
                   const adParams = {
                     ...targetCampaignData,
                     adsetId: newAdSet.id,
-                    adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
+                    adName: `[Launcher] ${campaignData.campaignName} - Ad ${pairNumber + 1}`, // Use pairNumber for sequential numbering
                     postId: initialResult.postId,
                     displayLink: campaignData.displayLink,
                     url: campaignData.url,
@@ -1648,11 +1680,11 @@ class CrossAccountDeploymentService {
 
                   // SUCCESS - Both ad set and ad created
                   duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
-                  console.log(`       ✅ Created pair ${i + 2} of ${adSetCount + 1} (ad set + ad)`);
+                  console.log(`       ✅ Created pair ${pairNumber + 1} of ${adSetCount + 1} (ad set + ad)`);
 
                 } catch (adError) {
                   // Ad creation failed - DELETE the orphaned ad set immediately
-                  console.error(`       ❌ Ad ${i + 2} creation failed: ${adError.message}`);
+                  console.error(`       ❌ Ad ${pairNumber + 1} creation failed: ${adError.message}`);
                   console.log(`       🗑️  Deleting orphaned ad set ${newAdSet.id}...`);
 
                   try {
@@ -1667,22 +1699,28 @@ class CrossAccountDeploymentService {
               }
             } catch (adSetError) {
               // Ad set creation failed - nothing to clean up
-              console.error(`       ❌ Ad set ${i + 2} creation failed: ${adSetError.message}`);
+              console.error(`       ❌ Ad set ${pairNumber + 1} creation failed: ${adSetError.message}`);
               // Continue to next iteration
             }
+            }
+
+            // CRITICAL: Add batch-created pairs to the total count
+            totalAdSets = 1 + pairsAlreadyCreated + duplicatedAdSets.length;
+            totalAds = 1 + pairsAlreadyCreated + duplicatedAdSets.length;
+            duplicationMethod = pairsAlreadyCreated > 0 ? 'BATCH_API + SEQUENTIAL' : 'SEQUENTIAL';
+
+            console.log(`    ✅ SEQUENTIAL method completed`);
+            console.log(`       Batch created: ${pairsAlreadyCreated} pairs`);
+            console.log(`       Sequential created: ${duplicatedAdSets.length} pairs`);
+            console.log(`       Total pairs: ${pairsAlreadyCreated + duplicatedAdSets.length}/${adSetCount}`);
+
+          } catch (sequentialError) {
+            console.error(`    ❌ SEQUENTIAL fallback failed: ${sequentialError.message}`);
+            console.log(`    ⚠️  Continuing with partial results from batch`);
+            totalAdSets = 1 + pairsAlreadyCreated;
+            totalAds = 1 + pairsAlreadyCreated;
+            duplicationMethod = 'BATCH_API_PARTIAL';
           }
-
-          totalAdSets = 1 + duplicatedAdSets.length;
-          totalAds = 1 + duplicatedAdSets.length;
-          duplicationMethod = 'SEQUENTIAL';
-
-          console.log(`    ✅ SEQUENTIAL method completed`);
-          console.log(`       Ad Sets: ${duplicatedAdSets.length}/${adSetCount}`);
-
-        } catch (sequentialError) {
-          console.error(`    ❌ SEQUENTIAL fallback failed: ${sequentialError.message}`);
-          console.log(`    ⚠️  Continuing with 1-1-1 structure only`);
-          duplicationMethod = 'FAILED';
         }
       }
     }
