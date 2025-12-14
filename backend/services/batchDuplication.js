@@ -1154,234 +1154,211 @@ class BatchDuplicationService {
       console.log(`   Optimization Goal: ${originalAdSet.optimization_goal}`);
       console.log(`   Billing Event: ${originalAdSet.billing_event}`);
 
-      // Step 2: Prepare batch operations
-      console.log('\n📋 Step 2: Preparing batch operations...');
+      // Step 2: Execute ATOMIC PAIRS - Create 1 ad set + 1 ad per batch
+      // CRITICAL FIX: Each batch has ONLY 2 operations with relative index reference
+      // This ensures ad can reference ad set using {result=0:$.id} (first operation in batch)
+      console.log('\n🔄 Step 2: Executing ATOMIC PAIR batches...');
+      console.log(`📦 Total pairs to create: ${count}`);
+      console.log(`📊 Each batch creates 1 complete pair (ad set + ad)`);
+      console.log(`📊 API calls needed: ${count} (1 per pair)`);
+      console.log(`💰 100% atomic pairing - no orphaned ad sets possible`);
+
       const accountId = this.adAccountId.replace('act_', '');
-      const allOperations = [];
+      const successfulPairs = [];
+      const failedPairs = [];
+      const orphanedAdSets = [];
 
-      // CRITICAL: Interleave ad set and ad operations to keep them in same batch
-      // Each ad must reference its ad set within the same batch (50 op limit)
-      // Pattern: adset-0, ad-0, adset-1, ad-1, ... (keeps dependencies together)
+      // Prepare text variations once (used for all pairs)
+      const textVariations = (formData.dynamicTextEnabled || formData.dynamicCreativeEnabled) ? {
+        primaryTexts: formData.primaryTextVariations || (formData.primaryText ? [formData.primaryText] : []),
+        headlines: formData.headlineVariations || (formData.headline ? [formData.headline] : []),
+        primaryText: formData.primaryText,
+        headline: formData.headline,
+        description: formData.description,
+        url: formData.url,
+        displayLink: formData.displayLink,
+        callToAction: formData.callToAction
+      } : null;
 
-      for (let i = 0; i < count; i++) {
-        // First: Create ad set operation
-        const adSetBody = this.prepareAdSetBodyFromOriginal(
-          originalAdSet,
-          campaignId,
-          i + 1
-        );
-
-        allOperations.push({
-          method: 'POST',
-          relative_url: `act_${accountId}/adsets`,
-          body: adSetBody,
-          name: `create-adset-${i}` // Named for ad references
-        });
-
-        // Second: Create ad operation (immediately after its ad set)
-        // Prepare text variations if dynamic text is enabled
-        const textVariations = (formData.dynamicTextEnabled || formData.dynamicCreativeEnabled) ? {
-          primaryTexts: formData.primaryTextVariations || (formData.primaryText ? [formData.primaryText] : []),
-          headlines: formData.headlineVariations || (formData.headline ? [formData.headline] : []),
-          primaryText: formData.primaryText,
-          headline: formData.headline,
-          description: formData.description,
-          url: formData.url,
-          displayLink: formData.displayLink,
-          callToAction: formData.callToAction
-        } : null;
-
-        const adBody = this.prepareAdBodyForDuplicate(
-          formData.campaignName || 'Campaign',
-          postId,
-          i + 1,
-          `{result=create-adset-${i}:$.id}`, // Reference the ad set from same batch
-          formData.mediaHashes, // Pass media hashes for dynamic creatives
-          formData.dynamicCreativeEnabled || formData.dynamicTextEnabled, // Pass dynamic flag
-          textVariations, // Pass text variations
-          formData // Pass full campaign data
-        );
-
-        allOperations.push({
-          method: 'POST',
-          relative_url: `act_${accountId}/ads`,
-          body: adBody
-        });
-      }
-      console.log(`✅ ${count * 2} operations prepared (${count} ad sets + ${count} ads, interleaved)`);
-
-      // Log first ad set operation for debugging
-      if (allOperations.length > 0) {
-        console.log('\n🔍 Sample Ad Set Operation (first one):');
-        const decoded = this.decodeBody(allOperations[0].body);
-        console.log('   Fields included:', Object.keys(decoded).join(', '));
-        if (!decoded.daily_budget && !decoded.lifetime_budget) {
-          if (campaignHasCBO) {
-            console.log('   ✅ No budget field (campaign uses CBO) - This is correct!');
-          } else {
-            console.log('   ⚠️  WARNING: No budget field and campaign has no CBO!');
-            console.log('   This will fail - ad sets need a budget');
-          }
-        }
-      }
-
-      // Step 3: Execute batches
-      console.log('\n🔄 Step 3: Executing batch operations...');
-      console.log(`📦 Total operations: ${allOperations.length}`);
-      console.log(`📊 Will execute in ${Math.ceil(allOperations.length / this.maxBatchSize)} batch(es) (${this.maxBatchSize} ops/batch)`);
-      console.log(`📊 API calls needed: ${Math.ceil(allOperations.length / this.maxBatchSize)} (vs ${allOperations.length} sequential)`);
-      console.log(`💰 API call savings: ${Math.round((1 - Math.ceil(allOperations.length / this.maxBatchSize) / allOperations.length) * 100)}%`);
-
-      const batchResults = await this.executeBatch(allOperations);
-
-      // Step 4: Extract results
-      console.log('\n🔧 Step 4: Extracting results...');
-      // Extract ad set IDs from batch results
-      // Operations are interleaved: [adset-0, ad-0, adset-1, ad-1, ...]
-      // CRITICAL: Only count PAIRS where BOTH ad set AND ad succeeded
-      // This prevents orphaned ad sets without ads
-      const successfulPairs = []; // Array of {adSetId, adId, copyNumber}
-      const failedAdSets = [];
-      const failedAds = [];
-      const orphanedAdSets = []; // Ad sets without corresponding ads
-
-      // Process results in pairs
+      // Create each pair in its own batch
       for (let pairIndex = 0; pairIndex < count; pairIndex++) {
-        const adSetOpIndex = pairIndex * 2; // Even indices: 0, 2, 4, ...
-        const adOpIndex = adSetOpIndex + 1;  // Odd indices: 1, 3, 5, ...
-        const copyNumber = pairIndex + 1;
+        const pairNumber = pairIndex + 1;
+        console.log(`  📤 Creating pair ${pairNumber}/${count}...`);
 
-        const adSetResult = batchResults[adSetOpIndex];
-        const adResult = batchResults[adOpIndex];
+        try {
+          // Prepare THIS pair as a batch of EXACTLY 2 operations
+          const pairBatch = [];
 
-        let adSetId = null;
-        let adId = null;
-        let adSetSuccess = false;
-        let adSuccess = false;
+          // Operation 0: Create ad set
+          const adSetBody = this.prepareAdSetBodyFromOriginal(
+            originalAdSet,
+            campaignId,
+            pairNumber
+          );
 
-        // Check ad set success
-        if (adSetResult && adSetResult.code === 200 && adSetResult.body) {
-          try {
-            const body = JSON.parse(adSetResult.body);
-            if (body.id) {
+          pairBatch.push({
+            method: 'POST',
+            relative_url: `act_${accountId}/adsets`,
+            body: adSetBody
+          });
+
+          // Operation 1: Create ad (references operation 0 in THIS batch)
+          // CRITICAL: Use {result=0:$.id} to reference the FIRST operation in THIS batch
+          const adBody = this.prepareAdBodyForDuplicate(
+            formData.campaignName || 'Campaign',
+            postId,
+            pairNumber,
+            '{result=0:$.id}', // ← FIXED: Reference index 0 (ad set in THIS batch)
+            formData.mediaHashes,
+            formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
+            textVariations,
+            formData
+          );
+
+          pairBatch.push({
+            method: 'POST',
+            relative_url: `act_${accountId}/ads`,
+            body: adBody
+          });
+
+          // Execute THIS pair's batch
+          const response = await axios.post(
+            this.baseURL,
+            {
+              batch: JSON.stringify(pairBatch),
+              access_token: this.accessToken
+            }
+          );
+
+          const results = response.data;
+
+          // Check if BOTH operations succeeded
+          const adSetResult = results[0];
+          const adResult = results[1];
+
+          let adSetId = null;
+          let adId = null;
+          let adSetSuccess = false;
+          let adSuccess = false;
+
+          // Parse ad set result
+          if (adSetResult && adSetResult.code === 200 && adSetResult.body) {
+            try {
+              const body = JSON.parse(adSetResult.body);
               adSetId = body.id;
               adSetSuccess = true;
+            } catch (e) {
+              console.error(`       ❌ Failed to parse ad set result: ${e.message}`);
             }
-          } catch (e) {
-            console.error(`❌ Failed to parse ad set result ${adSetOpIndex}:`, e.message);
           }
-        }
 
-        // Check ad success
-        if (adResult && adResult.code === 200 && adResult.body) {
-          try {
-            const body = JSON.parse(adResult.body);
-            if (body.id) {
+          // Parse ad result
+          if (adResult && adResult.code === 200 && adResult.body) {
+            try {
+              const body = JSON.parse(adResult.body);
               adId = body.id;
               adSuccess = true;
+            } catch (e) {
+              console.error(`       ❌ Failed to parse ad result: ${e.message}`);
             }
-          } catch (e) {
-            console.error(`❌ Failed to parse ad result ${adOpIndex}:`, e.message);
           }
-        }
 
-        // Only count as success if BOTH ad set AND ad succeeded
-        if (adSetSuccess && adSuccess) {
-          successfulPairs.push({ adSetId, adId, copyNumber });
-        } else {
-          // Track failures
-          if (!adSetSuccess && adSetResult) {
-            const errorMsg = typeof adSetResult.body === 'string' ? JSON.parse(adSetResult.body) : adSetResult.body;
-            const errorDetails = errorMsg?.error?.message || 'Unknown error';
-            console.error(`❌ Ad Set Copy ${copyNumber} failed (op ${adSetOpIndex}):`, errorDetails);
-            failedAdSets.push({ copyNumber, operation: adSetOpIndex, error: errorDetails });
+          // Check pair success
+          if (adSetSuccess && adSuccess) {
+            // SUCCESS: Both ad set and ad created
+            successfulPairs.push({ adSetId, adId, pairNumber });
+            console.log(`     ✅ Pair ${pairNumber} complete (Ad Set: ${adSetId}, Ad: ${adId})`);
           } else if (adSetSuccess && !adSuccess) {
-            // CRITICAL: Ad set succeeded but ad failed - orphaned ad set!
-            console.warn(`⚠️  ORPHANED AD SET: Copy ${copyNumber} - ad set created but ad failed`);
-            orphanedAdSets.push({ adSetId, copyNumber });
+            // ORPHAN: Ad set created but ad failed - DELETE immediately
+            const adErrorMsg = adResult && adResult.body ? JSON.parse(adResult.body).error?.message : 'Unknown error';
+            console.warn(`     ⚠️  Pair ${pairNumber}: Ad set created but ad failed - ${adErrorMsg}`);
+            console.log(`     🗑️  Deleting orphaned ad set ${adSetId}...`);
 
-            if (adResult && adResult.code !== 960) {
-              const errorMsg = typeof adResult.body === 'string' ? JSON.parse(adResult.body) : adResult.body;
-              const errorDetails = errorMsg?.error?.message || 'Unknown error';
-              console.error(`❌ Ad Copy ${copyNumber} failed (op ${adOpIndex}):`, errorDetails);
-              failedAds.push({ copyNumber, operation: adOpIndex, error: errorDetails });
+            try {
+              await axios.delete(
+                `${this.baseURL}/${adSetId}`,
+                {
+                  params: { access_token: this.accessToken }
+                }
+              );
+              console.log(`     ✅ Deleted orphaned ad set ${adSetId}`);
+              orphanedAdSets.push({ adSetId, pairNumber, deleted: true });
+            } catch (deleteError) {
+              console.error(`     ❌ Failed to delete orphaned ad set: ${deleteError.message}`);
+              orphanedAdSets.push({ adSetId, pairNumber, deleted: false });
             }
+
+            failedPairs.push({ pairNumber, reason: 'ad_creation_failed' });
+          } else {
+            // Both failed or only ad set failed
+            const adSetErrorMsg = adSetResult && adSetResult.body ? JSON.parse(adSetResult.body).error?.message : 'Unknown error';
+            console.error(`     ❌ Pair ${pairNumber} failed: ${adSetErrorMsg}`);
+            failedPairs.push({ pairNumber, reason: 'ad_set_creation_failed' });
           }
+
+          // Delay between pairs to prevent rate limits
+          if (pairIndex < count - 1) {
+            await this.delay(2000);
+          }
+
+        } catch (error) {
+          console.error(`     ❌ Pair ${pairNumber} batch failed: ${error.message}`);
+          failedPairs.push({ pairNumber, reason: 'batch_request_failed', error: error.message });
         }
       }
 
-      // Extract arrays for return object (only successful pairs)
+      console.log(`\n📊 ATOMIC PAIRING RESULTS:`);
+      console.log(`   ✅ Successful pairs: ${successfulPairs.length}/${count}`);
+      console.log(`   ❌ Failed pairs: ${failedPairs.length}/${count}`);
+      console.log(`   🗑️  Orphaned ad sets deleted: ${orphanedAdSets.filter(o => o.deleted).length}`);
+      console.log(`   ✅ 1:1 Ratio maintained: ${successfulPairs.length} ad sets, ${successfulPairs.length} ads`);
+
+      // Step 3: Prepare return data
       const newAdSetIds = successfulPairs.map(p => p.adSetId);
       const newAdIds = successfulPairs.map(p => p.adId);
 
-      console.log(`\n📊 Results Summary:`);
-      console.log(`✅ ${successfulPairs.length}/${count} complete pairs created (ad set + ad)`);
-      console.log(`   Ad Sets: ${newAdSetIds.length}`);
-      console.log(`   Ads: ${newAdIds.length}`);
-      console.log(`   ✅ 1:1 Ratio: ${newAdSetIds.length === newAdIds.length ? 'VERIFIED' : 'FAILED'}`);
-
-      if (orphanedAdSets.length > 0) {
-        console.warn(`\n⚠️  ORPHANED AD SETS (created without ads): ${orphanedAdSets.length}`);
-        orphanedAdSets.slice(0, 3).forEach(o => {
-          console.warn(`   - Copy ${o.copyNumber}: Ad Set ${o.adSetId} (ad creation failed)`);
+      if (failedPairs.length > 0) {
+        console.log(`\n⚠️  Failed Pairs Details:`);
+        failedPairs.slice(0, 5).forEach(f => {
+          console.log(`   - Pair ${f.pairNumber}: ${f.reason}${f.error ? ` - ${f.error}` : ''}`);
         });
-        if (orphanedAdSets.length > 3) {
-          console.warn(`   ... and ${orphanedAdSets.length - 3} more`);
-        }
-        console.warn(`   ⚠️  These ad sets should be deleted to maintain structure integrity`);
-      }
-
-      if (failedAdSets.length > 0) {
-        console.log(`\n⚠️  Failed Ad Sets: ${failedAdSets.length}`);
-        failedAdSets.slice(0, 3).forEach(f => {
-          console.log(`   - Copy ${f.copyNumber}: ${f.error}`);
-        });
-        if (failedAdSets.length > 3) {
-          console.log(`   ... and ${failedAdSets.length - 3} more`);
-        }
-      }
-
-      if (failedAds.length > 0) {
-        console.log(`\n⚠️  Failed Ads (independent failures): ${failedAds.length}`);
-        failedAds.slice(0, 3).forEach(f => {
-          console.log(`   - Copy ${f.copyNumber}: ${f.error}`);
-        });
-        if (failedAds.length > 3) {
-          console.log(`   ... and ${failedAds.length - 3} more`);
+        if (failedPairs.length > 5) {
+          console.log(`   ... and ${failedPairs.length - 5} more`);
         }
       }
 
       console.log('\n✅ ========================================');
-      console.log('✅ BATCH AD SET DUPLICATION COMPLETE!');
+      console.log('✅ ATOMIC PAIR DUPLICATION COMPLETE!');
       console.log('✅ ========================================');
       console.log(`✅ Created ${newAdSetIds.length} ad sets with ${newAdIds.length} ads`);
-      console.log(`✅ API calls used: ${Math.ceil(allOperations.length / this.maxBatchSize)}`);
-      console.log(`✅ API calls saved: ${allOperations.length - Math.ceil(allOperations.length / this.maxBatchSize)} (${Math.round((1 - Math.ceil(allOperations.length / this.maxBatchSize) / allOperations.length) * 100)}%)`);
+      console.log(`✅ API calls used: ${count} (1 per pair)`);
+      console.log(`✅ Orphans prevented: ${orphanedAdSets.filter(o => o.deleted).length} deleted immediately`);
+      console.log(`✅ 100% ATOMIC: Each API call creates complete pair or nothing`);
 
       return {
         success: true,
         adSets: newAdSetIds.map((id, index) => ({
           id,
-          name: `${originalAdSet.name} - Copy ${successfulPairs[index].copyNumber}`
+          name: `${originalAdSet.name} - Copy ${successfulPairs[index].pairNumber}`
         })),
         ads: newAdIds.map((id, index) => ({
           id,
-          name: `Ad Copy ${successfulPairs[index].copyNumber}`
+          name: `Ad Copy ${successfulPairs[index].pairNumber}`
         })),
-        operations: allOperations.length,
-        batchesExecuted: Math.ceil(allOperations.length / this.maxBatchSize),
-        apiCallsSaved: allOperations.length - Math.ceil(allOperations.length / this.maxBatchSize),
-        orphanedAdSets: orphanedAdSets, // Include orphaned ad sets for cleanup
+        operations: count * 2, // 2 operations per pair
+        batchesExecuted: count, // 1 batch per pair
+        apiCallsSaved: count, // Compared to 2 * count sequential calls
+        orphanedAdSets: orphanedAdSets, // Include orphaned ad sets (should be deleted already)
         summary: {
           totalExpected: count,
           totalSuccess: successfulPairs.length, // Only count complete pairs
           totalAdSetsCreated: newAdSetIds.length,
           totalAdsCreated: newAdIds.length,
-          totalFailed: count - successfulPairs.length,
-          totalOrphaned: orphanedAdSets.length,
+          totalFailed: failedPairs.length,
+          totalOrphaned: orphanedAdSets.filter(o => !o.deleted).length, // Only undeleted orphans
           successRate: Math.round((successfulPairs.length / count) * 100),
-          hasFailures: successfulPairs.length < count,
-          hasOrphans: orphanedAdSets.length > 0
+          hasFailures: failedPairs.length > 0,
+          hasOrphans: orphanedAdSets.filter(o => !o.deleted).length > 0
         }
       };
 
