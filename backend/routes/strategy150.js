@@ -998,11 +998,28 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               uploadedVideoId = await userFacebookApi.uploadVideoSmart(currentCampaignData.videoPath);
               console.log(`✅ Video uploaded: ${uploadedVideoId}`);
 
-              // Upload custom thumbnail if provided
+              // Upload custom thumbnail if provided, OR auto-extract from video
               if (currentCampaignData.videoThumbnailPath) {
-                console.log(`📸 Uploading video thumbnail: ${currentCampaignData.videoThumbnailPath}`);
+                console.log(`📸 Uploading custom video thumbnail: ${currentCampaignData.videoThumbnailPath}`);
                 uploadedVideoThumbnail = await userFacebookApi.uploadImage(currentCampaignData.videoThumbnailPath);
-                console.log(`✅ Thumbnail uploaded: ${uploadedVideoThumbnail}`);
+                console.log(`✅ Custom thumbnail uploaded: ${uploadedVideoThumbnail}`);
+              } else {
+                // AUTO-EXTRACT THUMBNAIL: Facebook requires a thumbnail for video ads
+                // Extract first frame (index 0) from the video
+                console.log(`📸 Auto-extracting video thumbnail (frame 0)...`);
+                try {
+                  const autoThumbnailPath = await extractVideoThumbnail(currentCampaignData.videoPath, 0);
+                  if (autoThumbnailPath) {
+                    console.log(`✅ Thumbnail extracted: ${autoThumbnailPath}`);
+                    uploadedVideoThumbnail = await userFacebookApi.uploadImage(autoThumbnailPath);
+                    console.log(`✅ Auto-extracted thumbnail uploaded: ${uploadedVideoThumbnail}`);
+                  } else {
+                    console.warn(`⚠️ Could not extract thumbnail from video`);
+                  }
+                } catch (thumbnailError) {
+                  console.warn(`⚠️ Thumbnail extraction failed: ${thumbnailError.message}`);
+                  // Continue without thumbnail - Facebook may reject the ad
+                }
               }
             }
 
