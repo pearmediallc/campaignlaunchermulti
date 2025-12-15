@@ -245,7 +245,7 @@ class Strategy150DuplicationService {
     const campaignData = {
       name: newName,
       objective: originalCampaign.objective,
-      status: 'PAUSED', // Start paused like 1-50-1
+      status: 'ACTIVE', // Create as ACTIVE by default
       access_token: this.accessToken
     };
 

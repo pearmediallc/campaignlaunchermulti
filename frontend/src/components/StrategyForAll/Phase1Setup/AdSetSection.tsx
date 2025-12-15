@@ -632,18 +632,9 @@ const AdSetSection: React.FC = () => {
             <Box sx={{ width: "100%" }}>
               <Alert severity="info" sx={{ mb: 2 }}>
                 <Typography variant="body2">
-                  <strong>⏰ Timezone:</strong> All dates/times use your Facebook Ad Account's timezone.
+                  <strong>⏰ Timezone:</strong> All dates/times are in <strong>EST (Eastern Standard Time)</strong>.
                   <br />
-                  To check your account timezone, visit{' '}
-                  <a
-                    href="https://business.facebook.com/settings/ad-accounts"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: 'inherit', textDecoration: 'underline' }}
-                  >
-                    Ad Account Settings
-                  </a>
-                  .
+                  Enter the time you want the campaign to start/end in EST timezone.
                 </Typography>
               </Alert>
             </Box>
@@ -658,7 +649,7 @@ const AdSetSection: React.FC = () => {
                     type="datetime-local"
                     label="Start Date & Time"
                     InputLabelProps={{ shrink: true }}
-                    helperText="Campaign start date and time (in your ad account timezone)"
+                    helperText="Campaign start date and time (EST timezone)"
                   />
                 )}
               />
@@ -674,7 +665,7 @@ const AdSetSection: React.FC = () => {
                     type="datetime-local"
                     label="End Date & Time (Optional)"
                     InputLabelProps={{ shrink: true }}
-                    helperText="Leave empty to run continuously (in your ad account timezone)"
+                    helperText="Leave empty to run continuously (EST timezone)"
                   />
                 )}
               />

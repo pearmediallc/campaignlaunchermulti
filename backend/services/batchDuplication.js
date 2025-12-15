@@ -177,7 +177,7 @@ class BatchDuplicationService {
     const body = {
       name: newName,
       objective: campaign.objective,
-      status: 'PAUSED',
+      status: 'ACTIVE', // Create as ACTIVE by default
       special_ad_categories: JSON.stringify(campaign.special_ad_categories || [])
     };
 
@@ -205,7 +205,7 @@ class BatchDuplicationService {
     const body = {
       name: `${adSet.name} - Copy`,
       campaign_id: campaignIdRef,
-      status: adSet.status || 'PAUSED',
+      status: adSet.status || 'ACTIVE', // Create as ACTIVE by default
       targeting: JSON.stringify(adSet.targeting),
       optimization_goal: adSet.optimization_goal,
       billing_event: adSet.billing_event || 'IMPRESSIONS'
@@ -246,7 +246,7 @@ class BatchDuplicationService {
     const body = {
       name: `${ad.name} - Copy`,
       adset_id: adSetIdRef,
-      status: 'PAUSED'
+      status: 'ACTIVE' // Create as ACTIVE by default
     };
 
     // Handle creative
@@ -565,7 +565,7 @@ class BatchDuplicationService {
     const body = {
       name: templateData.campaignName || 'New Campaign',
       objective: templateData.objective || 'OUTCOME_LEADS',
-      status: 'PAUSED', // Safe default - user can activate later
+      status: 'ACTIVE', // Create campaigns as ACTIVE by default
       special_ad_categories: JSON.stringify(templateData.specialAdCategories || [])
     };
 
@@ -616,7 +616,7 @@ class BatchDuplicationService {
     const body = {
       name: `${templateData.campaignName || 'Campaign'} - Ad Set ${adSetIndex + 1}`,
       campaign_id: campaignIdRef,
-      status: 'PAUSED', // Safe default
+      status: 'ACTIVE', // Create ad sets as ACTIVE by default
       billing_event: 'IMPRESSIONS'
     };
 
@@ -752,19 +752,21 @@ class BatchDuplicationService {
     body.targeting = JSON.stringify(targeting);
 
     // ===== SCHEDULE =====
+    // CRITICAL FIX: Use parseDateTimeAsEST to interpret user's datetime as EST timezone
+    // This fixes the 5-hour offset issue where 9 AM EST was showing as 4 AM EST
     if (templateData.budgetType === 'lifetime') {
       if (templateData.adSetBudget?.startDate) {
-        body.start_time = Math.floor(new Date(templateData.adSetBudget.startDate).getTime() / 1000);
+        body.start_time = this.parseDateTimeAsEST(templateData.adSetBudget.startDate);
       }
       if (templateData.adSetBudget?.endDate) {
-        body.end_time = Math.floor(new Date(templateData.adSetBudget.endDate).getTime() / 1000);
+        body.end_time = this.parseDateTimeAsEST(templateData.adSetBudget.endDate);
       }
     } else if (templateData.adSetBudget?.startDate || templateData.adSetBudget?.endDate) {
       if (templateData.adSetBudget.startDate) {
-        body.start_time = Math.floor(new Date(templateData.adSetBudget.startDate).getTime() / 1000);
+        body.start_time = this.parseDateTimeAsEST(templateData.adSetBudget.startDate);
       }
       if (templateData.adSetBudget.endDate) {
-        body.end_time = Math.floor(new Date(templateData.adSetBudget.endDate).getTime() / 1000);
+        body.end_time = this.parseDateTimeAsEST(templateData.adSetBudget.endDate);
       }
     }
 
@@ -971,7 +973,7 @@ class BatchDuplicationService {
     const body = {
       name: `${templateData.campaignName || 'Campaign'} - Ad ${adIndex + 1}`,
       adset_id: adSetIdRef,
-      status: 'PAUSED'
+      status: 'ACTIVE' // Create ads as ACTIVE by default
     };
 
     // ===== CREATIVE =====
@@ -1145,6 +1147,63 @@ class BatchDuplicationService {
     if (!timeString) return 0;
     const [hours, minutes] = timeString.split(':').map(Number);
     return (hours * 60) + minutes;
+  }
+
+  /**
+   * Parse datetime string as EST timezone and return Unix timestamp
+   *
+   * CRITICAL FIX: The datetime-local input sends naive datetime strings (e.g., "2024-12-16T09:00")
+   * without timezone info. The server's new Date() interprets this in the SERVER's timezone (often UTC).
+   *
+   * Since ad accounts are in EST, we need to interpret the user's input as EST time.
+   *
+   * Example: User enters "2024-12-16T09:00" meaning 9 AM EST
+   * - Wrong: new Date("2024-12-16T09:00") on UTC server = 9 AM UTC = 4 AM EST
+   * - Right: Parse as EST by appending EST offset = 9 AM EST = 14:00 UTC
+   *
+   * @param {string} dateTimeString - Naive datetime string from frontend (e.g., "2024-12-16T09:00")
+   * @returns {number} Unix timestamp in seconds
+   */
+  parseDateTimeAsEST(dateTimeString) {
+    if (!dateTimeString) return null;
+
+    // Check if datetime already has timezone info
+    if (dateTimeString.includes('Z') || dateTimeString.includes('+') || dateTimeString.includes('-', 10)) {
+      // Already has timezone, parse directly
+      return Math.floor(new Date(dateTimeString).getTime() / 1000);
+    }
+
+    // Determine if EST or EDT (Daylight Saving Time)
+    // EST = UTC-5 (standard time, Nov-Mar)
+    // EDT = UTC-4 (daylight time, Mar-Nov)
+    const date = new Date(dateTimeString);
+    const month = date.getMonth(); // 0-11
+
+    // Rough DST check for US Eastern Time:
+    // DST starts second Sunday of March, ends first Sunday of November
+    // Simplified: March (2) through October (9) is roughly EDT
+    let offsetHours;
+    if (month >= 2 && month <= 9) {
+      // March through October - likely EDT (UTC-4)
+      // More precise: check specific dates, but this covers most cases
+      offsetHours = -4;
+    } else {
+      // November through February - EST (UTC-5)
+      offsetHours = -5;
+    }
+
+    // Append the offset to make it timezone-aware
+    // e.g., "2024-12-16T09:00" + "-05:00" = "2024-12-16T09:00-05:00" (9 AM EST)
+    const offsetString = offsetHours >= 0
+      ? `+${String(offsetHours).padStart(2, '0')}:00`
+      : `-${String(Math.abs(offsetHours)).padStart(2, '0')}:00`;
+
+    const dateTimeWithTZ = `${dateTimeString}${offsetString}`;
+    const timestamp = Math.floor(new Date(dateTimeWithTZ).getTime() / 1000);
+
+    console.log(`⏰ Parsed datetime as EST: "${dateTimeString}" → "${dateTimeWithTZ}" → timestamp ${timestamp}`);
+
+    return timestamp;
   }
 
   // ============================================================================
@@ -1734,7 +1793,7 @@ class BatchDuplicationService {
         const campaignParams = {
           name: campaignCopyName,
           objective: originalCampaign.objective,
-          status: 'PAUSED',
+          status: 'ACTIVE', // Create as ACTIVE by default
           special_ad_categories: JSON.stringify(originalCampaign.special_ad_categories || []),
           access_token: this.accessToken
         };
@@ -1944,7 +2003,7 @@ class BatchDuplicationService {
     const body = {
       name: newName,
       objective: campaign.objective,
-      status: 'PAUSED',
+      status: 'ACTIVE', // Create as ACTIVE by default
       special_ad_categories: JSON.stringify(campaign.special_ad_categories || [])
     };
 

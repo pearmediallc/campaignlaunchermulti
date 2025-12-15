@@ -401,7 +401,7 @@ class StrategyForAllDuplicationService {
     const campaignData = {
       name: newName,
       objective: originalCampaign.objective,
-      status: 'PAUSED', // Start paused like for-all
+      status: 'ACTIVE', // Create as ACTIVE by default
       access_token: this.accessToken
     };
 

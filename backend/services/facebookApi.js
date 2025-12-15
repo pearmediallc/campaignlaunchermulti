@@ -835,28 +835,33 @@ class FacebookAPI {
       if (adSetData.budgetType === 'lifetime') {
         // For lifetime budget, we need both start and end times
         if (adSetData.schedule && adSetData.schedule.endTime) {
+          // CRITICAL FIX: Use moment-timezone to parse datetime in ad account's timezone (EST)
+          // This fixes the 5-hour offset issue where 9 AM EST was showing as 4 AM EST
+          const moment = require('moment-timezone');
+          const adAccountTimezone = 'America/New_York'; // Ad accounts are in EST
+
           // Set start time - use provided or default to now
           if (adSetData.schedule.startTime) {
-            const startDate = new Date(adSetData.schedule.startTime);
-            params.start_time = Math.floor(startDate.getTime() / 1000);
+            const startInAdAccountTz = moment.tz(adSetData.schedule.startTime, adAccountTimezone);
+            params.start_time = startInAdAccountTz.unix();
           } else {
             // Default to now if not provided
             params.start_time = Math.floor(Date.now() / 1000);
           }
-          
+
           // Set end time
-          const endDate = new Date(adSetData.schedule.endTime);
-          params.end_time = Math.floor(endDate.getTime() / 1000);
-          
-          console.log('Lifetime budget schedule:');
-          console.log('  Start:', new Date(params.start_time * 1000).toISOString());
-          console.log('  End:', new Date(params.end_time * 1000).toISOString());
-          
+          const endInAdAccountTz = moment.tz(adSetData.schedule.endTime, adAccountTimezone);
+          params.end_time = endInAdAccountTz.unix();
+
+          console.log('Lifetime budget schedule (EST timezone):');
+          console.log('  Start:', new Date(params.start_time * 1000).toISOString(), '(UTC)');
+          console.log('  End:', new Date(params.end_time * 1000).toISOString(), '(UTC)');
+
           // Validate that end time is at least 24 hours after start time
           const timeDiff = params.end_time - params.start_time;
           const hoursDiff = timeDiff / 3600;
           console.log(`  Time difference: ${hoursDiff.toFixed(1)} hours`);
-          
+
           if (timeDiff < 86400) { // 86400 seconds = 24 hours
             throw new Error(`Meta Ads requires lifetime budget campaigns to run for at least 24 hours. Current duration: ${hoursDiff.toFixed(1)} hours. Please select an end date at least 24 hours after the start date.`);
           }
