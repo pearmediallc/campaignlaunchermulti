@@ -12,9 +12,10 @@ class BatchDuplicationService {
     this.pixelId = pixelId; // ADDED: Store pixelId for tracking
     this.baseURL = 'https://graph.facebook.com/v18.0';
     // Facebook Batch API limit is 50 operations per batch
-    // For createFromTemplateBatch: Need all operations in same batch for cross-references
-    // For duplicateAdSetsBatch: Uses real campaign ID, so can use smaller batches
-    this.maxBatchSize = 50; // Facebook's maximum - required for batch references to work
+    // However, large payloads (video ads, complex creatives) cause socket hang up
+    // Using 10 operations per batch to avoid timeouts while keeping ad set + ad pairs together
+    // 10 ops = 5 pairs (5 ad sets + 5 ads) - safe for large payloads
+    this.maxBatchSize = 10; // Reduced to prevent socket hang up with large payloads
 
     // Facebook region IDs for US states (same as facebookApi.js)
     this.stateToRegionId = {
