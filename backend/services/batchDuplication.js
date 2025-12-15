@@ -827,17 +827,30 @@ class BatchDuplicationService {
     // ===== LOCATIONS =====
     targeting.geo_locations = {};
 
+    // Get regions/states - frontend may send as "regions" or "states"
+    const regionStates = templateData.targeting?.locations?.regions ||
+                         templateData.targeting?.locations?.states || [];
+
     const hasSpecificLocations =
-      (templateData.targeting?.locations?.states?.length > 0) ||
+      (regionStates.length > 0) ||
       (templateData.targeting?.locations?.cities?.length > 0) ||
       (templateData.targeting?.locations?.custom?.length > 0) ||
       (templateData.targeting?.locations?.zips?.length > 0);
 
-    // States (regions)
-    if (templateData.targeting?.locations?.states?.length > 0) {
-      targeting.geo_locations.regions = templateData.targeting.locations.states.map(state => ({
-        key: this.stateToRegionId[state] || `US:${state}`
-      }));
+    // States/Regions - CRITICAL: Convert state codes to Facebook region IDs
+    if (regionStates.length > 0) {
+      console.log(`📍 Processing ${regionStates.length} regions/states:`, regionStates.slice(0, 5).join(', ') + (regionStates.length > 5 ? '...' : ''));
+      targeting.geo_locations.regions = regionStates.map(state => {
+        const regionId = this.stateToRegionId[state];
+        if (regionId) {
+          return { key: regionId };
+        } else {
+          // If no mapping found, use US: prefix format
+          console.warn(`⚠️ No region ID mapping for state: ${state}, using fallback`);
+          return { key: `US:${state}` };
+        }
+      });
+      console.log(`✅ Converted to ${targeting.geo_locations.regions.length} Facebook region IDs`);
     }
     // Cities
     else if (templateData.targeting?.locations?.cities?.length > 0) {
