@@ -428,9 +428,10 @@ class BatchDuplicationService {
       allOperations.push({
         method: 'POST',
         relative_url: `act_${accountId}/campaigns`,
-        body: campaignBody
+        body: campaignBody,
+        name: 'create-campaign'  // CRITICAL: Operation name for batch references - ad sets use {result=create-campaign:$.id}
       });
-      console.log('✅ Campaign operation prepared');
+      console.log('✅ Campaign operation prepared (name: create-campaign for batch references)');
 
       // ===== OPERATIONS 2 TO (1 + numAdSets): CREATE AD SETS =====
       console.log(`\n📋 Step 2: Preparing ${numAdSets} ad set operations...`);
