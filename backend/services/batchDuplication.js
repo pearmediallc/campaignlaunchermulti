@@ -414,46 +414,61 @@ class BatchDuplicationService {
       console.log(`📊 Total operations: ${1 + numAdSets + (numAdSets * numAdsPerAdSet)}`);
 
       const accountId = this.adAccountId.replace('act_', '');
-      const allOperations = [];
 
-      // ===== OPERATION 1: CREATE CAMPAIGN =====
-      console.log('\n📋 Step 1: Preparing campaign operation...');
+      // ===== STEP 1: CREATE CAMPAIGN SEPARATELY (get real ID) =====
+      // CRITICAL: Campaign must be created first via separate API call
+      // Batch references like {result=create-campaign:$.id} ONLY work within the SAME batch
+      // With 101 operations split across batches, cross-batch references fail
+      console.log('\n📋 Step 1: Creating campaign via separate API call...');
       const campaignBody = this.prepareCampaignBodyFromTemplate(templateData);
 
-      allOperations.push({
-        method: 'POST',
-        relative_url: `act_${accountId}/campaigns`,
-        body: campaignBody,
-        name: 'create-campaign'  // CRITICAL: Operation name for batch references - ad sets use {result=create-campaign:$.id}
+      // Parse the URL-encoded body back to params for the API call
+      const campaignParams = {};
+      campaignBody.split('&').forEach(pair => {
+        const [key, value] = pair.split('=');
+        campaignParams[key] = decodeURIComponent(value);
       });
-      console.log('✅ Campaign operation prepared (name: create-campaign for batch references)');
+      campaignParams.access_token = this.accessToken;
 
-      // ===== OPERATIONS 2 TO (1 + numAdSets): CREATE AD SETS =====
-      console.log(`\n📋 Step 2: Preparing ${numAdSets} ad set operations...`);
+      const campaignResponse = await axios.post(
+        `${this.baseURL}/act_${accountId}/campaigns`,
+        null,
+        { params: campaignParams }
+      );
+
+      const campaignId = campaignResponse.data.id;
+      console.log(`✅ Campaign created: ${campaignId}`);
+
+      // ===== STEP 2: PREPARE AD SET + AD OPERATIONS =====
+      // Now we use the REAL campaign ID (not a batch reference)
+      // This allows operations to span multiple batches safely
+      const allOperations = [];
+
+      console.log(`\n📋 Step 2: Preparing ${numAdSets} ad set + ${numAdSets * numAdsPerAdSet} ad operations...`);
+
+      // Interleave ad sets and ads: [adset-0, ad-0, adset-1, ad-1, ...]
+      // This keeps each ad set paired with its ad in the same batch
       for (let i = 0; i < numAdSets; i++) {
+        // Ad set operation (uses REAL campaign ID)
         const adSetBody = this.prepareAdSetBodyFromTemplate(
           templateData,
           i,
-          '{result=create-campaign:$.id}' // Reference campaign from batch
+          campaignId  // REAL ID, not batch reference
         );
 
         allOperations.push({
           method: 'POST',
           relative_url: `act_${accountId}/adsets`,
           body: adSetBody,
-          name: `create-adset-${i}` // Named for ad references
+          name: `create-adset-${i}` // Named for ad references within same batch
         });
-      }
-      console.log(`✅ ${numAdSets} ad set operations prepared (all with IDENTICAL settings)`);
 
-      // ===== OPERATIONS (2 + numAdSets) TO END: CREATE ADS =====
-      console.log(`\n📋 Step 3: Preparing ${numAdSets * numAdsPerAdSet} ad operations...`);
-      for (let i = 0; i < numAdSets; i++) {
+        // Ad operation(s) for this ad set
         for (let j = 0; j < numAdsPerAdSet; j++) {
           const adBody = this.prepareAdBodyFromTemplate(
             templateData,
             i * numAdsPerAdSet + j,
-            `{result=create-adset-${i}:$.id}` // Reference specific ad set
+            `{result=create-adset-${i}:$.id}` // Reference ad set from same batch
           );
 
           allOperations.push({
@@ -463,30 +478,35 @@ class BatchDuplicationService {
           });
         }
       }
-      console.log(`✅ ${numAdSets * numAdsPerAdSet} ad operations prepared (all with IDENTICAL creatives)`);
+      console.log(`✅ ${allOperations.length} operations prepared (interleaved ad sets + ads)`);
 
-      // ===== EXECUTE BATCHES =====
-      console.log('\n🔄 Step 4: Executing batch operations...');
+      // ===== STEP 3: EXECUTE BATCHES =====
+      console.log('\n🔄 Step 3: Executing batch operations...');
       console.log(`📦 Total operations: ${allOperations.length}`);
-      console.log(`📊 Will execute in ${Math.ceil(allOperations.length / 50)} batch(es)`);
-      console.log(`📊 API calls needed: ${Math.ceil(allOperations.length / 50)} (vs ${allOperations.length} sequential)`);
-      console.log(`💰 API call savings: ${Math.round((1 - Math.ceil(allOperations.length / 50) / allOperations.length) * 100)}%`);
+      console.log(`📊 Will execute in ${Math.ceil(allOperations.length / this.maxBatchSize)} batch(es)`);
+      console.log(`📊 API calls needed: ${1 + Math.ceil(allOperations.length / this.maxBatchSize)} (1 campaign + ${Math.ceil(allOperations.length / this.maxBatchSize)} batches)`);
+      console.log(`💰 API call savings: ${Math.round((1 - (1 + Math.ceil(allOperations.length / this.maxBatchSize)) / (1 + allOperations.length)) * 100)}%`);
 
       const result = await this.executeBatch(allOperations);
 
       console.log('\n✅ ========================================');
       console.log('✅ BATCH TEMPLATE LAUNCH COMPLETE!');
       console.log('✅ ========================================');
-      console.log(`✅ Campaign created with ${numAdSets} ad sets and ${numAdSets * numAdsPerAdSet} ads`);
+      console.log(`✅ Campaign: ${campaignId}`);
+      console.log(`✅ Created ${numAdSets} ad sets with ${numAdSets * numAdsPerAdSet} ads`);
       console.log(`✅ All ad sets have IDENTICAL settings (100% root effect)`);
       console.log(`✅ All ads have IDENTICAL creatives (100% root effect)`);
 
+      // Add campaign result to the beginning of results array
+      const allResults = [{ code: 200, body: JSON.stringify({ id: campaignId }) }, ...result];
+
       return {
         success: true,
-        operations: allOperations.length,
-        batchesExecuted: Math.ceil(allOperations.length / 50),
-        apiCallsSaved: allOperations.length - Math.ceil(allOperations.length / 50),
-        results: result
+        operations: 1 + allOperations.length,
+        batchesExecuted: 1 + Math.ceil(allOperations.length / this.maxBatchSize),
+        apiCallsSaved: allOperations.length - Math.ceil(allOperations.length / this.maxBatchSize),
+        results: allResults,
+        campaignId: campaignId
       };
 
     } catch (error) {
