@@ -323,6 +323,12 @@ class BatchDuplicationService {
           {
             batch: JSON.stringify(batches[i]),
             access_token: this.accessToken
+          },
+          {
+            timeout: 120000, // 2 minute timeout for complex batch operations
+            headers: {
+              'Content-Type': 'application/json'
+            }
           }
         );
 
