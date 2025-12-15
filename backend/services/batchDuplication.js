@@ -1064,20 +1064,28 @@ class BatchDuplicationService {
 
   /**
    * Get optimization goal from template data
+   *
+   * IMPORTANT: optimization_goal must be compatible with campaign objective
+   * - OUTCOME_SALES + website conversions → OFFSITE_CONVERSIONS
+   * - OUTCOME_LEADS + website conversions → OFFSITE_CONVERSIONS (NOT LEAD_GENERATION!)
+   * - LEAD_GENERATION is only valid for instant forms (on Facebook), not website leads
    */
   getOptimizationGoalFromTemplate(templateData) {
+    // For website conversions, always use OFFSITE_CONVERSIONS
+    // This works for both OUTCOME_SALES and OUTCOME_LEADS objectives
     if (templateData.conversionLocation === 'website') {
-      const event = templateData.conversionEvent || 'Lead';
-      const eventUpper = typeof event === 'string' ? event.toUpperCase() : 'LEAD';
+      return 'OFFSITE_CONVERSIONS';
+    }
 
-      if (eventUpper === 'LEAD' || eventUpper === 'CONTACT') {
-        return 'LEAD_GENERATION';
-      } else if (eventUpper === 'PURCHASE') {
-        return 'OFFSITE_CONVERSIONS';
-      }
-      return 'LEAD_GENERATION';
-    } else if (templateData.conversionLocation === 'calls') {
+    // For phone calls
+    if (templateData.conversionLocation === 'calls') {
       return 'PHONE_CALL';
+    }
+
+    // For instant forms (on Facebook lead forms, not website)
+    if (templateData.conversionLocation === 'instant_forms' ||
+        templateData.conversionLocation === 'on_ad') {
+      return 'LEAD_GENERATION';
     }
 
     // Default based on objective
@@ -1085,7 +1093,12 @@ class BatchDuplicationService {
       return 'OFFSITE_CONVERSIONS';
     }
 
-    return 'LEAD_GENERATION';
+    if (templateData.objective === 'OUTCOME_LEADS') {
+      return 'OFFSITE_CONVERSIONS';
+    }
+
+    // Fallback for other objectives
+    return 'OFFSITE_CONVERSIONS';
   }
 
   /**
