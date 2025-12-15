@@ -718,7 +718,7 @@ class BatchDuplicationService {
         case '1_day_click_1_day_engaged_view_1_day_view':
           attributionSpec.push(
             { event_type: 'CLICK_THROUGH', window_days: 1 },
-            { event_type: 'ENGAGED_VIEW', window_days: 1 },
+            { event_type: 'ENGAGED_VIDEO_VIEW', window_days: 1 },
             { event_type: 'VIEW_THROUGH', window_days: 1 }
           );
           break;
