@@ -5497,21 +5497,86 @@ class FacebookAPI {
     }
   }
 
-  // NEW OPTIMIZED: Batch multiplication with SEQUENTIAL processing (FIXED: No parallel to avoid rate limits)
+  // NEW OPTIMIZED: Batch multiplication with Strategy 150 detection
   async batchMultiplyCampaigns(sourceCampaignId, multiplyCount, updateProgress) {
-    console.log('\n🚀 OPTIMIZED CAMPAIGN MULTIPLICATION: Sequential processing with wait periods');
+    console.log('\n🚀 OPTIMIZED CAMPAIGN MULTIPLICATION');
     console.log(`  Source Campaign: ${sourceCampaignId}`);
     console.log(`  Copies to create: ${multiplyCount}`);
-    console.log('  Method: Hierarchical deep copy with sequential processing');
-    console.log('  ⚠️  IMPORTANT: Processing sequentially to avoid rate limit issues');
 
     try {
+      // STEP 1: Detect campaign structure to choose optimal method
+      console.log('  📊 Detecting campaign structure...');
+      const structure = await this.getCampaignStructure(sourceCampaignId);
+      const isStrategy150 = structure.adSetCount === 50;
+
+      console.log(`  📊 Structure: ${structure.adSetCount} ad sets, ~${structure.totalAds} ads`);
+      console.log(`  📊 Is Strategy 150: ${isStrategy150 ? 'YES' : 'NO'}`);
+
+      // STEP 2: For Strategy 150, use BatchDuplicationService for efficient batch operations
+      if (isStrategy150) {
+        console.log('  🚀 Using BATCH API method for Strategy 150 (optimal)');
+        console.log(`  💰 Expected API calls: ~${multiplyCount * 12} (vs ${multiplyCount * 150}+ sequential)`);
+
+        // Get campaign name for copies
+        const campaignResponse = await axios.get(
+          `${this.baseURL}/${sourceCampaignId}`,
+          {
+            params: {
+              fields: 'name',
+              access_token: this.accessToken
+            }
+          }
+        );
+        const campaignName = campaignResponse.data.name;
+
+        // Use BatchDuplicationService for efficient multiplication
+        const BatchDuplicationService = require('./batchDuplication');
+        const batchService = new BatchDuplicationService(
+          this.accessToken,
+          this.adAccountId,
+          this.pageId,
+          this.pixelId
+        );
+
+        const batchResult = await batchService.multiplyCampaignsBatch(
+          sourceCampaignId,
+          multiplyCount,
+          campaignName
+        );
+
+        // Transform batch result to match expected format
+        return {
+          success: batchResult.success,
+          method: 'batch_multiplication',
+          results: batchResult.campaigns.map((campaign, index) => ({
+            copyNumber: index + 1,
+            campaignId: campaign.campaignId,
+            campaignName: campaign.campaignName,
+            adSetsCreated: campaign.adSetsCreated || 50,
+            adsCreated: campaign.adsCreated || 50,
+            status: 'success',
+            method: 'batch'
+          })),
+          errors: batchResult.errors || [],
+          stats: {
+            totalCopies: multiplyCount,
+            successfulCopies: batchResult.campaigns.length,
+            apiCallsSaved: batchResult.apiCallsSaved,
+            method: 'batch_multiplication'
+          }
+        };
+      }
+
+      // STEP 3: For non-Strategy-150 campaigns, use sequential processing
+      console.log('  📋 Using sequential method (non-Strategy-150 campaign)');
+      console.log('  ⚠️  IMPORTANT: Processing sequentially to avoid rate limit issues');
+
       const results = [];
       const errors = [];
       const timestamp = Date.now();
 
-      // SEQUENTIAL PROCESSING: One at a time with wait periods (FIXED)
-      const WAIT_BETWEEN_COPIES = 120000; // 2 minutes between copies (reduced from 5 min for testing)
+      // SEQUENTIAL PROCESSING: One at a time with wait periods
+      const WAIT_BETWEEN_COPIES = 120000; // 2 minutes between copies
 
       console.log(`  📊 Will process ${multiplyCount} copies sequentially`);
       console.log(`  ⏱️  Wait time between copies: ${WAIT_BETWEEN_COPIES/1000} seconds`);

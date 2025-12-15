@@ -73,13 +73,33 @@ async function extractVideoThumbnail(videoPath, frameIndex = 0) {
         const frameInterval = Math.max(2, duration / 12); // Same as frontend
         const timestamp = frameIndex * frameInterval;
 
-        // Extract frame at timestamp
+        // Get original video dimensions to preserve aspect ratio
+        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+        const originalWidth = videoStream?.width || 1920;
+        const originalHeight = videoStream?.height || 1080;
+
+        // Calculate thumbnail size preserving aspect ratio
+        // Cap at 1920px max dimension while maintaining ratio
+        let thumbWidth, thumbHeight;
+        if (originalWidth >= originalHeight) {
+          // Landscape or square
+          thumbWidth = Math.min(originalWidth, 1920);
+          thumbHeight = Math.round(thumbWidth * (originalHeight / originalWidth));
+        } else {
+          // Portrait (9:16 etc)
+          thumbHeight = Math.min(originalHeight, 1920);
+          thumbWidth = Math.round(thumbHeight * (originalWidth / originalHeight));
+        }
+
+        console.log(`📐 Video dimensions: ${originalWidth}x${originalHeight} -> Thumbnail: ${thumbWidth}x${thumbHeight}`);
+
+        // Extract frame at timestamp, preserving original aspect ratio
         ffmpeg(videoPath)
           .screenshots({
             timestamps: [timestamp],
             filename: path.basename(outputPath),
             folder: path.dirname(outputPath),
-            size: '1920x1080' // HD resolution
+            size: `${thumbWidth}x${thumbHeight}` // Preserve original aspect ratio
           })
           .on('end', () => {
             console.log(`✅ Extracted video thumbnail at ${timestamp}s:`, outputPath);

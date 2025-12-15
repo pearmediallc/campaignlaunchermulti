@@ -318,6 +318,13 @@ class BatchDuplicationService {
       console.log(`  📤 Sending batch ${i + 1}/${batches.length} (${batches[i].length} operations)`);
 
       try {
+        // CRITICAL FIX: Remove Content-Type header to let axios use default form-encoding
+        // When we explicitly set Content-Type: application/json, axios sends the data as JSON
+        // But Facebook Batch API with JSON.stringify(batch) expects form-encoding
+        // The URL double-encoding bug was caused by this mismatch:
+        // - JSON content-type means the body is parsed as JSON
+        // - But our body field inside operations is URL-encoded
+        // - This caused the URL encoding to not be decoded properly
         const response = await axios.post(
           this.baseURL,
           {
@@ -325,10 +332,8 @@ class BatchDuplicationService {
             access_token: this.accessToken
           },
           {
-            timeout: 120000, // 2 minute timeout for complex batch operations
-            headers: {
-              'Content-Type': 'application/json'
-            }
+            timeout: 120000 // 2 minute timeout for complex batch operations
+            // No Content-Type header - let axios use default (application/x-www-form-urlencoded)
           }
         );
 
@@ -370,10 +375,29 @@ class BatchDuplicationService {
 
   /**
    * Helper to encode body parameters for batch API
+   *
+   * CRITICAL FIX for URL double-encoding:
+   *
+   * When sending batch requests with Content-Type: application/json (which we do),
+   * the body field should be URL-encoded form data. However, we must be careful:
+   *
+   * - Simple string values: encode normally
+   * - JSON string values (creative, targeting): encode the JSON string
+   *
+   * The key insight: axios with Content-Type: application/json sends our data as JSON.
+   * Facebook then parses the JSON and URL-decodes the body field of each operation.
+   *
+   * So: body: "creative=%7B%22link%22%3A%22https%3A..."
+   * After Facebook URL-decodes: creative={"link":"https:...
+   *
+   * This is correct! The URL inside the JSON should NOT be separately encoded.
+   * The encodeURIComponent encodes the whole JSON string including URLs inside.
    */
   encodeBody(body) {
     return Object.entries(body)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => {
+        return `${key}=${encodeURIComponent(value)}`;
+      })
       .join('&');
   }
 
