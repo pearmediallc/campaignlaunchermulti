@@ -333,7 +333,19 @@ class BatchDuplicationService {
         );
 
         results.push(...response.data);
-        console.log(`  ✅ Batch ${i + 1} complete`);
+
+        // Log success/failure counts for this batch
+        const successCount = response.data.filter(r => r && r.code === 200).length;
+        const failCount = response.data.filter(r => r && r.code !== 200).length;
+        console.log(`  ✅ Batch ${i + 1} complete: ${successCount} succeeded, ${failCount} failed`);
+
+        // Log first error if any failed
+        if (failCount > 0) {
+          const firstError = response.data.find(r => r && r.code !== 200);
+          if (firstError) {
+            console.log(`  ⚠️ First error (code ${firstError.code}):`, firstError.body);
+          }
+        }
 
         // Process results to extract IDs
         const campaignId = this.extractIdFromBatchResponse(response.data[0]);
