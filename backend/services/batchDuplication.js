@@ -168,6 +168,9 @@ class BatchDuplicationService {
    * Transform raw batch API results into formatted campaign object
    * for Campaign Management UI compatibility.
    * Also tracks failures via FailureTracker for the Failures box.
+   *
+   * CRITICAL: Batch results are INTERLEAVED [adset-0, ad-0, adset-1, ad-1, ...]
+   * Index 0 = campaign, then pairs of (adset, ad) for each ad set
    */
   async transformBatchResultsToCampaignFormat(batchResults, copyName, copyNumber, expectedAdSets, expectedAds) {
     // First result should be the campaign
@@ -185,44 +188,67 @@ class BatchDuplicationService {
     }
 
     // Count successes and failures
+    // CRITICAL FIX: Results are INTERLEAVED, not sequential
+    // After campaign (index 0), we have pairs: [adset, ad, adset, ad, ...]
+    // Index 1, 3, 5, 7... = ad sets (odd after subtracting campaign)
+    // Index 2, 4, 6, 8... = ads (even after subtracting campaign)
     let adSetsCreated = 0;
     let adsCreated = 0;
     const adSetIds = [];
     const adIds = [];
     const failedDetails = [];
+    const failedAdSetIndices = new Set(); // Track failed ad sets
 
     // Process remaining results (skip first which is campaign)
     for (let i = 1; i < batchResults.length; i++) {
       const result = batchResults[i];
+      // After campaign (index 0), results are interleaved:
+      // i=1: adset-0, i=2: ad-0, i=3: adset-1, i=4: ad-1, ...
+      // So: odd indices (1,3,5...) = ad sets, even indices (2,4,6...) = ads
+      const isAdSet = (i % 2) === 1;
+      const pairIndex = Math.floor((i - 1) / 2); // Which ad set/ad pair
 
-      if (result && result.code === 200) {
+      // Check for real success (code 200 with actual ID)
+      let isRealSuccess = false;
+      let entityId = null;
+
+      if (result && result.code === 200 && result.body) {
         try {
           const body = JSON.parse(result.body);
-          // Determine if this is an ad set or ad based on position
-          // Ad sets come before ads in our batch order
-          if (i <= expectedAdSets) {
-            adSetsCreated++;
-            adSetIds.push(body.id);
-          } else {
-            adsCreated++;
-            adIds.push(body.id);
+          if (body.id && !body.error) {
+            isRealSuccess = true;
+            entityId = body.id;
           }
         } catch (e) {
-          // Couldn't parse but it succeeded
-          if (i <= expectedAdSets) {
-            adSetsCreated++;
-          } else {
-            adsCreated++;
-          }
+          // Couldn't parse body
+        }
+      }
+
+      // If this is an ad and its parent ad set failed, mark it as failed too
+      if (!isAdSet && failedAdSetIndices.has(pairIndex)) {
+        isRealSuccess = false;
+      }
+
+      if (isRealSuccess) {
+        if (isAdSet) {
+          adSetsCreated++;
+          if (entityId) adSetIds.push(entityId);
+        } else {
+          adsCreated++;
+          if (entityId) adIds.push(entityId);
         }
       } else {
-        // Failed operation
+        // Track failed ad set index
+        if (isAdSet) {
+          failedAdSetIndices.add(pairIndex);
+        }
+
         const errorDetails = {
           index: i,
           code: result?.code,
-          stage: i <= expectedAdSets ? 'ad_set_creation' : 'ad_creation',
-          type: i <= expectedAdSets ? 'adset' : 'ad',
-          name: `${copyName} - ${i <= expectedAdSets ? 'Ad Set' : 'Ad'} ${i}`,
+          stage: isAdSet ? 'ad_set_creation' : 'ad_creation',
+          type: isAdSet ? 'adset' : 'ad',
+          name: `${copyName} - ${isAdSet ? 'Ad Set' : 'Ad'} ${pairIndex + 1}`,
           message: 'Batch operation failed'
         };
 
@@ -234,6 +260,8 @@ class BatchDuplicationService {
           } catch (e) {
             errorDetails.message = result.body;
           }
+        } else if (!isAdSet && failedAdSetIndices.has(pairIndex)) {
+          errorDetails.message = 'Parent ad set creation failed';
         }
 
         failedDetails.push(errorDetails);
@@ -243,6 +271,8 @@ class BatchDuplicationService {
     const adSetsFailed = expectedAdSets - adSetsCreated;
     const adsFailed = expectedAds - adsCreated;
     const hasFailures = adSetsFailed > 0 || adsFailed > 0;
+
+    console.log(`📊 Duplication result: ${adSetsCreated}/${expectedAdSets} ad sets, ${adsCreated}/${expectedAds} ads`);
 
     // Track failures in FailureTracker for the Failures box
     if (hasFailures && this.userId && campaignId) {

@@ -1287,8 +1287,8 @@ const AdSection: React.FC = () => {
           />
         </Box>
 
-        {/* Display Link (Optional) */}
-        {urlType === 'website' && (
+        {/* Display Link (Optional) - Available for website and lead_gen URL types */}
+        {(urlType === 'website' || urlType === 'lead_gen') && (
           <Box sx={{ width: "100%" }}>
             <Controller
               name="displayLink"
@@ -1299,7 +1299,7 @@ const AdSection: React.FC = () => {
                   fullWidth
                   label="Display Link (Optional)"
                   placeholder="example.com"
-                  helperText="Clean URL shown in the ad (without http://)"
+                  helperText="Clean URL shown in the ad instead of the full tracking URL (without http://)"
                 />
               )}
             />
