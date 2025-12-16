@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const FacebookAPI = require('../services/facebookApi');
+const FailureTracker = require('../services/FailureTracker');
 const { authenticate, requirePermission, requireResourceAccess } = require('../middleware/auth');
 const { requireFacebookAuth, refreshFacebookToken } = require('../middleware/facebookAuth');
 const AuditService = require('../services/AuditService');
@@ -338,6 +339,24 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     });
   } catch (error) {
     console.error('Campaign creation error:', error);
+
+    // Track failure in FailureTracker for the Failures box
+    const userId = req.user?.id || req.userId;
+    if (userId) {
+      await FailureTracker.safeTrackFailedEntity({
+        userId,
+        campaignId: null,
+        campaignName: req.body?.campaignName || 'Unknown Campaign',
+        entityType: 'campaign',
+        error: error,
+        strategyType: 'campaign_creation',
+        metadata: {
+          adAccountId: selectedAdAccountId,
+          stage: 'campaign_creation'
+        }
+      });
+    }
+
     await AuditService.logRequest(req, 'campaign.create', null, null, 'failure', error.message, {
       adAccountId: selectedAdAccountId
     });
@@ -592,83 +611,73 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
       selectedPixelId = facebookAuth.selectedPixel?.id;
     }
 
-    // Create FacebookAPI instance with ALL selected resources (same as strategy150.js)
-    const facebookApi = new FacebookAPI({
-      accessToken: accessToken,
-      adAccountId: (selectedAdAccountId || facebookAuth.selectedAdAccount.id).replace('act_', ''),
-      pageId: selectedPageId || facebookAuth.selectedPage.id,
-      pixelId: selectedPixelId
-    });
+    // Get the adAccountId without 'act_' prefix
+    const cleanAdAccountId = (selectedAdAccountId || facebookAuth.selectedAdAccount.id).replace('act_', '');
+    const cleanPageId = selectedPageId || facebookAuth.selectedPage?.id;
 
-    // Use optimized batch multiplication with hierarchical deep copy
-    // This uses parallel batch processing and staggered execution for speed
-    console.log(`🚀 Using optimized batch multiplication for ${numberOfCopies} campaign(s)`);
+    // IMPROVED: Use BatchDuplicationService for faster duplication
+    // This uses Facebook Batch API (2-3 calls vs 200+ calls)
+    console.log(`🚀 Using BatchDuplicationService for ${numberOfCopies} campaign copy(ies)`);
+    console.log(`📊 Config: AdAccount=${cleanAdAccountId}, Page=${cleanPageId}`);
 
-    // First, detect the original campaign structure for logging
-    try {
-      const structure = await facebookApi.getCampaignStructure(campaignId);
-      console.log(`📊 Original campaign structure detected:`);
-      console.log(`  - Ad Sets: ${structure.adSetCount}`);
-      console.log(`  - Total Ads: ${structure.totalAds}`);
-      console.log(`  ℹ️ Hierarchical copy will optimize based on structure`);
-    } catch (err) {
-      console.log(`⚠️ Could not detect structure, but copy will still work`);
-    }
-
-    // Use batch multiplication for efficient parallel processing
-    const batchResult = await facebookApi.batchMultiplyCampaigns(
-      campaignId,
-      numberOfCopies,
-      (progress) => console.log(`  📊 Progress: ${progress}`)
+    const BatchDuplicationService = require('../services/batchDuplication');
+    const batchService = new BatchDuplicationService(
+      accessToken,
+      cleanAdAccountId,
+      cleanPageId,
+      selectedPixelId,
+      userId // For FailureTracker integration
     );
 
-    if (!batchResult.success || batchResult.results.length === 0) {
-      throw new Error('Batch multiplication failed: ' + (batchResult.errors[0]?.error || 'Unknown error'));
+    // Use the efficient batch duplication method
+    const batchResults = await batchService.duplicateCampaignBatch(
+      campaignId,
+      new_name,
+      numberOfCopies
+    );
+
+    if (!batchResults || batchResults.length === 0) {
+      throw new Error('Batch duplication failed: No results returned');
     }
 
-    const newCampaigns = batchResult.results.map(result => ({
-      id: result.campaignId,
-      name: result.campaignName,
-      copyNumber: result.copyNumber,
-      // CRITICAL: Include accurate counts for UI display
-      adSetsCreated: result.adSetsCreated,
-      adsCreated: result.adsCreated,
-      adSetsFailed: result.adSetsFailed || 0,
-      adsFailed: result.adsFailed || 0,
-      failedDetails: result.failedDetails || [],
-      success: result.status === 'success',
-      partialSuccess: result.status === 'partial'
+    // Transform batch results to match expected format
+    const newCampaigns = batchResults.map((result, index) => ({
+      id: result.campaignId || result.campaign?.id,
+      name: result.campaignName || result.campaign?.name || `${new_name}${numberOfCopies > 1 ? ` - Copy ${index + 1}` : ''}`,
+      copyNumber: index + 1,
+      // Include accurate counts for UI display
+      adSetsCreated: result.adSetsCreated || result.adSets?.length || 0,
+      adsCreated: result.adsCreated || result.ads?.length || 0,
+      adSetsFailed: result.adSetsFailed || result.failures?.adSets?.length || 0,
+      adsFailed: result.adsFailed || result.failures?.ads?.length || 0,
+      failedDetails: result.failedDetails || result.failures || [],
+      success: result.success !== false && !result.error,
+      partialSuccess: result.partialSuccess || (result.adSetsFailed > 0 || result.adsFailed > 0)
     }));
-
-    // Add failed copies to the results
-    batchResult.errors.forEach(error => {
-      newCampaigns.push({
-        success: false,
-        error: error.error,
-        copyNumber: error.copyNumber
-      });
-    });
 
     // Handle both single and multiple campaign results
     const campaigns = Array.isArray(newCampaigns) ? newCampaigns : [newCampaigns];
 
     // Audit log for each created campaign
     for (const campaign of campaigns) {
-      await AuditService.log({
-        userId,
-        action: 'campaign_duplicate',
-        resource: 'campaign',
-        resourceId: campaign.id,
-        details: {
-          originalCampaignId: campaignId,
-          newCampaignId: campaign.id,
-          newName: campaign.name,
-          adAccountId: selectedAdAccountId,
-          copyNumber: campaign.copyNumber || 1,
-          totalCopies: numberOfCopies
-        },
-        ip: req.ip
-      });
+      if (campaign.id) {
+        await AuditService.log({
+          userId,
+          action: 'campaign_duplicate',
+          resource: 'campaign',
+          resourceId: campaign.id,
+          details: {
+            originalCampaignId: campaignId,
+            newCampaignId: campaign.id,
+            newName: campaign.name,
+            adAccountId: cleanAdAccountId,
+            copyNumber: campaign.copyNumber || 1,
+            totalCopies: numberOfCopies,
+            method: 'BatchDuplicationService'
+          },
+          ip: req.ip
+        });
+      }
     }
 
     // Check for errors in the results
@@ -679,22 +688,23 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
     // Format error details for UI display
     const errorDetails = [];
     campaigns.forEach(campaign => {
-      if (campaign.errors && campaign.errors.length > 0) {
+      // Check for failed details from BatchDuplicationService
+      if (campaign.failedDetails && campaign.failedDetails.length > 0) {
         errorDetails.push({
-          campaignId: campaign.originalCampaignId,
-          campaignName: campaign.originalCampaignName,
-          newCampaignId: campaign.campaign?.id || null,
-          newCampaignName: campaign.campaign?.name || campaign.newName || 'Failed to create',
-          errors: campaign.errors.map(err => ({
-            stage: err.stage,
-            message: err.message,
+          campaignId: campaignId,
+          campaignName: campaign.name,
+          newCampaignId: campaign.id || null,
+          newCampaignName: campaign.name || 'Failed to create',
+          errors: campaign.failedDetails.map(err => ({
+            stage: err.stage || 'unknown',
+            message: err.message || err.error || 'Unknown error',
             details: err.details?.error_user_msg || err.details?.message || null
           })),
           stats: {
-            adSetsCreated: campaign.totalAdSets,
-            adSetsExpected: 50,
-            adsCreated: campaign.totalAds,
-            adsExpected: campaign.totalAdSets
+            adSetsCreated: campaign.adSetsCreated,
+            adSetsExpected: campaign.adSetsCreated + (campaign.adSetsFailed || 0),
+            adsCreated: campaign.adsCreated,
+            adsExpected: campaign.adsCreated + (campaign.adsFailed || 0)
           }
         });
       }
@@ -719,6 +729,24 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
     });
   } catch (error) {
     console.error('Campaign duplicate error:', error);
+
+    // Track failure in FailureTracker for the Failures box
+    const userId = req.user?.id || req.userId;
+    if (userId) {
+      await FailureTracker.safeTrackFailedEntity({
+        userId,
+        campaignId: req.params?.campaignId,
+        campaignName: req.body?.new_name || `Copy of ${req.params?.campaignId}`,
+        entityType: 'campaign',
+        error: error,
+        strategyType: 'campaign_duplication',
+        metadata: {
+          numberOfCopies: req.body?.number_of_copies,
+          stage: 'campaign_duplication'
+        }
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to duplicate campaign',

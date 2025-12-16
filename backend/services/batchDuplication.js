@@ -43,6 +43,7 @@ class BatchDuplicationService {
 
   /**
    * Duplicate campaign using batch API (2-3 total API calls instead of 200+)
+   * Returns formatted results compatible with Campaign Management UI
    */
   async duplicateCampaignBatch(campaignId, newName, copies = 1) {
     try {
@@ -51,8 +52,12 @@ class BatchDuplicationService {
 
       // Step 1: Get ALL campaign data in ONE call using field expansion
       const campaignData = await this.getCampaignFullData(campaignId);
+      const expectedAdSets = campaignData.adsets?.data?.length || 0;
+      const expectedAds = campaignData.adsets?.data?.reduce(
+        (sum, adset) => sum + (adset.ads?.data?.length || 0), 0
+      ) || 0;
 
-      const results = [];
+      const formattedResults = [];
       for (let copyIndex = 0; copyIndex < copies; copyIndex++) {
         const copyName = copies > 1
           ? `${newName} - Copy ${copyIndex + 1}`
@@ -60,12 +65,36 @@ class BatchDuplicationService {
 
         console.log(`🔄 Creating copy ${copyIndex + 1}/${copies}: "${copyName}"`);
 
-        // Step 2: Create batch requests for this copy
-        const batchRequests = this.prepareBatchRequests(campaignData, copyName);
+        try {
+          // Step 2: Create batch requests for this copy
+          const batchRequests = this.prepareBatchRequests(campaignData, copyName);
 
-        // Step 3: Execute batch (all operations in 1-2 API calls)
-        const copyResult = await this.executeBatch(batchRequests);
-        results.push(copyResult);
+          // Step 3: Execute batch (all operations in 1-2 API calls)
+          const batchResults = await this.executeBatch(batchRequests);
+
+          // Step 4: Transform raw batch results to formatted object
+          const formattedResult = this.transformBatchResultsToCampaignFormat(
+            batchResults,
+            copyName,
+            copyIndex + 1,
+            expectedAdSets,
+            expectedAds
+          );
+
+          formattedResults.push(formattedResult);
+        } catch (copyError) {
+          console.error(`❌ Copy ${copyIndex + 1} failed:`, copyError.message);
+          formattedResults.push({
+            success: false,
+            error: copyError.message,
+            copyNumber: copyIndex + 1,
+            campaignName: copyName,
+            adSetsCreated: 0,
+            adsCreated: 0,
+            adSetsFailed: expectedAdSets,
+            adsFailed: expectedAds
+          });
+        }
 
         // Small delay between copies to avoid rate limits
         if (copyIndex < copies - 1) {
@@ -73,13 +102,119 @@ class BatchDuplicationService {
         }
       }
 
-      console.log(`✅ Batch duplication complete! Created ${results.length} copies`);
-      return results;
+      console.log(`✅ Batch duplication complete! Created ${formattedResults.filter(r => r.success).length}/${copies} copies`);
+      return formattedResults;
 
     } catch (error) {
       console.error('❌ Batch duplication failed:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Transform raw batch API results into formatted campaign object
+   * for Campaign Management UI compatibility.
+   * Also tracks failures via FailureTracker for the Failures box.
+   */
+  async transformBatchResultsToCampaignFormat(batchResults, copyName, copyNumber, expectedAdSets, expectedAds) {
+    // First result should be the campaign
+    const campaignResult = batchResults[0];
+    let campaignId = null;
+    let campaignName = copyName;
+
+    if (campaignResult && campaignResult.code === 200) {
+      try {
+        const body = JSON.parse(campaignResult.body);
+        campaignId = body.id;
+      } catch (e) {
+        console.warn('Could not parse campaign ID from batch result');
+      }
+    }
+
+    // Count successes and failures
+    let adSetsCreated = 0;
+    let adsCreated = 0;
+    const adSetIds = [];
+    const adIds = [];
+    const failedDetails = [];
+
+    // Process remaining results (skip first which is campaign)
+    for (let i = 1; i < batchResults.length; i++) {
+      const result = batchResults[i];
+
+      if (result && result.code === 200) {
+        try {
+          const body = JSON.parse(result.body);
+          // Determine if this is an ad set or ad based on position
+          // Ad sets come before ads in our batch order
+          if (i <= expectedAdSets) {
+            adSetsCreated++;
+            adSetIds.push(body.id);
+          } else {
+            adsCreated++;
+            adIds.push(body.id);
+          }
+        } catch (e) {
+          // Couldn't parse but it succeeded
+          if (i <= expectedAdSets) {
+            adSetsCreated++;
+          } else {
+            adsCreated++;
+          }
+        }
+      } else {
+        // Failed operation
+        const errorDetails = {
+          index: i,
+          code: result?.code,
+          stage: i <= expectedAdSets ? 'ad_set_creation' : 'ad_creation',
+          type: i <= expectedAdSets ? 'adset' : 'ad',
+          name: `${copyName} - ${i <= expectedAdSets ? 'Ad Set' : 'Ad'} ${i}`,
+          message: 'Batch operation failed'
+        };
+
+        if (result?.body) {
+          try {
+            const errorBody = JSON.parse(result.body);
+            errorDetails.message = errorBody.error?.message || errorBody.error?.error_user_msg || 'Unknown error';
+            errorDetails.details = errorBody.error;
+          } catch (e) {
+            errorDetails.message = result.body;
+          }
+        }
+
+        failedDetails.push(errorDetails);
+      }
+    }
+
+    const adSetsFailed = expectedAdSets - adSetsCreated;
+    const adsFailed = expectedAds - adsCreated;
+    const hasFailures = adSetsFailed > 0 || adsFailed > 0;
+
+    // Track failures in FailureTracker for the Failures box
+    if (hasFailures && this.userId && campaignId) {
+      console.log(`📝 Tracking ${failedDetails.length} failures for Failures box...`);
+      await this.trackFailedEntities(failedDetails, {
+        campaignId: campaignId,
+        campaignName: campaignName,
+        strategyType: 'batch_duplication'
+      });
+    }
+
+    return {
+      success: campaignId !== null && !hasFailures,
+      partialSuccess: campaignId !== null && hasFailures,
+      campaignId,
+      campaignName,
+      copyNumber,
+      adSetsCreated,
+      adsCreated,
+      adSetsFailed,
+      adsFailed,
+      adSetIds,
+      adIds,
+      failedDetails: failedDetails.length > 0 ? failedDetails : undefined
+    };
   }
 
   /**
@@ -540,24 +675,89 @@ class BatchDuplicationService {
 
       const result = await this.executeBatch(allOperations);
 
+      // Count successes and failures
+      let adSetsCreated = 0;
+      let adsCreated = 0;
+      const failedDetails = [];
+
+      for (let i = 0; i < result.length; i++) {
+        const opResult = result[i];
+        const isAdSet = i % 2 === 0; // Interleaved: even=adset, odd=ad
+        const adSetIndex = Math.floor(i / 2);
+
+        if (opResult && opResult.code === 200) {
+          if (isAdSet) {
+            adSetsCreated++;
+          } else {
+            adsCreated++;
+          }
+        } else {
+          // Failed operation - track it
+          const errorDetails = {
+            index: i,
+            code: opResult?.code,
+            stage: isAdSet ? 'ad_set_creation' : 'ad_creation',
+            type: isAdSet ? 'adset' : 'ad',
+            name: `${templateData.campaignName || 'Campaign'} - ${isAdSet ? 'Ad Set' : 'Ad'} ${adSetIndex + 1}`,
+            message: 'Batch operation failed'
+          };
+
+          if (opResult?.body) {
+            try {
+              const errorBody = JSON.parse(opResult.body);
+              errorDetails.message = errorBody.error?.message || errorBody.error?.error_user_msg || 'Unknown error';
+              errorDetails.details = errorBody.error;
+            } catch (e) {
+              errorDetails.message = opResult.body;
+            }
+          }
+
+          failedDetails.push(errorDetails);
+        }
+      }
+
+      const adSetsFailed = numAdSets - adSetsCreated;
+      const adsFailed = (numAdSets * numAdsPerAdSet) - adsCreated;
+      const hasFailures = adSetsFailed > 0 || adsFailed > 0;
+
       console.log('\n✅ ========================================');
       console.log('✅ BATCH TEMPLATE LAUNCH COMPLETE!');
       console.log('✅ ========================================');
       console.log(`✅ Campaign: ${campaignId}`);
-      console.log(`✅ Created ${numAdSets} ad sets with ${numAdSets * numAdsPerAdSet} ads`);
-      console.log(`✅ All ad sets have IDENTICAL settings (100% root effect)`);
-      console.log(`✅ All ads have IDENTICAL creatives (100% root effect)`);
+      console.log(`✅ Ad Sets Created: ${adSetsCreated}/${numAdSets}${adSetsFailed > 0 ? ` (${adSetsFailed} failed)` : ''}`);
+      console.log(`✅ Ads Created: ${adsCreated}/${numAdSets * numAdsPerAdSet}${adsFailed > 0 ? ` (${adsFailed} failed)` : ''}`);
+
+      if (!hasFailures) {
+        console.log(`✅ All ad sets have IDENTICAL settings (100% root effect)`);
+        console.log(`✅ All ads have IDENTICAL creatives (100% root effect)`);
+      }
+
+      // Track failures in FailureTracker for the Failures box
+      if (hasFailures && this.userId) {
+        console.log(`📝 Tracking ${failedDetails.length} failures for Failures box...`);
+        await this.trackFailedEntities(failedDetails, {
+          campaignId: campaignId,
+          campaignName: templateData.campaignName || 'Campaign',
+          strategyType: 'strategy150_batch'
+        });
+      }
 
       // Add campaign result to the beginning of results array
       const allResults = [{ code: 200, body: JSON.stringify({ id: campaignId }) }, ...result];
 
       return {
-        success: true,
+        success: !hasFailures,
+        partialSuccess: hasFailures && adSetsCreated > 0,
         operations: 1 + allOperations.length,
         batchesExecuted: 1 + Math.ceil(allOperations.length / this.maxBatchSize),
         apiCallsSaved: allOperations.length - Math.ceil(allOperations.length / this.maxBatchSize),
         results: allResults,
-        campaignId: campaignId
+        campaignId: campaignId,
+        adSetsCreated,
+        adsCreated,
+        adSetsFailed,
+        adsFailed,
+        failedDetails: failedDetails.length > 0 ? failedDetails : undefined
       };
 
     } catch (error) {

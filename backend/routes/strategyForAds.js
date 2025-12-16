@@ -935,6 +935,24 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       } catch (deploymentError) {
         console.error('❌ Multi-account deployment failed:', deploymentError);
         console.error('Error stack:', deploymentError.stack);
+
+        // Track failure in FailureTracker for the Failures box
+        const userId = req.user?.id || req.userId;
+        if (userId) {
+          await FailureTracker.safeTrackFailedEntity({
+            userId,
+            campaignId: null,
+            campaignName: campaignData?.campaignName || 'Multi-Account Deployment',
+            entityType: 'campaign',
+            error: deploymentError,
+            strategyType: 'strategyForAds_multiAccount',
+            metadata: {
+              targetAccounts: campaignData?.targetAccounts,
+              stage: 'multi_account_deployment'
+            }
+          });
+        }
+
         return res.status(500).json({
           success: false,
           error: 'Multi-account deployment failed',
@@ -1585,6 +1603,25 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     }
   } catch (error) {
     console.error('Strategy for-all creation error:', error);
+
+    // Track failure in FailureTracker for the Failures box
+    const userId = req.user?.id || req.userId;
+    if (userId) {
+      await FailureTracker.safeTrackFailedEntity({
+        userId,
+        campaignId: null,
+        campaignName: req.body?.campaignName || 'Unknown Campaign',
+        entityType: 'campaign',
+        error: error,
+        strategyType: 'strategyForAds',
+        metadata: {
+          adAccountId: selectedAdAccountId,
+          objective: req.body?.objective,
+          stage: 'campaign_creation'
+        }
+      });
+    }
+
     await AuditService.logRequest(req, 'strategyForAll.create', null, null, 'failure', error.message, {
       adAccountId: selectedAdAccountId,
       strategyType: 'for-all'

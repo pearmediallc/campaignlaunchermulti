@@ -646,18 +646,37 @@ const Strategy150Container: React.FC = () => {
       const pageName = result.data?.page?.name || data.facebookPage || 'Unknown Page';
       const pixelId = data.pixel || 'No Pixel';
 
+      // Check if batch API created all 50 ad sets at once
+      const isBatchComplete = result.data?.batchComplete === true ||
+                               result.data?.creationMethod === 'batch' ||
+                               result.data?.phase === 'completed';
+
+      console.log('🔍 Batch completion check:', {
+        batchComplete: result.data?.batchComplete,
+        creationMethod: result.data?.creationMethod,
+        phase: result.data?.phase,
+        isBatchComplete
+      });
+
       // Enhanced message with creation details
       const campaignCount = createdCampaigns.length;
-      const enhancedMessage = campaignCount > 1
-        ? `✅ ${campaignCount} campaigns created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`
-        : `✅ Campaign created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
+      let enhancedMessage: string;
+      if (isBatchComplete) {
+        const adSetsCreated = result.data?.allAdSetsCreated || result.data?.batchStats?.allAdSets?.length || 50;
+        enhancedMessage = `✅ Campaign created with ${adSetsCreated} ad sets via batch API!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
+      } else if (campaignCount > 1) {
+        enhancedMessage = `✅ ${campaignCount} campaigns created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
+      } else {
+        enhancedMessage = `✅ Campaign created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
+      }
 
       // Transform CampaignResponse to Strategy150Response format
       const strategy150Result: Strategy150Response = {
         success: true,
         message: enhancedMessage,
         data: {
-          phase: 'waiting', // Set to waiting since we'll capture Post ID next
+          // If batch completed all 50 ad sets, go directly to 'completed' phase
+          phase: isBatchComplete ? 'completed' : 'waiting',
           campaign: result.data?.campaign || {
             id: 'unknown',
             name: data.campaignName
@@ -669,7 +688,14 @@ const Strategy150Container: React.FC = () => {
           ads: result.data?.ads || [{
             id: 'unknown',
             name: `${data.campaignName} - Ad 1`
-          }]
+          }],
+          // Include batch stats for completion summary
+          ...(isBatchComplete && {
+            duplicatedAdSets: Array.from({ length: result.data?.allAdSetsCreated || 50 }, (_, i) => ({
+              id: `batch-adset-${i + 1}`,
+              name: `${data.campaignName} - Ad Set ${i + 1}`
+            }))
+          })
         }
       };
 
@@ -683,6 +709,15 @@ const Strategy150Container: React.FC = () => {
         console.log('📢 Some fields were skipped for successful creation:', result.data.adSet._skippedFields);
       }
 
+      // If batch API completed all 50 ad sets, skip to completion phase
+      if (isBatchComplete) {
+        console.log('🎉 Batch API created all ad sets! Skipping to completion phase...');
+        setPhase('completed');
+        setActiveStep(3); // Go directly to step 4 (Completion)
+        return;
+      }
+
+      // Sequential creation flow: wait for post ID to duplicate remaining ad sets
       setPhase('waiting');
 
       // Extract ad ID from the first ad for Post ID capture (only for first campaign)

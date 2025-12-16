@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const FacebookAPI = require('../services/facebookApi');
 const ResourceHelper = require('../services/ResourceHelper');
+const FailureTracker = require('../services/FailureTracker');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { requireFacebookAuth, refreshFacebookToken } = require('../middleware/facebookAuth');
 const AuditService = require('../services/AuditService');
@@ -1270,18 +1271,29 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // For single campaign, return the same format as before for backward compatibility
     if (numberOfCampaigns === 1 && createdCampaigns.length === 1) {
       const singleResult = createdCampaigns[0];
+      const isBatchComplete = singleResult.creationMethod === 'batch';
+
       res.json({
         success: true,
-        message: responseMessage,
+        message: isBatchComplete
+          ? `✅ Strategy 1-50-1 campaign created successfully with all 50 ad sets via batch API!`
+          : responseMessage,
         data: {
-          phase: 'initial',
+          // If batch mode completed all 50, set phase to 'completed' so frontend skips post ID waiting
+          phase: isBatchComplete ? 'completed' : 'initial',
           campaign: singleResult.campaign,
           adSet: singleResult.adSet,
           ads: singleResult.ads,
           adAccount: facebookAuth.selectedAdAccount, // Add ad account info
           page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
           pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
-          postId: singleResult.postId // Include postId from result
+          postId: singleResult.postId, // Include postId from result
+          // Batch completion indicators for frontend
+          batchComplete: isBatchComplete,
+          creationMethod: singleResult.creationMethod || 'sequential',
+          allAdSetsCreated: isBatchComplete ? (singleResult.batchStats?.allAdSets?.length || 50) : 1,
+          allAdsCreated: isBatchComplete ? (singleResult.batchStats?.allAds?.length || 50) : 1,
+          batchStats: singleResult.batchStats || null
         }
       });
     } else {
@@ -1302,6 +1314,25 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     }
   } catch (error) {
     console.error('Strategy 1-50-1 creation error:', error);
+
+    // Track failure in FailureTracker for the Failures box
+    const userId = req.user?.id || req.userId;
+    if (userId) {
+      await FailureTracker.safeTrackFailedEntity({
+        userId,
+        campaignId: null, // Campaign may not have been created yet
+        campaignName: req.body?.campaignName || 'Unknown Campaign',
+        entityType: 'campaign',
+        error: error,
+        strategyType: 'strategy150',
+        metadata: {
+          adAccountId: selectedAdAccountId,
+          objective: req.body?.objective,
+          stage: 'campaign_creation'
+        }
+      });
+    }
+
     await AuditService.logRequest(req, 'strategy150.create', null, null, 'failure', error.message, {
       adAccountId: selectedAdAccountId,
       strategyType: '1-50-1'
@@ -1847,6 +1878,25 @@ router.post('/multiply', authenticate, requireFacebookAuth, refreshFacebookToken
 
   } catch (error) {
     console.error('❌ Campaign multiplication error:', error);
+
+    // Track failure in FailureTracker for the Failures box
+    const userId = req.user?.id || req.userId;
+    if (userId) {
+      await FailureTracker.safeTrackFailedEntity({
+        userId,
+        campaignId: req.body?.sourceCampaignId,
+        campaignName: `Multiply of ${req.body?.sourceCampaignId}`,
+        entityType: 'campaign',
+        error: error,
+        strategyType: 'strategy150_multiply',
+        metadata: {
+          adAccountId: selectedAdAccountId,
+          multiplyCount: req.body?.multiplyCount,
+          stage: 'campaign_multiplication'
+        }
+      });
+    }
+
     await AuditService.logRequest(
       req,
       'strategy150.multiply',
