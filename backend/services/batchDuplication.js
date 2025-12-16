@@ -44,6 +44,10 @@ class BatchDuplicationService {
   /**
    * Duplicate campaign using batch API (2-3 total API calls instead of 200+)
    * Returns formatted results compatible with Campaign Management UI
+   *
+   * CRITICAL FIX: Campaign is now created FIRST via separate API call,
+   * then ad sets and ads are created in batches using the REAL campaign ID.
+   * This fixes "GraphBatchException" errors when operations span multiple batches.
    */
   async duplicateCampaignBatch(campaignId, newName, copies = 1) {
     try {
@@ -57,6 +61,8 @@ class BatchDuplicationService {
         (sum, adset) => sum + (adset.ads?.data?.length || 0), 0
       ) || 0;
 
+      console.log(`📊 Source campaign has ${expectedAdSets} ad sets and ${expectedAds} ads`);
+
       const formattedResults = [];
       for (let copyIndex = 0; copyIndex < copies; copyIndex++) {
         const copyName = copies > 1
@@ -66,15 +72,24 @@ class BatchDuplicationService {
         console.log(`🔄 Creating copy ${copyIndex + 1}/${copies}: "${copyName}"`);
 
         try {
-          // Step 2: Create batch requests for this copy
-          const batchRequests = this.prepareBatchRequests(campaignData, copyName);
+          // CRITICAL FIX: Step 2a - Create campaign FIRST via separate API call
+          // This gives us a REAL campaign ID that works across batch boundaries
+          console.log(`  📋 Creating campaign separately...`);
+          const newCampaignId = await this.createCampaignFromData(campaignData, copyName);
+          console.log(`  ✅ Campaign created: ${newCampaignId}`);
+
+          // Step 2b: Create batch requests for ad sets and ads (using REAL campaign ID)
+          const batchRequests = this.prepareBatchRequests(campaignData, copyName, newCampaignId);
 
           // Step 3: Execute batch (all operations in 1-2 API calls)
           const batchResults = await this.executeBatch(batchRequests);
 
           // Step 4: Transform raw batch results to formatted object
-          const formattedResult = this.transformBatchResultsToCampaignFormat(
-            batchResults,
+          // Prepend campaign result to batch results for compatibility
+          const allResults = [{ code: 200, body: JSON.stringify({ id: newCampaignId }) }, ...batchResults];
+
+          const formattedResult = await this.transformBatchResultsToCampaignFormat(
+            allResults,
             copyName,
             copyIndex + 1,
             expectedAdSets,
@@ -102,13 +117,51 @@ class BatchDuplicationService {
         }
       }
 
-      console.log(`✅ Batch duplication complete! Created ${formattedResults.filter(r => r.success).length}/${copies} copies`);
+      console.log(`✅ Batch duplication complete! Created ${formattedResults.filter(r => r.success || r.partialSuccess).length}/${copies} copies`);
       return formattedResults;
 
     } catch (error) {
       console.error('❌ Batch duplication failed:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Create campaign from existing campaign data via separate API call
+   * Returns the new campaign ID for use in batch operations
+   */
+  async createCampaignFromData(campaignData, newName) {
+    const accountId = (campaignData.account_id || this.adAccountId).replace('act_', '');
+
+    const params = {
+      name: newName,
+      objective: campaignData.objective,
+      status: 'ACTIVE',
+      special_ad_categories: JSON.stringify(campaignData.special_ad_categories || []),
+      access_token: this.accessToken
+    };
+
+    // Add optional fields
+    if (campaignData.special_ad_category_country) {
+      params.special_ad_category_country = campaignData.special_ad_category_country;
+    }
+    if (campaignData.daily_budget) {
+      params.daily_budget = campaignData.daily_budget;
+    }
+    if (campaignData.lifetime_budget) {
+      params.lifetime_budget = campaignData.lifetime_budget;
+    }
+    if (campaignData.bid_strategy) {
+      params.bid_strategy = campaignData.bid_strategy;
+    }
+
+    const response = await axios.post(
+      `${this.baseURL}/act_${accountId}/campaigns`,
+      null,
+      { params }
+    );
+
+    return response.data.id;
   }
 
   /**
@@ -267,8 +320,9 @@ class BatchDuplicationService {
 
   /**
    * Prepare batch requests for creating campaign copy
+   * FIXED: Uses real campaign ID instead of batch reference to support cross-batch operations
    */
-  prepareBatchRequests(campaignData, newName) {
+  prepareBatchRequests(campaignData, _newName, campaignId) {
     const requests = [];
 
     // Extract account ID
@@ -277,25 +331,24 @@ class BatchDuplicationService {
       accountId = accountId.substring(4);
     }
 
-    // 1. Create new campaign
-    const campaignRequest = {
-      method: 'POST',
-      relative_url: `act_${accountId}/campaigns`,
-      body: this.prepareCampaignBody(campaignData, newName)
-    };
-    requests.push(campaignRequest);
+    // CRITICAL FIX: Campaign is now created BEFORE this method is called
+    // We use the REAL campaign ID, not a batch reference
+    // This fixes the "GraphBatchException" error when batches are split
 
-    // 2. Create all ad sets
+    // Create all ad sets (interleaved with ads for same-batch references)
     if (campaignData.adsets?.data) {
       campaignData.adsets.data.forEach((adSet, adSetIndex) => {
+        // Ad set uses REAL campaign ID (not batch reference)
         const adSetRequest = {
           method: 'POST',
           relative_url: `act_${accountId}/adsets`,
-          body: this.prepareAdSetBody(adSet, '{result=create-campaign:$.id}')
+          body: this.prepareAdSetBody(adSet, campaignId), // FIXED: Use real ID
+          name: `create-adset-${adSetIndex}` // Named for ad references within same batch
         };
         requests.push(adSetRequest);
 
-        // 3. Create ads for this ad set
+        // Create ads for this ad set
+        // Ad uses batch reference to ad set (works within same batch)
         if (adSet.ads?.data) {
           adSet.ads.data.forEach(ad => {
             const adRequest = {
@@ -309,7 +362,7 @@ class BatchDuplicationService {
       });
     }
 
-    console.log(`📦 Prepared ${requests.length} operations for batch execution`);
+    console.log(`📦 Prepared ${requests.length} operations for batch execution (campaign ${campaignId} already created)`);
     return requests;
   }
 
@@ -676,16 +729,44 @@ class BatchDuplicationService {
       const result = await this.executeBatch(allOperations);
 
       // Count successes and failures
+      // CRITICAL FIX: Track failed ad set indices so we can mark corresponding ads as failed
       let adSetsCreated = 0;
       let adsCreated = 0;
       const failedDetails = [];
+      const failedAdSetIndices = new Set(); // Track which ad sets failed
 
       for (let i = 0; i < result.length; i++) {
         const opResult = result[i];
         const isAdSet = i % 2 === 0; // Interleaved: even=adset, odd=ad
         const adSetIndex = Math.floor(i / 2);
 
-        if (opResult && opResult.code === 200) {
+        // CRITICAL FIX: Check if response has an actual ID (not just code 200)
+        // Facebook sometimes returns 200 with an error in the body
+        let isRealSuccess = false;
+        let parsedBody = null;
+
+        if (opResult && opResult.code === 200 && opResult.body) {
+          try {
+            parsedBody = JSON.parse(opResult.body);
+            // Check if we got an actual ID (not an error)
+            if (parsedBody.id && !parsedBody.error) {
+              isRealSuccess = true;
+            } else if (parsedBody.error) {
+              // Has error in body despite 200 code
+              console.log(`⚠️ Operation ${i} returned 200 but has error:`, parsedBody.error?.message);
+            }
+          } catch (e) {
+            // Couldn't parse body
+          }
+        }
+
+        // CRITICAL FIX: If this is an ad and its parent ad set failed, mark it as failed
+        if (!isAdSet && failedAdSetIndices.has(adSetIndex)) {
+          isRealSuccess = false;
+          console.log(`⚠️ Ad ${adSetIndex + 1} marked failed because its ad set failed`);
+        }
+
+        if (isRealSuccess) {
           if (isAdSet) {
             adSetsCreated++;
           } else {
@@ -693,6 +774,10 @@ class BatchDuplicationService {
           }
         } else {
           // Failed operation - track it
+          if (isAdSet) {
+            failedAdSetIndices.add(adSetIndex); // Track failed ad set
+          }
+
           const errorDetails = {
             index: i,
             code: opResult?.code,
@@ -704,17 +789,21 @@ class BatchDuplicationService {
 
           if (opResult?.body) {
             try {
-              const errorBody = JSON.parse(opResult.body);
+              const errorBody = typeof opResult.body === 'string' ? JSON.parse(opResult.body) : opResult.body;
               errorDetails.message = errorBody.error?.message || errorBody.error?.error_user_msg || 'Unknown error';
               errorDetails.details = errorBody.error;
             } catch (e) {
-              errorDetails.message = opResult.body;
+              errorDetails.message = String(opResult.body);
             }
+          } else if (!isAdSet && failedAdSetIndices.has(adSetIndex)) {
+            errorDetails.message = 'Parent ad set creation failed';
           }
 
           failedDetails.push(errorDetails);
         }
       }
+
+      console.log(`🔍 DEBUG - Counting summary: ${failedAdSetIndices.size} ad sets failed, tracking ${failedDetails.length} failures`);
 
       const adSetsFailed = numAdSets - adSetsCreated;
       const adsFailed = (numAdSets * numAdsPerAdSet) - adsCreated;
@@ -1184,6 +1273,14 @@ class BatchDuplicationService {
    * 100% ROOT EFFECT: All ads get IDENTICAL creatives
    */
   prepareAdBodyFromTemplate(templateData, adIndex, adSetIdRef) {
+    // DEBUG: Log displayLink value on first ad
+    if (adIndex === 0) {
+      console.log('🔍 DEBUG - prepareAdBodyFromTemplate displayLink check:');
+      console.log('  📦 templateData.displayLink:', templateData.displayLink);
+      console.log('  📦 templateData.url:', templateData.url);
+      console.log('  📦 templateData.mediaType:', templateData.mediaType);
+    }
+
     const body = {
       name: `${templateData.campaignName || 'Campaign'} - Ad ${adIndex + 1}`,
       adset_id: adSetIdRef,

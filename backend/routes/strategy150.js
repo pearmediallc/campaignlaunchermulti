@@ -1072,6 +1072,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           };
           console.log('✅ Template data prepared');
 
+          // DEBUG: Log displayLink to verify it's being passed correctly
+          console.log('🔍 DEBUG - Display Link verification:');
+          console.log('  📦 req.body.displayLink:', req.body.displayLink);
+          console.log('  📦 currentCampaignData.displayLink:', currentCampaignData.displayLink);
+          console.log('  📦 templateData.displayLink:', templateData.displayLink);
+
           // Step 4: Execute batch creation (1 campaign + 50 ad sets + 50 ads)
           console.log('\n🚀 Step 4: Executing batch creation...');
           const batchResult = await batchService.createFromTemplateBatch(
