@@ -488,9 +488,14 @@ class BatchDuplicationService {
           page_id: this.pageId  // ADDED: Include pageId like 1-50-1 does
         });
       } else if (creative.object_story_spec) {
-        // Use story spec
+        // Use story spec with auto-cropping enabled
         body.creative = JSON.stringify({
-          object_story_spec: creative.object_story_spec
+          object_story_spec: creative.object_story_spec,
+          degrees_of_freedom_spec: {
+            creative_features_spec: {
+              image_cropping: { enabled: true }
+            }
+          }
         });
       } else if (creative.id) {
         // Reference existing creative by ID - ADDED: new fallback option
@@ -1604,6 +1609,17 @@ class BatchDuplicationService {
         creative.object_story_spec.link_data.image_hash = templateData.imageHash;
       }
     }
+
+    // Add degrees_of_freedom_spec for auto-cropping
+    // This enables Facebook's Advantage+ Creative to automatically crop images for different placements
+    // Facebook will automatically crop to: 1:1 (feed), 9:16 (stories/reels), 1.91:1 (right column)
+    creative.degrees_of_freedom_spec = {
+      creative_features_spec: {
+        image_cropping: {
+          enabled: true
+        }
+      }
+    };
 
     body.creative = JSON.stringify(creative);
 
@@ -3713,6 +3729,18 @@ class BatchDuplicationService {
       }
 
       creative = { object_story_spec: objectStorySpec };
+    }
+
+    // Add degrees_of_freedom_spec for auto-cropping (only for non-dynamic creative)
+    // This enables Facebook's Advantage+ Creative to automatically crop images for different placements
+    if (!creative.asset_feed_spec) {
+      creative.degrees_of_freedom_spec = {
+        creative_features_spec: {
+          image_cropping: {
+            enabled: true
+          }
+        }
+      };
     }
 
     // Create the ad
