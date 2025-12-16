@@ -25,19 +25,20 @@ class BatchDuplicationService {
     // 10 ops = 5 pairs (5 ad sets + 5 ads) - safe for large payloads
     this.maxBatchSize = 10; // Reduced to prevent socket hang up with large payloads
 
-    // Facebook region IDs for US states (same as facebookApi.js)
+    // Facebook region IDs for US states (MUST match facebookApi.js exactly)
+    // DC is 3851, which shifts all states after DE forward by 1
     this.stateToRegionId = {
       'AL': '3843', 'AK': '3844', 'AZ': '3845', 'AR': '3846', 'CA': '3847',
-      'CO': '3848', 'CT': '3849', 'DE': '3850', 'FL': '3851', 'GA': '3852',
-      'HI': '3853', 'ID': '3854', 'IL': '3855', 'IN': '3856', 'IA': '3857',
-      'KS': '3858', 'KY': '3859', 'LA': '3860', 'ME': '3861', 'MD': '3862',
-      'MA': '3863', 'MI': '3864', 'MN': '3865', 'MS': '3866', 'MO': '3867',
-      'MT': '3868', 'NE': '3869', 'NV': '3870', 'NH': '3871', 'NJ': '3872',
-      'NM': '3873', 'NY': '3874', 'NC': '3875', 'ND': '3876', 'OH': '3877',
-      'OK': '3878', 'OR': '3879', 'PA': '3880', 'RI': '3881', 'SC': '3882',
-      'SD': '3883', 'TN': '3884', 'TX': '3885', 'UT': '3886', 'VT': '3887',
-      'VA': '3888', 'WA': '3889', 'WV': '3890', 'WI': '3891', 'WY': '3892',
-      'DC': '3893'
+      'CO': '3848', 'CT': '3849', 'DE': '3850', 'DC': '3851', 'FL': '3852',
+      'GA': '3853', 'HI': '3854', 'ID': '3855', 'IL': '3856', 'IN': '3857',
+      'IA': '3858', 'KS': '3859', 'KY': '3860', 'LA': '3861', 'ME': '3862',
+      'MD': '3863', 'MA': '3864', 'MI': '3865', 'MN': '3866', 'MS': '3867',
+      'MO': '3868', 'MT': '3869', 'NE': '3870', 'NV': '3871', 'NH': '3872',
+      'NJ': '3873', 'NM': '3874', 'NY': '3875', 'NC': '3876', 'ND': '3877',
+      'OH': '3878', 'OK': '3879', 'OR': '3880', 'PA': '3881', 'RI': '3882',
+      'SC': '3883', 'SD': '3884', 'TN': '3885', 'TX': '3886', 'UT': '3887',
+      'VT': '3888', 'VA': '3889', 'WA': '3890', 'WV': '3891', 'WI': '3892',
+      'WY': '3893'
     };
   }
 
