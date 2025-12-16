@@ -749,91 +749,92 @@ class BatchDuplicationService {
       }
       console.log(`✅ ${allOperations.length} operations prepared (interleaved ad sets + ads)`);
 
-      // ===== STEP 3: EXECUTE BATCHES =====
-      console.log('\n🔄 Step 3: Executing batch operations...');
+      // ===== STEP 3: EXECUTE BATCHES WITH RETRY =====
+      console.log('\n🔄 Step 3: Executing batch operations with retry support...');
       console.log(`📦 Total operations: ${allOperations.length}`);
       console.log(`📊 Will execute in ${Math.ceil(allOperations.length / this.maxBatchSize)} batch(es)`);
       console.log(`📊 API calls needed: ${1 + Math.ceil(allOperations.length / this.maxBatchSize)} (1 campaign + ${Math.ceil(allOperations.length / this.maxBatchSize)} batches)`);
       console.log(`💰 API call savings: ${Math.round((1 - (1 + Math.ceil(allOperations.length / this.maxBatchSize)) / (1 + allOperations.length)) * 100)}%`);
 
-      const result = await this.executeBatch(allOperations);
+      // Execute batches with retry for transient errors
+      const batchResult = await this.executeBatchWithRetry(allOperations, templateData, campaignId, accountId);
 
-      // Count successes and failures
-      // CRITICAL FIX: Track failed ad set indices so we can mark corresponding ads as failed
-      let adSetsCreated = 0;
-      let adsCreated = 0;
-      const failedDetails = [];
-      const failedAdSetIndices = new Set(); // Track which ad sets failed
+      // ===== STEP 4: RETRY FAILED PAIRS ATOMICALLY =====
+      let { adSetsCreated, adsCreated, successfulPairs, failedPairIndices, failedDetails } = batchResult;
 
-      for (let i = 0; i < result.length; i++) {
-        const opResult = result[i];
-        const isAdSet = i % 2 === 0; // Interleaved: even=adset, odd=ad
-        const adSetIndex = Math.floor(i / 2);
+      if (failedPairIndices.length > 0) {
+        console.log(`\n🔄 Step 4: Retrying ${failedPairIndices.length} failed pairs atomically...`);
 
-        // CRITICAL FIX: Check if response has an actual ID (not just code 200)
-        // Facebook sometimes returns 200 with an error in the body
-        let isRealSuccess = false;
-        let parsedBody = null;
-
-        if (opResult && opResult.code === 200 && opResult.body) {
+        for (const pairIndex of failedPairIndices) {
           try {
-            parsedBody = JSON.parse(opResult.body);
-            // Check if we got an actual ID (not an error)
-            if (parsedBody.id && !parsedBody.error) {
-              isRealSuccess = true;
-            } else if (parsedBody.error) {
-              // Has error in body despite 200 code
-              console.log(`⚠️ Operation ${i} returned 200 but has error:`, parsedBody.error?.message);
+            console.log(`  📤 Retrying pair ${pairIndex + 1}...`);
+
+            // Create atomic batch for this single pair
+            const adSetBody = this.prepareAdSetBodyFromTemplate(templateData, pairIndex, campaignId);
+            const adBody = this.prepareAdBodyFromTemplate(templateData, pairIndex, `{result=0:$.id}`);
+
+            const atomicBatch = [
+              { method: 'POST', relative_url: `act_${accountId}/adsets`, body: adSetBody },
+              { method: 'POST', relative_url: `act_${accountId}/ads`, body: adBody }
+            ];
+
+            const response = await axios.post(
+              this.baseURL,
+              { batch: JSON.stringify(atomicBatch), access_token: this.accessToken },
+              { timeout: 60000 }
+            );
+
+            const results = response.data;
+            const adSetResult = results[0];
+            const adResult = results[1];
+
+            let adSetId = null;
+            let adId = null;
+
+            if (adSetResult?.code === 200 && adSetResult.body) {
+              try {
+                const body = JSON.parse(adSetResult.body);
+                if (body.id && !body.error) adSetId = body.id;
+              } catch (e) {}
             }
-          } catch (e) {
-            // Couldn't parse body
-          }
-        }
 
-        // CRITICAL FIX: If this is an ad and its parent ad set failed, mark it as failed
-        if (!isAdSet && failedAdSetIndices.has(adSetIndex)) {
-          isRealSuccess = false;
-          console.log(`⚠️ Ad ${adSetIndex + 1} marked failed because its ad set failed`);
-        }
-
-        if (isRealSuccess) {
-          if (isAdSet) {
-            adSetsCreated++;
-          } else {
-            adsCreated++;
-          }
-        } else {
-          // Failed operation - track it
-          if (isAdSet) {
-            failedAdSetIndices.add(adSetIndex); // Track failed ad set
-          }
-
-          const errorDetails = {
-            index: i,
-            code: opResult?.code,
-            stage: isAdSet ? 'ad_set_creation' : 'ad_creation',
-            type: isAdSet ? 'adset' : 'ad',
-            name: `${templateData.campaignName || 'Campaign'} - ${isAdSet ? 'Ad Set' : 'Ad'} ${adSetIndex + 1}`,
-            message: 'Batch operation failed'
-          };
-
-          if (opResult?.body) {
-            try {
-              const errorBody = typeof opResult.body === 'string' ? JSON.parse(opResult.body) : opResult.body;
-              errorDetails.message = errorBody.error?.message || errorBody.error?.error_user_msg || 'Unknown error';
-              errorDetails.details = errorBody.error;
-            } catch (e) {
-              errorDetails.message = String(opResult.body);
+            if (adResult?.code === 200 && adResult.body) {
+              try {
+                const body = JSON.parse(adResult.body);
+                if (body.id && !body.error) adId = body.id;
+              } catch (e) {}
             }
-          } else if (!isAdSet && failedAdSetIndices.has(adSetIndex)) {
-            errorDetails.message = 'Parent ad set creation failed';
-          }
 
-          failedDetails.push(errorDetails);
+            if (adSetId && adId) {
+              successfulPairs.push({ pairIndex, adSetId, adId });
+              adSetsCreated++;
+              adsCreated++;
+              console.log(`     ✅ Pair ${pairIndex + 1} retry succeeded!`);
+
+              // Remove from failed details
+              failedDetails = failedDetails.filter(f =>
+                !(f.name?.includes(`Ad Set ${pairIndex + 1}`) || f.name?.includes(`Ad ${pairIndex + 1}`))
+              );
+            } else if (adSetId && !adId) {
+              // Orphan - delete the ad set
+              console.log(`     ⚠️ Pair ${pairIndex + 1}: Ad set created but ad failed - deleting orphan...`);
+              try {
+                await axios.delete(`${this.baseURL}/${adSetId}`, { params: { access_token: this.accessToken } });
+                console.log(`     🗑️ Deleted orphaned ad set ${adSetId}`);
+              } catch (e) {
+                console.error(`     ❌ Failed to delete orphan: ${e.message}`);
+              }
+            } else {
+              console.log(`     ❌ Pair ${pairIndex + 1} retry failed`);
+            }
+
+            // Delay between retries
+            await this.delay(2000);
+          } catch (retryError) {
+            console.error(`     ❌ Pair ${pairIndex + 1} retry error: ${retryError.message}`);
+          }
         }
       }
-
-      console.log(`🔍 DEBUG - Counting summary: ${failedAdSetIndices.size} ad sets failed, tracking ${failedDetails.length} failures`);
 
       const adSetsFailed = numAdSets - adSetsCreated;
       const adsFailed = (numAdSets * numAdsPerAdSet) - adsCreated;
@@ -851,8 +852,8 @@ class BatchDuplicationService {
         console.log(`✅ All ads have IDENTICAL creatives (100% root effect)`);
       }
 
-      // Track failures in FailureTracker for the Failures box
-      if (hasFailures && this.userId) {
+      // Track remaining failures in FailureTracker
+      if (hasFailures && this.userId && failedDetails.length > 0) {
         console.log(`📝 Tracking ${failedDetails.length} failures for Failures box...`);
         await this.trackFailedEntities(failedDetails, {
           campaignId: campaignId,
@@ -861,16 +862,12 @@ class BatchDuplicationService {
         });
       }
 
-      // Add campaign result to the beginning of results array
-      const allResults = [{ code: 200, body: JSON.stringify({ id: campaignId }) }, ...result];
-
       return {
         success: !hasFailures,
         partialSuccess: hasFailures && adSetsCreated > 0,
         operations: 1 + allOperations.length,
-        batchesExecuted: 1 + Math.ceil(allOperations.length / this.maxBatchSize),
-        apiCallsSaved: allOperations.length - Math.ceil(allOperations.length / this.maxBatchSize),
-        results: allResults,
+        batchesExecuted: batchResult.batchesExecuted,
+        apiCallsSaved: allOperations.length - batchResult.batchesExecuted,
         campaignId: campaignId,
         adSetsCreated,
         adsCreated,
@@ -883,6 +880,191 @@ class BatchDuplicationService {
       console.error('❌ Batch template launch failed:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Execute batch operations with automatic retry for transient errors
+   * Returns detailed per-pair success/failure tracking
+   */
+  async executeBatchWithRetry(allOperations, templateData, campaignId, accountId) {
+    const successfulPairs = [];
+    const failedPairIndices = [];
+    const failedDetails = [];
+    let adSetsCreated = 0;
+    let adsCreated = 0;
+    let batchesExecuted = 0;
+
+    // Split into batches
+    const batches = [];
+    for (let i = 0; i < allOperations.length; i += this.maxBatchSize) {
+      batches.push({
+        operations: allOperations.slice(i, i + this.maxBatchSize),
+        startIndex: i
+      });
+    }
+
+    console.log(`🔄 Executing ${batches.length} batch(es) with ${allOperations.length} total operations`);
+
+    for (let batchNum = 0; batchNum < batches.length; batchNum++) {
+      const batch = batches[batchNum];
+      let retryCount = 0;
+      const maxRetries = 2;
+      let batchResults = null;
+      let hasTransientError = false;
+
+      // Retry loop for transient errors
+      while (retryCount <= maxRetries) {
+        try {
+          console.log(`  📤 Sending batch ${batchNum + 1}/${batches.length} (${batch.operations.length} operations)${retryCount > 0 ? ` [Retry ${retryCount}]` : ''}`);
+
+          const response = await axios.post(
+            this.baseURL,
+            { batch: JSON.stringify(batch.operations), access_token: this.accessToken },
+            { timeout: 120000 }
+          );
+
+          batchResults = response.data;
+          batchesExecuted++;
+
+          // Check for transient errors
+          hasTransientError = false;
+          for (const result of batchResults) {
+            if (result?.code === 500 || result?.code === 503) {
+              try {
+                const body = JSON.parse(result.body);
+                if (body.error?.is_transient === true) {
+                  hasTransientError = true;
+                  break;
+                }
+              } catch (e) {}
+            }
+          }
+
+          if (hasTransientError && retryCount < maxRetries) {
+            console.log(`  ⚠️ Transient error detected - will retry in 5 seconds...`);
+            await this.delay(5000);
+            retryCount++;
+            continue;
+          }
+
+          break; // Success or non-transient error
+        } catch (error) {
+          console.error(`  ❌ Batch ${batchNum + 1} request failed: ${error.message}`);
+          if (retryCount < maxRetries) {
+            console.log(`  🔄 Retrying in 5 seconds...`);
+            await this.delay(5000);
+            retryCount++;
+          } else {
+            // Mark all pairs in this batch as failed
+            const pairsInBatch = Math.floor(batch.operations.length / 2);
+            const startPairIndex = Math.floor(batch.startIndex / 2);
+            for (let i = 0; i < pairsInBatch; i++) {
+              failedPairIndices.push(startPairIndex + i);
+            }
+            break;
+          }
+        }
+      }
+
+      // Process batch results
+      if (batchResults) {
+        // Results are interleaved: [adset-0, ad-0, adset-1, ad-1, ...]
+        for (let i = 0; i < batchResults.length; i += 2) {
+          const adSetResult = batchResults[i];
+          const adResult = batchResults[i + 1];
+          const globalPairIndex = Math.floor(batch.startIndex / 2) + Math.floor(i / 2);
+
+          let adSetId = null;
+          let adId = null;
+          let adSetSuccess = false;
+          let adSuccess = false;
+
+          // Parse ad set result
+          if (adSetResult?.code === 200 && adSetResult.body) {
+            try {
+              const body = JSON.parse(adSetResult.body);
+              if (body.id && !body.error) {
+                adSetId = body.id;
+                adSetSuccess = true;
+              }
+            } catch (e) {}
+          }
+
+          // Parse ad result
+          if (adResult?.code === 200 && adResult.body) {
+            try {
+              const body = JSON.parse(adResult.body);
+              if (body.id && !body.error) {
+                adId = body.id;
+                adSuccess = true;
+              }
+            } catch (e) {}
+          }
+
+          if (adSetSuccess && adSuccess) {
+            // SUCCESS: Complete pair
+            successfulPairs.push({ pairIndex: globalPairIndex, adSetId, adId });
+            adSetsCreated++;
+            adsCreated++;
+          } else {
+            // FAILURE: Track for retry
+            failedPairIndices.push(globalPairIndex);
+
+            // Build error details
+            if (!adSetSuccess) {
+              const errorMsg = adSetResult?.body ? (() => {
+                try { return JSON.parse(adSetResult.body).error?.message; } catch { return 'Unknown'; }
+              })() : 'No response';
+              failedDetails.push({
+                type: 'adset',
+                name: `${templateData.campaignName || 'Campaign'} - Ad Set ${globalPairIndex + 1}`,
+                message: errorMsg,
+                code: adSetResult?.code
+              });
+            }
+            if (adSetSuccess && !adSuccess) {
+              const errorMsg = adResult?.body ? (() => {
+                try { return JSON.parse(adResult.body).error?.message; } catch { return 'Unknown'; }
+              })() : 'No response';
+              failedDetails.push({
+                type: 'ad',
+                name: `${templateData.campaignName || 'Campaign'} - Ad ${globalPairIndex + 1}`,
+                message: errorMsg,
+                code: adResult?.code
+              });
+
+              // Delete orphaned ad set
+              if (adSetId) {
+                console.log(`  🗑️ Deleting orphaned ad set ${adSetId}...`);
+                try {
+                  await axios.delete(`${this.baseURL}/${adSetId}`, { params: { access_token: this.accessToken } });
+                } catch (e) {
+                  console.error(`  ❌ Failed to delete orphan: ${e.message}`);
+                }
+              }
+            }
+          }
+        }
+
+        const successCount = Math.floor(batchResults.filter(r => r?.code === 200).length / 2);
+        const failCount = Math.floor(batch.operations.length / 2) - successCount;
+        console.log(`  ✅ Batch ${batchNum + 1} complete: ${successCount} pairs succeeded, ${failCount} pairs failed`);
+      }
+
+      // Delay between batches
+      if (batchNum < batches.length - 1) {
+        await this.delay(2000);
+      }
+    }
+
+    return {
+      successfulPairs,
+      failedPairIndices: [...new Set(failedPairIndices)], // Remove duplicates
+      failedDetails,
+      adSetsCreated,
+      adsCreated,
+      batchesExecuted
+    };
   }
 
   /**
@@ -1567,7 +1749,7 @@ class BatchDuplicationService {
   async duplicateAdSetsBatch(originalAdSetId, campaignId, postId, count = 49, formData = {}) {
     try {
       console.log('🚀 ========================================');
-      console.log('🚀 BATCH AD SET DUPLICATION');
+      console.log('🚀 OPTIMIZED BATCH AD SET DUPLICATION');
       console.log('🚀 ========================================');
       console.log(`📊 Creating ${count} duplicates of ad set ${originalAdSetId}`);
       console.log(`📊 Campaign: ${campaignId}`);
@@ -1577,7 +1759,7 @@ class BatchDuplicationService {
       } else if (formData.mediaHashes) {
         console.log(`📊 Media Hashes: Provided for asset_feed_spec`);
       }
-      console.log(`📊 Total operations: ${count + count} (ad sets + ads)`);
+      console.log(`📊 Total operations: ${count * 2} (${count} ad sets + ${count} ads)`);
 
       // Step 1: Fetch campaign and original ad set data
       console.log('\n📋 Step 1: Fetching campaign and ad set data...');
@@ -1639,15 +1821,6 @@ class BatchDuplicationService {
       console.log(`   Optimization Goal: ${originalAdSet.optimization_goal}`);
       console.log(`   Billing Event: ${originalAdSet.billing_event}`);
 
-      // Step 2: Execute ATOMIC PAIRS - Create 1 ad set + 1 ad per batch
-      // CRITICAL FIX: Each batch has ONLY 2 operations with relative index reference
-      // This ensures ad can reference ad set using {result=0:$.id} (first operation in batch)
-      console.log('\n🔄 Step 2: Executing ATOMIC PAIR batches...');
-      console.log(`📦 Total pairs to create: ${count}`);
-      console.log(`📊 Each batch creates 1 complete pair (ad set + ad)`);
-      console.log(`📊 API calls needed: ${count} (1 per pair)`);
-      console.log(`💰 100% atomic pairing - no orphaned ad sets possible`);
-
       const accountId = this.adAccountId.replace('act_', '');
       const successfulPairs = [];
       const failedPairs = [];
@@ -1665,142 +1838,394 @@ class BatchDuplicationService {
         callToAction: formData.callToAction
       } : null;
 
-      // Create each pair in its own batch
-      for (let pairIndex = 0; pairIndex < count; pairIndex++) {
-        const pairNumber = pairIndex + 1;
-        console.log(`  📤 Creating pair ${pairNumber}/${count}...`);
+      // HEAVY PAYLOAD DETECTION: Estimate payload size
+      // Dynamic creatives with multiple images/videos can exceed socket limits
+      const hasDynamicCreative = formData.dynamicCreativeEnabled || formData.dynamicTextEnabled;
+      const hasMultipleMedia = formData.mediaHashes?.dynamicImages?.length > 3 ||
+                               formData.mediaHashes?.dynamicVideos?.length > 2;
+      const hasMultipleTextVariations = (formData.primaryTextVariations?.length || 0) > 3 ||
+                                        (formData.headlineVariations?.length || 0) > 3;
+
+      // Determine pairs per batch based on payload complexity
+      // Heavy payload: 2 pairs per batch (4 operations)
+      // Medium payload: 3 pairs per batch (6 operations)
+      // Light payload: 5 pairs per batch (10 operations)
+      let pairsPerBatch = 5; // Default: 5 pairs = 10 operations per batch
+      let batchDelayMs = 1500;
+
+      if (hasMultipleMedia && hasMultipleTextVariations) {
+        pairsPerBatch = 2; // Heavy payload: reduce to avoid socket timeout
+        batchDelayMs = 2500;
+        console.log(`\n⚠️  Heavy payload detected (multiple media + text variations)`);
+        console.log(`   Using reduced batch size: ${pairsPerBatch} pairs per batch`);
+      } else if (hasDynamicCreative || hasMultipleMedia || hasMultipleTextVariations) {
+        pairsPerBatch = 3; // Medium payload
+        batchDelayMs = 2000;
+        console.log(`\n📊 Medium payload detected`);
+        console.log(`   Using moderate batch size: ${pairsPerBatch} pairs per batch`);
+      } else {
+        console.log(`\n📊 Light payload - using optimized batch size: ${pairsPerBatch} pairs per batch`);
+      }
+
+      const totalBatches = Math.ceil(count / pairsPerBatch);
+      console.log(`\n🔄 Step 2: Executing OPTIMIZED BATCH creation...`);
+      console.log(`📦 Total pairs to create: ${count}`);
+      console.log(`📊 Pairs per batch: ${pairsPerBatch}`);
+      console.log(`📊 Total batches: ${totalBatches}`);
+      console.log(`📊 API calls: ${totalBatches} (vs ${count} with atomic pairs)`);
+      console.log(`💰 API call reduction: ${Math.round((1 - totalBatches / count) * 100)}%`);
+
+      // Process pairs in batches
+      let pairIndex = 0;
+
+      for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
+        const batchStartIndex = batchNum * pairsPerBatch;
+        const batchEndIndex = Math.min(batchStartIndex + pairsPerBatch, count);
+        const pairsInThisBatch = batchEndIndex - batchStartIndex;
+
+        console.log(`\n  📤 Batch ${batchNum + 1}/${totalBatches}: Creating pairs ${batchStartIndex + 1}-${batchEndIndex}...`);
 
         try {
-          // Prepare THIS pair as a batch of EXACTLY 2 operations
-          const pairBatch = [];
+          // Build batch operations for this group of pairs
+          // CRITICAL: Interleave [adset-0, ad-0, adset-1, ad-1, ...] for correct references
+          const batchOperations = [];
 
-          // Operation 0: Create ad set
-          const adSetBody = this.prepareAdSetBodyFromOriginal(
-            originalAdSet,
-            campaignId,
-            pairNumber
-          );
+          for (let i = 0; i < pairsInThisBatch; i++) {
+            const pairNumber = batchStartIndex + i + 1;
 
-          pairBatch.push({
-            method: 'POST',
-            relative_url: `act_${accountId}/adsets`,
-            body: adSetBody
-          });
+            // Ad set operation (uses named reference for the ad to find it)
+            const adSetBody = this.prepareAdSetBodyFromOriginal(
+              originalAdSet,
+              campaignId,
+              pairNumber
+            );
 
-          // Operation 1: Create ad (references operation 0 in THIS batch)
-          // CRITICAL: Use {result=0:$.id} to reference the FIRST operation in THIS batch
-          const adBody = this.prepareAdBodyForDuplicate(
-            formData.campaignName || 'Campaign',
-            postId,
-            pairNumber,
-            '{result=0:$.id}', // ← FIXED: Reference index 0 (ad set in THIS batch)
-            formData.mediaHashes,
-            formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
-            textVariations,
-            formData
-          );
+            batchOperations.push({
+              method: 'POST',
+              relative_url: `act_${accountId}/adsets`,
+              body: adSetBody,
+              name: `create-adset-${i}` // Named so ad can reference it
+            });
 
-          pairBatch.push({
-            method: 'POST',
-            relative_url: `act_${accountId}/ads`,
-            body: adBody
-          });
+            // Ad operation (references adset by name within THIS batch)
+            const adBody = this.prepareAdBodyForDuplicate(
+              formData.campaignName || 'Campaign',
+              postId,
+              pairNumber,
+              `{result=create-adset-${i}:$.id}`, // Reference by name within same batch
+              formData.mediaHashes,
+              formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
+              textVariations,
+              formData
+            );
 
-          // Execute THIS pair's batch
-          const response = await axios.post(
-            this.baseURL,
-            {
-              batch: JSON.stringify(pairBatch),
-              access_token: this.accessToken
-            }
-          );
-
-          const results = response.data;
-
-          // Check if BOTH operations succeeded
-          const adSetResult = results[0];
-          const adResult = results[1];
-
-          let adSetId = null;
-          let adId = null;
-          let adSetSuccess = false;
-          let adSuccess = false;
-
-          // Parse ad set result
-          if (adSetResult && adSetResult.code === 200 && adSetResult.body) {
-            try {
-              const body = JSON.parse(adSetResult.body);
-              adSetId = body.id;
-              adSetSuccess = true;
-            } catch (e) {
-              console.error(`       ❌ Failed to parse ad set result: ${e.message}`);
-            }
+            batchOperations.push({
+              method: 'POST',
+              relative_url: `act_${accountId}/ads`,
+              body: adBody
+            });
           }
 
-          // Parse ad result
-          if (adResult && adResult.code === 200 && adResult.body) {
-            try {
-              const body = JSON.parse(adResult.body);
-              adId = body.id;
-              adSuccess = true;
-            } catch (e) {
-              console.error(`       ❌ Failed to parse ad result: ${e.message}`);
-            }
-          }
+          // Execute this batch with retry for transient errors
+          let results = null;
+          let retryCount = 0;
+          const maxRetries = 2;
 
-          // Check pair success
-          if (adSetSuccess && adSuccess) {
-            // SUCCESS: Both ad set and ad created
-            successfulPairs.push({ adSetId, adId, pairNumber });
-            console.log(`     ✅ Pair ${pairNumber} complete (Ad Set: ${adSetId}, Ad: ${adId})`);
-          } else if (adSetSuccess && !adSuccess) {
-            // ORPHAN: Ad set created but ad failed - DELETE immediately
-            const adErrorMsg = adResult && adResult.body ? JSON.parse(adResult.body).error?.message : 'Unknown error';
-            console.warn(`     ⚠️  Pair ${pairNumber}: Ad set created but ad failed - ${adErrorMsg}`);
-            console.log(`     🗑️  Deleting orphaned ad set ${adSetId}...`);
-
+          while (retryCount <= maxRetries) {
             try {
-              await axios.delete(
-                `${this.baseURL}/${adSetId}`,
+              const response = await axios.post(
+                this.baseURL,
                 {
-                  params: { access_token: this.accessToken }
+                  batch: JSON.stringify(batchOperations),
+                  access_token: this.accessToken
+                },
+                {
+                  timeout: 120000 // 2 minute timeout for batch
                 }
               );
-              console.log(`     ✅ Deleted orphaned ad set ${adSetId}`);
-              orphanedAdSets.push({ adSetId, pairNumber, deleted: true });
-            } catch (deleteError) {
-              console.error(`     ❌ Failed to delete orphaned ad set: ${deleteError.message}`);
-              orphanedAdSets.push({ adSetId, pairNumber, deleted: false });
+
+              results = response.data;
+
+              // Check for transient errors in results
+              let hasTransientError = false;
+              for (const result of results) {
+                if (result?.code === 500 || result?.code === 503) {
+                  try {
+                    const body = JSON.parse(result.body);
+                    if (body.error?.is_transient === true) {
+                      hasTransientError = true;
+                      break;
+                    }
+                  } catch (e) {}
+                }
+              }
+
+              if (hasTransientError && retryCount < maxRetries) {
+                console.log(`     ⚠️ Transient error detected - retrying batch in 5 seconds...`);
+                await this.delay(5000);
+                retryCount++;
+                continue;
+              }
+
+              break; // Success or non-transient error
+            } catch (reqError) {
+              if (retryCount < maxRetries) {
+                console.log(`     ⚠️ Batch request failed - retrying in 5 seconds...`);
+                await this.delay(5000);
+                retryCount++;
+              } else {
+                throw reqError;
+              }
+            }
+          }
+
+          if (retryCount > 0) {
+            console.log(`     ℹ️ Batch succeeded after ${retryCount} retry(s)`);
+          }
+
+          // Process results for this batch
+          // Results are interleaved: [adset-0, ad-0, adset-1, ad-1, ...]
+          const failedAdSetIndices = new Set();
+
+          for (let i = 0; i < pairsInThisBatch; i++) {
+            const adSetResultIndex = i * 2;
+            const adResultIndex = i * 2 + 1;
+            const pairNumber = batchStartIndex + i + 1;
+
+            const adSetResult = results[adSetResultIndex];
+            const adResult = results[adResultIndex];
+
+            let adSetId = null;
+            let adId = null;
+            let adSetSuccess = false;
+            let adSuccess = false;
+
+            // Parse ad set result
+            if (adSetResult && adSetResult.code === 200 && adSetResult.body) {
+              try {
+                const body = JSON.parse(adSetResult.body);
+                if (body.id && !body.error) {
+                  adSetId = body.id;
+                  adSetSuccess = true;
+                }
+              } catch (e) {
+                console.error(`       ❌ Failed to parse ad set result: ${e.message}`);
+              }
             }
 
-            failedPairs.push({ pairNumber, reason: 'ad_creation_failed' });
+            // Parse ad result
+            if (adResult && adResult.code === 200 && adResult.body) {
+              try {
+                const body = JSON.parse(adResult.body);
+                if (body.id && !body.error) {
+                  adId = body.id;
+                  adSuccess = true;
+                }
+              } catch (e) {
+                console.error(`       ❌ Failed to parse ad result: ${e.message}`);
+              }
+            }
+
+            // Check pair success
+            if (adSetSuccess && adSuccess) {
+              // SUCCESS: Both ad set and ad created
+              successfulPairs.push({ adSetId, adId, pairNumber });
+            } else if (adSetSuccess && !adSuccess) {
+              // ORPHAN: Ad set created but ad failed - mark for deletion
+              failedAdSetIndices.add(i);
+              const adErrorMsg = adResult?.body ? (() => {
+                try { return JSON.parse(adResult.body).error?.message; } catch { return 'Unknown'; }
+              })() : 'Unknown error';
+              console.warn(`     ⚠️  Pair ${pairNumber}: Ad set created but ad failed - ${adErrorMsg}`);
+              orphanedAdSets.push({ adSetId, pairNumber, deleted: false });
+              failedPairs.push({ pairNumber, reason: 'ad_creation_failed', adSetId });
+            } else {
+              // Both failed or only ad set failed
+              const adSetErrorMsg = adSetResult?.body ? (() => {
+                try { return JSON.parse(adSetResult.body).error?.message; } catch { return 'Unknown'; }
+              })() : 'Unknown error';
+              console.error(`     ❌ Pair ${pairNumber} failed: ${adSetErrorMsg}`);
+              failedPairs.push({ pairNumber, reason: 'ad_set_creation_failed' });
+            }
+          }
+
+          // Log batch summary
+          const batchSuccessCount = pairsInThisBatch - failedAdSetIndices.size -
+            failedPairs.filter(f => f.pairNumber > batchStartIndex && f.pairNumber <= batchEndIndex && f.reason === 'ad_set_creation_failed').length;
+          console.log(`     ✅ Batch ${batchNum + 1} complete: ${batchSuccessCount}/${pairsInThisBatch} pairs succeeded`);
+
+          // Delay between batches
+          if (batchNum < totalBatches - 1) {
+            await this.delay(batchDelayMs);
+          }
+
+        } catch (batchError) {
+          // CRITICAL: If entire batch fails, fall back to atomic pairs for remaining items
+          console.error(`     ❌ Batch ${batchNum + 1} failed: ${batchError.message}`);
+
+          // Check if this is a timeout/socket error
+          const isTimeoutError = batchError.code === 'ECONNRESET' ||
+                                 batchError.code === 'ETIMEDOUT' ||
+                                 batchError.message.includes('socket hang up') ||
+                                 batchError.message.includes('timeout');
+
+          if (isTimeoutError && pairsPerBatch > 1) {
+            console.log(`     🔄 Socket timeout detected - falling back to atomic pairs for remaining ${count - batchStartIndex} pairs...`);
+
+            // Fall back to atomic pairs for remaining items
+            const atomicResult = await this.duplicateAdSetsBatchAtomic(
+              originalAdSetId,
+              campaignId,
+              postId,
+              count - batchStartIndex,
+              formData,
+              originalAdSet,
+              accountId,
+              textVariations,
+              batchStartIndex + 1 // Start numbering from where we left off
+            );
+
+            // Merge results
+            successfulPairs.push(...atomicResult.successfulPairs);
+            failedPairs.push(...atomicResult.failedPairs);
+            orphanedAdSets.push(...atomicResult.orphanedAdSets);
+
+            break; // Exit batch loop since atomic method handled the rest
           } else {
-            // Both failed or only ad set failed
-            const adSetErrorMsg = adSetResult && adSetResult.body ? JSON.parse(adSetResult.body).error?.message : 'Unknown error';
-            console.error(`     ❌ Pair ${pairNumber} failed: ${adSetErrorMsg}`);
-            failedPairs.push({ pairNumber, reason: 'ad_set_creation_failed' });
+            // Mark all pairs in this batch as failed
+            for (let i = 0; i < pairsInThisBatch; i++) {
+              failedPairs.push({
+                pairNumber: batchStartIndex + i + 1,
+                reason: 'batch_request_failed',
+                error: batchError.message
+              });
+            }
           }
-
-          // Delay between pairs to prevent rate limits
-          if (pairIndex < count - 1) {
-            await this.delay(2000);
-          }
-
-        } catch (error) {
-          console.error(`     ❌ Pair ${pairNumber} batch failed: ${error.message}`);
-          failedPairs.push({ pairNumber, reason: 'batch_request_failed', error: error.message });
         }
       }
 
-      console.log(`\n📊 ATOMIC PAIRING RESULTS:`);
-      console.log(`   ✅ Successful pairs: ${successfulPairs.length}/${count}`);
-      console.log(`   ❌ Failed pairs: ${failedPairs.length}/${count}`);
-      console.log(`   🗑️  Orphaned ad sets deleted: ${orphanedAdSets.filter(o => o.deleted).length}`);
-      console.log(`   ✅ 1:1 Ratio maintained: ${successfulPairs.length} ad sets, ${successfulPairs.length} ads`);
+      // Step 3: Clean up orphaned ad sets
+      if (orphanedAdSets.length > 0) {
+        console.log(`\n🗑️  Cleaning up ${orphanedAdSets.length} orphaned ad sets...`);
 
-      // Step 3: Prepare return data
+        for (const orphan of orphanedAdSets) {
+          if (!orphan.deleted && orphan.adSetId) {
+            try {
+              await axios.delete(
+                `${this.baseURL}/${orphan.adSetId}`,
+                { params: { access_token: this.accessToken } }
+              );
+              orphan.deleted = true;
+              console.log(`     ✅ Deleted orphaned ad set ${orphan.adSetId}`);
+            } catch (deleteError) {
+              console.error(`     ❌ Failed to delete orphaned ad set ${orphan.adSetId}: ${deleteError.message}`);
+            }
+          }
+        }
+      }
+
+      // Step 4: Retry failed pairs atomically (one at a time)
+      if (failedPairs.length > 0) {
+        console.log(`\n🔄 Step 4: Retrying ${failedPairs.length} failed pairs atomically...`);
+
+        // Get unique pair numbers from failed pairs (deduplicated)
+        const failedPairNumbers = [...new Set(failedPairs.map(p => p.pairNumber))];
+
+        for (const pairNumber of failedPairNumbers) {
+          // Skip if this pair is now orphaned (ad set created but ad failed - ad set was deleted)
+          const wasOrphaned = orphanedAdSets.some(o => o.pairNumber === pairNumber && o.deleted);
+          if (wasOrphaned) {
+            console.log(`  📤 Retrying pair ${pairNumber} (was orphaned, ad set deleted)...`);
+          } else {
+            console.log(`  📤 Retrying pair ${pairNumber}...`);
+          }
+
+          try {
+            // Create atomic batch for this single pair
+            const adSetBody = this.prepareAdSetBodyFromOriginal(originalAdSet, campaignId, pairNumber);
+            const adBody = this.prepareAdBodyForDuplicate(
+              formData.campaignName || 'Campaign',
+              postId,
+              pairNumber,
+              `{result=0:$.id}`,
+              formData.mediaHashes,
+              formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
+              textVariations,
+              formData
+            );
+
+            const atomicBatch = [
+              { method: 'POST', relative_url: `act_${accountId}/adsets`, body: adSetBody },
+              { method: 'POST', relative_url: `act_${accountId}/ads`, body: adBody }
+            ];
+
+            const response = await axios.post(
+              this.baseURL,
+              { batch: JSON.stringify(atomicBatch), access_token: this.accessToken },
+              { timeout: 60000 }
+            );
+
+            const results = response.data;
+            const adSetResult = results[0];
+            const adResult = results[1];
+
+            let adSetId = null;
+            let adId = null;
+
+            if (adSetResult?.code === 200 && adSetResult.body) {
+              try {
+                const body = JSON.parse(adSetResult.body);
+                if (body.id && !body.error) adSetId = body.id;
+              } catch (e) {}
+            }
+
+            if (adResult?.code === 200 && adResult.body) {
+              try {
+                const body = JSON.parse(adResult.body);
+                if (body.id && !body.error) adId = body.id;
+              } catch (e) {}
+            }
+
+            if (adSetId && adId) {
+              successfulPairs.push({ adSetId, adId, pairNumber });
+              console.log(`     ✅ Pair ${pairNumber} retry succeeded!`);
+
+              // Remove from failedPairs
+              const failIndex = failedPairs.findIndex(p => p.pairNumber === pairNumber);
+              if (failIndex !== -1) {
+                failedPairs.splice(failIndex, 1);
+              }
+            } else if (adSetId && !adId) {
+              // Orphan again - delete it
+              console.log(`     ⚠️ Pair ${pairNumber}: Ad set created but ad failed - deleting orphan...`);
+              try {
+                await axios.delete(`${this.baseURL}/${adSetId}`, { params: { access_token: this.accessToken } });
+                console.log(`     🗑️ Deleted orphaned ad set ${adSetId}`);
+              } catch (e) {
+                console.error(`     ❌ Failed to delete orphan: ${e.message}`);
+              }
+            } else {
+              console.log(`     ❌ Pair ${pairNumber} retry failed`);
+            }
+
+            // Delay between retries
+            await this.delay(2000);
+          } catch (retryError) {
+            console.error(`     ❌ Pair ${pairNumber} retry error: ${retryError.message}`);
+          }
+        }
+      }
+
+      // Final stats
       const newAdSetIds = successfulPairs.map(p => p.adSetId);
       const newAdIds = successfulPairs.map(p => p.adId);
+      const actualApiCalls = totalBatches + failedPairs.length; // Batches + retries
+
+      console.log(`\n📊 OPTIMIZED BATCH RESULTS:`);
+      console.log(`   ✅ Successful pairs: ${successfulPairs.length}/${count}`);
+      console.log(`   ❌ Failed pairs: ${failedPairs.length}/${count}`);
+      console.log(`   🗑️  Orphaned ad sets cleaned: ${orphanedAdSets.filter(o => o.deleted).length}`);
+      console.log(`   ✅ 1:1 Ratio maintained: ${successfulPairs.length} ad sets, ${successfulPairs.length} ads`);
 
       if (failedPairs.length > 0) {
         console.log(`\n⚠️  Failed Pairs Details:`);
@@ -1813,12 +2238,12 @@ class BatchDuplicationService {
       }
 
       console.log('\n✅ ========================================');
-      console.log('✅ ATOMIC PAIR DUPLICATION COMPLETE!');
+      console.log('✅ OPTIMIZED BATCH DUPLICATION COMPLETE!');
       console.log('✅ ========================================');
       console.log(`✅ Created ${newAdSetIds.length} ad sets with ${newAdIds.length} ads`);
-      console.log(`✅ API calls used: ${count} (1 per pair)`);
+      console.log(`✅ API calls used: ${actualApiCalls} (vs ${count} with atomic pairs)`);
+      console.log(`✅ API call savings: ${count - actualApiCalls} calls (${Math.round((1 - actualApiCalls / count) * 100)}% reduction)`);
       console.log(`✅ Orphans prevented: ${orphanedAdSets.filter(o => o.deleted).length} deleted immediately`);
-      console.log(`✅ 100% ATOMIC: Each API call creates complete pair or nothing`);
 
       return {
         success: true,
@@ -1830,17 +2255,17 @@ class BatchDuplicationService {
           id,
           name: `Ad Copy ${successfulPairs[index].pairNumber}`
         })),
-        operations: count * 2, // 2 operations per pair
-        batchesExecuted: count, // 1 batch per pair
-        apiCallsSaved: count, // Compared to 2 * count sequential calls
-        orphanedAdSets: orphanedAdSets, // Include orphaned ad sets (should be deleted already)
+        operations: count * 2,
+        batchesExecuted: actualApiCalls,
+        apiCallsSaved: count - actualApiCalls,
+        orphanedAdSets: orphanedAdSets,
         summary: {
           totalExpected: count,
-          totalSuccess: successfulPairs.length, // Only count complete pairs
+          totalSuccess: successfulPairs.length,
           totalAdSetsCreated: newAdSetIds.length,
           totalAdsCreated: newAdIds.length,
           totalFailed: failedPairs.length,
-          totalOrphaned: orphanedAdSets.filter(o => !o.deleted).length, // Only undeleted orphans
+          totalOrphaned: orphanedAdSets.filter(o => !o.deleted).length,
           successRate: Math.round((successfulPairs.length / count) * 100),
           hasFailures: failedPairs.length > 0,
           hasOrphans: orphanedAdSets.filter(o => !o.deleted).length > 0
@@ -1851,6 +2276,119 @@ class BatchDuplicationService {
       console.error('❌ Batch ad set duplication failed:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Fallback method: Create ad set/ad pairs atomically (1 pair per API call)
+   * Used when optimized batching fails due to timeouts or heavy payloads
+   */
+  async duplicateAdSetsBatchAtomic(originalAdSetId, campaignId, postId, count, formData, originalAdSet, accountId, textVariations, startNumber = 1) {
+    const axios = require('axios');
+    const successfulPairs = [];
+    const failedPairs = [];
+    const orphanedAdSets = [];
+
+    console.log(`\n🔄 ATOMIC FALLBACK: Creating ${count} pairs one at a time...`);
+
+    for (let i = 0; i < count; i++) {
+      const pairNumber = startNumber + i;
+      console.log(`  📤 Creating pair ${pairNumber}...`);
+
+      try {
+        // Prepare atomic batch (exactly 2 operations)
+        const pairBatch = [];
+
+        // Operation 0: Create ad set
+        const adSetBody = this.prepareAdSetBodyFromOriginal(
+          originalAdSet,
+          campaignId,
+          pairNumber
+        );
+
+        pairBatch.push({
+          method: 'POST',
+          relative_url: `act_${accountId}/adsets`,
+          body: adSetBody
+        });
+
+        // Operation 1: Create ad (references operation 0)
+        const adBody = this.prepareAdBodyForDuplicate(
+          formData.campaignName || 'Campaign',
+          postId,
+          pairNumber,
+          '{result=0:$.id}',
+          formData.mediaHashes,
+          formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
+          textVariations,
+          formData
+        );
+
+        pairBatch.push({
+          method: 'POST',
+          relative_url: `act_${accountId}/ads`,
+          body: adBody
+        });
+
+        // Execute
+        const response = await axios.post(
+          this.baseURL,
+          {
+            batch: JSON.stringify(pairBatch),
+            access_token: this.accessToken
+          }
+        );
+
+        const results = response.data;
+        const adSetResult = results[0];
+        const adResult = results[1];
+
+        let adSetId = null;
+        let adId = null;
+        let adSetSuccess = false;
+        let adSuccess = false;
+
+        if (adSetResult?.code === 200 && adSetResult.body) {
+          try {
+            const body = JSON.parse(adSetResult.body);
+            if (body.id) { adSetId = body.id; adSetSuccess = true; }
+          } catch (e) {}
+        }
+
+        if (adResult?.code === 200 && adResult.body) {
+          try {
+            const body = JSON.parse(adResult.body);
+            if (body.id) { adId = body.id; adSuccess = true; }
+          } catch (e) {}
+        }
+
+        if (adSetSuccess && adSuccess) {
+          successfulPairs.push({ adSetId, adId, pairNumber });
+          console.log(`     ✅ Pair ${pairNumber} complete`);
+        } else if (adSetSuccess && !adSuccess) {
+          // Orphan - delete immediately
+          try {
+            await axios.delete(`${this.baseURL}/${adSetId}`, { params: { access_token: this.accessToken } });
+            orphanedAdSets.push({ adSetId, pairNumber, deleted: true });
+          } catch (e) {
+            orphanedAdSets.push({ adSetId, pairNumber, deleted: false });
+          }
+          failedPairs.push({ pairNumber, reason: 'ad_creation_failed' });
+        } else {
+          failedPairs.push({ pairNumber, reason: 'ad_set_creation_failed' });
+        }
+
+        // Delay between pairs
+        if (i < count - 1) {
+          await this.delay(2000);
+        }
+
+      } catch (error) {
+        console.error(`     ❌ Pair ${pairNumber} failed: ${error.message}`);
+        failedPairs.push({ pairNumber, reason: 'batch_request_failed', error: error.message });
+      }
+    }
+
+    return { successfulPairs, failedPairs, orphanedAdSets };
   }
 
   /**
@@ -2726,6 +3264,508 @@ class BatchDuplicationService {
       adsFailed,
       failedDetails
     };
+  }
+
+  // ============================================================================
+  // FULL BATCH CREATION METHODS - FOR STRATEGY-FOR-ADS AND STRATEGY-FOR-ALL
+  // ============================================================================
+
+  /**
+   * Create entire campaign structure for Strategy-for-Ads using batch API
+   * Supports multiple creatives, text variations, and dynamic creative
+   *
+   * FLOW:
+   * 1. Create campaign separately (get real ID)
+   * 2. Create first ad set + ad with full creative (establishes post ID)
+   * 3. Create remaining ad sets + ads using existing post ID (100% root effect)
+   *
+   * @param {Object} templateData - Full campaign template with all settings
+   * @param {number} numAdSets - Total number of ad sets to create
+   * @returns {Object} Complete campaign structure with all IDs
+   */
+  async createStrategyForAdsBatch(templateData, numAdSets = 50) {
+    try {
+      console.log('🚀 ========================================');
+      console.log('🚀 STRATEGY-FOR-ADS FULL BATCH CREATION');
+      console.log('🚀 ========================================');
+      console.log(`📊 Target: 1 campaign + ${numAdSets} ad sets + ${numAdSets} ads`);
+      console.log(`📊 Creative Type: ${templateData.dynamicCreativeEnabled ? 'Dynamic Creative' : 'Regular'}`);
+      console.log(`📊 Text Variations: ${templateData.dynamicTextEnabled ? 'Enabled' : 'Disabled'}`);
+
+      const axios = require('axios');
+      const accountId = this.adAccountId.replace('act_', '');
+
+      // STEP 1: Create campaign separately
+      console.log('\n📋 Step 1: Creating campaign...');
+      const campaignId = await this.createCampaignForStrategy(templateData, accountId);
+      console.log(`✅ Campaign created: ${campaignId}`);
+
+      // STEP 2: Create first ad set + ad with full creative
+      // This establishes the post ID that will be reused by all other ads
+      console.log('\n📋 Step 2: Creating initial ad set + ad (establishes post ID)...');
+
+      let postId = null;
+      let mediaHashes = null;
+      let firstAdSetId = null;
+      let firstAdId = null;
+
+      // Create first ad set
+      const firstAdSetBody = this.prepareAdSetBodyForStrategy(templateData, campaignId, 1);
+      const firstAdSetResponse = await axios.post(
+        `${this.baseURL}/act_${accountId}/adsets`,
+        null,
+        { params: { ...this.decodeBodyToParams(firstAdSetBody), access_token: this.accessToken } }
+      );
+      firstAdSetId = firstAdSetResponse.data.id;
+      console.log(`   ✅ First ad set created: ${firstAdSetId}`);
+
+      // Create first ad with full creative (this creates the post)
+      const firstAdResult = await this.createFirstAdWithCreative(
+        templateData,
+        firstAdSetId,
+        accountId
+      );
+      firstAdId = firstAdResult.adId;
+      postId = firstAdResult.postId;
+      mediaHashes = firstAdResult.mediaHashes;
+      console.log(`   ✅ First ad created: ${firstAdId}`);
+      if (postId) {
+        console.log(`   📝 Post ID established: ${postId}`);
+      }
+
+      // STEP 3: Create remaining ad sets + ads using batch API
+      const remainingCount = numAdSets - 1;
+      if (remainingCount > 0) {
+        console.log(`\n📋 Step 3: Creating remaining ${remainingCount} ad set/ad pairs via batch...`);
+
+        const batchResult = await this.duplicateAdSetsBatch(
+          firstAdSetId,
+          campaignId,
+          postId,
+          remainingCount,
+          {
+            ...templateData,
+            mediaHashes: mediaHashes,
+            campaignName: templateData.campaignName
+          }
+        );
+
+        // Combine results
+        const allAdSets = [
+          { id: firstAdSetId, name: `${templateData.campaignName} - Ad Set 1` },
+          ...batchResult.adSets
+        ];
+        const allAds = [
+          { id: firstAdId, name: `${templateData.campaignName} - Ad 1` },
+          ...batchResult.ads
+        ];
+
+        console.log('\n✅ ========================================');
+        console.log('✅ STRATEGY-FOR-ADS BATCH COMPLETE!');
+        console.log('✅ ========================================');
+        console.log(`✅ Campaign: ${campaignId}`);
+        console.log(`✅ Ad Sets: ${allAdSets.length}/${numAdSets}`);
+        console.log(`✅ Ads: ${allAds.length}/${numAdSets}`);
+        console.log(`✅ API calls used: ~${2 + batchResult.batchesExecuted} (vs ${1 + numAdSets * 2} sequential)`);
+
+        return {
+          success: batchResult.summary.successRate >= 90,
+          partialSuccess: batchResult.summary.successRate < 90 && batchResult.summary.successRate > 0,
+          campaign: { id: campaignId, name: templateData.campaignName },
+          adSets: allAdSets,
+          ads: allAds,
+          postId: postId,
+          mediaHashes: mediaHashes,
+          summary: {
+            totalAdSets: allAdSets.length,
+            totalAds: allAds.length,
+            expected: numAdSets,
+            successRate: Math.round((allAdSets.length / numAdSets) * 100),
+            batchesExecuted: 2 + batchResult.batchesExecuted,
+            hasFailures: batchResult.summary.hasFailures
+          }
+        };
+      }
+
+      // Only 1 ad set requested
+      return {
+        success: true,
+        campaign: { id: campaignId, name: templateData.campaignName },
+        adSets: [{ id: firstAdSetId, name: `${templateData.campaignName} - Ad Set 1` }],
+        ads: [{ id: firstAdId, name: `${templateData.campaignName} - Ad 1` }],
+        postId: postId,
+        mediaHashes: mediaHashes,
+        summary: {
+          totalAdSets: 1,
+          totalAds: 1,
+          expected: 1,
+          successRate: 100,
+          batchesExecuted: 2,
+          hasFailures: false
+        }
+      };
+
+    } catch (error) {
+      console.error('❌ Strategy-for-Ads batch creation failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create entire campaign structure for Strategy-for-All using batch API
+   * Similar to Strategy-for-Ads but may have different settings
+   *
+   * @param {Object} templateData - Full campaign template with all settings
+   * @param {number} numAdSets - Total number of ad sets to create
+   * @returns {Object} Complete campaign structure with all IDs
+   */
+  async createStrategyForAllBatch(templateData, numAdSets = 50) {
+    try {
+      console.log('🚀 ========================================');
+      console.log('🚀 STRATEGY-FOR-ALL FULL BATCH CREATION');
+      console.log('🚀 ========================================');
+      console.log(`📊 Target: 1 campaign + ${numAdSets} ad sets + ${numAdSets} ads`);
+
+      // Strategy-for-All uses the same batch logic as Strategy-for-Ads
+      // The only difference is in the templateData format (handled by caller)
+      return await this.createStrategyForAdsBatch(templateData, numAdSets);
+
+    } catch (error) {
+      console.error('❌ Strategy-for-All batch creation failed:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Create campaign for strategy batch creation
+   */
+  async createCampaignForStrategy(templateData, accountId) {
+    const axios = require('axios');
+
+    let campaignName = templateData.campaignName || 'New Campaign';
+    if (!campaignName.startsWith('[Launcher]')) {
+      campaignName = `[Launcher] ${campaignName}`;
+    }
+
+    const params = {
+      name: campaignName,
+      objective: templateData.objective || 'OUTCOME_LEADS',
+      status: 'ACTIVE',
+      special_ad_categories: JSON.stringify(templateData.specialAdCategories || []),
+      access_token: this.accessToken
+    };
+
+    // Buying type
+    if (templateData.buyingType) {
+      params.buying_type = templateData.buyingType;
+    }
+
+    // Campaign budget (CBO)
+    if (templateData.budgetLevel === 'campaign' || templateData.campaignBudget?.dailyBudget || templateData.campaignBudget?.lifetimeBudget) {
+      if (templateData.campaignBudget?.dailyBudget || templateData.dailyBudget) {
+        params.daily_budget = Math.round(parseFloat(templateData.campaignBudget?.dailyBudget || templateData.dailyBudget) * 100);
+      }
+      if (templateData.campaignBudget?.lifetimeBudget || templateData.lifetimeBudget) {
+        params.lifetime_budget = Math.round(parseFloat(templateData.campaignBudget?.lifetimeBudget || templateData.lifetimeBudget) * 100);
+      }
+      if (templateData.bidStrategy) {
+        params.bid_strategy = templateData.bidStrategy;
+      }
+    }
+
+    const response = await axios.post(
+      `${this.baseURL}/act_${accountId}/campaigns`,
+      null,
+      { params }
+    );
+
+    return response.data.id;
+  }
+
+  /**
+   * Helper: Prepare ad set body for strategy creation
+   */
+  prepareAdSetBodyForStrategy(templateData, campaignId, adSetNumber) {
+    const body = {
+      name: `[Launcher] ${templateData.campaignName || 'Campaign'} - Ad Set ${adSetNumber}`,
+      campaign_id: campaignId,
+      status: 'ACTIVE',
+      billing_event: 'IMPRESSIONS'
+    };
+
+    // Optimization goal
+    body.optimization_goal = this.getOptimizationGoalFromTemplate(templateData);
+
+    // Budget (only if ABO - ad set budget)
+    const usingCBO = templateData.budgetLevel === 'campaign' ||
+                     templateData.campaignBudget?.dailyBudget ||
+                     templateData.campaignBudget?.lifetimeBudget;
+
+    if (!usingCBO) {
+      if (templateData.adSetBudget?.dailyBudget || templateData.dailyBudget) {
+        body.daily_budget = Math.round(parseFloat(templateData.adSetBudget?.dailyBudget || templateData.dailyBudget) * 100);
+      }
+      if (templateData.adSetBudget?.lifetimeBudget || templateData.lifetimeBudget) {
+        body.lifetime_budget = Math.round(parseFloat(templateData.adSetBudget?.lifetimeBudget || templateData.lifetimeBudget) * 100);
+      }
+    }
+
+    // Promoted object (pixel + conversion)
+    const pixelId = templateData.manualPixelId || templateData.pixel || this.pixelId;
+    if (pixelId && templateData.conversionLocation === 'website') {
+      const promotedObject = { pixel_id: pixelId };
+      if (templateData.conversionEvent) {
+        const eventMap = { 'Lead': 'LEAD', 'Contact': 'CONTACT', 'Purchase': 'PURCHASE' };
+        promotedObject.custom_event_type = eventMap[templateData.conversionEvent] || templateData.conversionEvent;
+      }
+      body.promoted_object = JSON.stringify(promotedObject);
+    }
+
+    // Targeting
+    const targeting = this.buildTargetingFromTemplate(templateData);
+    body.targeting = JSON.stringify(targeting);
+
+    // Attribution
+    if (templateData.attributionSetting) {
+      body.attribution_spec = JSON.stringify(this.buildAttributionSpec(templateData.attributionSetting));
+    }
+
+    // Dynamic creative flag
+    if (templateData.dynamicCreativeEnabled || templateData.dynamicTextEnabled) {
+      body.is_dynamic_creative = true;
+    }
+
+    // Schedule
+    if (templateData.adSetBudget?.startDate) {
+      body.start_time = this.parseDateTimeAsEST(templateData.adSetBudget.startDate);
+    }
+    if (templateData.adSetBudget?.endDate) {
+      body.end_time = this.parseDateTimeAsEST(templateData.adSetBudget.endDate);
+    }
+
+    return this.encodeBody(body);
+  }
+
+  /**
+   * Helper: Build attribution spec from setting string
+   */
+  buildAttributionSpec(setting) {
+    const specs = [];
+    switch (setting) {
+      case '1_day_click_1_day_view':
+        specs.push({ event_type: 'CLICK_THROUGH', window_days: 1 });
+        specs.push({ event_type: 'VIEW_THROUGH', window_days: 1 });
+        break;
+      case '7_day_click_1_day_view':
+        specs.push({ event_type: 'CLICK_THROUGH', window_days: 7 });
+        specs.push({ event_type: 'VIEW_THROUGH', window_days: 1 });
+        break;
+      case '1_day_click':
+        specs.push({ event_type: 'CLICK_THROUGH', window_days: 1 });
+        break;
+      case '7_day_click':
+        specs.push({ event_type: 'CLICK_THROUGH', window_days: 7 });
+        break;
+      default:
+        specs.push({ event_type: 'CLICK_THROUGH', window_days: 1 });
+        specs.push({ event_type: 'VIEW_THROUGH', window_days: 1 });
+    }
+    return specs;
+  }
+
+  /**
+   * Helper: Create first ad with full creative (establishes post ID)
+   * This is done separately because the first ad needs to create the post
+   */
+  async createFirstAdWithCreative(templateData, adSetId, accountId) {
+    const axios = require('axios');
+
+    const adName = `[Launcher] ${templateData.campaignName || 'Campaign'} - Ad 1`;
+    let postId = null;
+    let mediaHashes = templateData.mediaHashes || null;
+
+    // Build creative based on type
+    let creative = {};
+
+    if (templateData.dynamicCreativeEnabled || templateData.dynamicTextEnabled) {
+      // Dynamic creative with asset_feed_spec
+      const assetFeedSpec = {
+        page_id: this.pageId
+      };
+
+      // Add text variations
+      if (templateData.primaryTextVariations?.length > 0) {
+        assetFeedSpec.bodies = templateData.primaryTextVariations.map(text => ({ text }));
+      } else if (templateData.primaryText) {
+        assetFeedSpec.bodies = [{ text: templateData.primaryText }];
+      }
+
+      if (templateData.headlineVariations?.length > 0) {
+        assetFeedSpec.titles = templateData.headlineVariations.map(text => ({ text }));
+      } else if (templateData.headline) {
+        assetFeedSpec.titles = [{ text: templateData.headline }];
+      }
+
+      if (templateData.description) {
+        assetFeedSpec.descriptions = [{ text: templateData.description }];
+      }
+
+      // Add link URLs
+      if (templateData.url) {
+        assetFeedSpec.link_urls = [{ website_url: templateData.url }];
+        if (templateData.displayLink) {
+          assetFeedSpec.link_urls[0].display_url = templateData.displayLink;
+        }
+      }
+
+      // Add call to action
+      if (templateData.callToAction) {
+        assetFeedSpec.call_to_action_types = [templateData.callToAction];
+      }
+
+      // Add media
+      if (mediaHashes?.dynamicImages?.length > 0) {
+        assetFeedSpec.images = mediaHashes.dynamicImages.map(hash => ({ hash }));
+      } else if (mediaHashes?.imageHash) {
+        assetFeedSpec.images = [{ hash: mediaHashes.imageHash }];
+      }
+
+      if (mediaHashes?.dynamicVideos?.length > 0) {
+        assetFeedSpec.videos = mediaHashes.dynamicVideos.map(id => ({ video_id: id }));
+      } else if (mediaHashes?.videoId) {
+        assetFeedSpec.videos = [{ video_id: mediaHashes.videoId }];
+      }
+
+      // Determine ad format
+      const hasVideos = assetFeedSpec.videos?.length > 0;
+      const hasImages = assetFeedSpec.images?.length > 0;
+      if (hasVideos && hasImages) {
+        assetFeedSpec.ad_formats = ['AUTOMATIC_FORMAT'];
+      } else if (hasVideos) {
+        assetFeedSpec.ad_formats = ['SINGLE_VIDEO'];
+      } else if (hasImages) {
+        assetFeedSpec.ad_formats = ['SINGLE_IMAGE'];
+      }
+
+      creative = { asset_feed_spec: assetFeedSpec };
+
+    } else {
+      // Regular creative with object_story_spec
+      const objectStorySpec = {
+        page_id: this.pageId
+      };
+
+      // Determine creative type based on media
+      if (mediaHashes?.videoId) {
+        // Video ad
+        objectStorySpec.video_data = {
+          video_id: mediaHashes.videoId,
+          message: templateData.primaryText || '',
+          title: templateData.headline || '',
+          link_description: templateData.description || '',
+          call_to_action: {
+            type: templateData.callToAction || 'LEARN_MORE',
+            value: { link: templateData.url || '' }
+          }
+        };
+        if (templateData.displayLink) {
+          objectStorySpec.video_data.link_caption = templateData.displayLink;
+        }
+        if (mediaHashes.thumbnailHash) {
+          objectStorySpec.video_data.image_hash = mediaHashes.thumbnailHash;
+        }
+      } else if (mediaHashes?.carouselCards?.length > 0) {
+        // Carousel ad
+        objectStorySpec.link_data = {
+          message: templateData.primaryText || '',
+          link: templateData.url || '',
+          child_attachments: mediaHashes.carouselCards.map((card, idx) => ({
+            link: card.link || templateData.url || '',
+            image_hash: card.hash,
+            name: card.headline || templateData.headline || `Card ${idx + 1}`,
+            description: card.description || templateData.description || '',
+            call_to_action: {
+              type: templateData.callToAction || 'LEARN_MORE'
+            }
+          })),
+          multi_share_optimized: true,
+          call_to_action: {
+            type: templateData.callToAction || 'LEARN_MORE'
+          }
+        };
+      } else if (mediaHashes?.imageHash) {
+        // Single image ad
+        objectStorySpec.link_data = {
+          message: templateData.primaryText || '',
+          link: templateData.url || '',
+          name: templateData.headline || '',
+          description: templateData.description || '',
+          image_hash: mediaHashes.imageHash,
+          call_to_action: {
+            type: templateData.callToAction || 'LEARN_MORE',
+            value: { link: templateData.url || '' }
+          }
+        };
+        if (templateData.displayLink) {
+          objectStorySpec.link_data.caption = templateData.displayLink;
+        }
+      }
+
+      creative = { object_story_spec: objectStorySpec };
+    }
+
+    // Create the ad
+    const params = {
+      name: adName,
+      adset_id: adSetId,
+      status: 'ACTIVE',
+      creative: JSON.stringify(creative),
+      access_token: this.accessToken
+    };
+
+    const response = await axios.post(
+      `${this.baseURL}/act_${accountId}/ads`,
+      null,
+      { params }
+    );
+
+    const adId = response.data.id;
+
+    // Fetch the created ad to get the post ID (if created)
+    try {
+      const adDetails = await axios.get(
+        `${this.baseURL}/${adId}`,
+        {
+          params: {
+            fields: 'creative{object_story_id,effective_object_story_id}',
+            access_token: this.accessToken
+          }
+        }
+      );
+
+      postId = adDetails.data.creative?.object_story_id ||
+               adDetails.data.creative?.effective_object_story_id;
+
+      if (postId) {
+        console.log(`   📝 Post ID retrieved: ${postId}`);
+      }
+    } catch (e) {
+      console.warn(`   ⚠️  Could not retrieve post ID: ${e.message}`);
+    }
+
+    return { adId, postId, mediaHashes };
+  }
+
+  /**
+   * Helper: Decode URL-encoded body back to params object
+   */
+  decodeBodyToParams(encodedBody) {
+    const params = {};
+    encodedBody.split('&').forEach(pair => {
+      const [key, value] = pair.split('=');
+      params[key] = decodeURIComponent(value);
+    });
+    return params;
   }
 }
 

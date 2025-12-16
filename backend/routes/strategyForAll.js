@@ -786,7 +786,20 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               initialResult.campaign.id,
               initialResult.postId,
               adSetCount,
-              campaignData
+              {
+                ...campaignData,
+                mediaHashes: initialResult.mediaHashes, // Pass media hashes for dynamic creatives
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                primaryTextVariations: campaignData.primaryTextVariations,
+                headlineVariations: campaignData.headlineVariations,
+                primaryText: campaignData.primaryText,
+                headline: campaignData.headline,
+                description: campaignData.description,
+                url: campaignData.url,
+                displayLink: campaignData.displayLink,
+                callToAction: campaignData.callToAction
+              }
             );
 
             initialResult.totalAdSets = 1 + batchResult.adSets.length;
@@ -913,7 +926,20 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           result.campaign.id,
           result.postId,
           adSetCount,
-          campaignData
+          {
+            ...campaignData,
+            mediaHashes: result.mediaHashes, // Pass media hashes for dynamic creatives
+            dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled, // Pass dynamic creative flag
+            dynamicTextEnabled: campaignData.dynamicTextEnabled, // Pass dynamic text flag
+            primaryTextVariations: campaignData.primaryTextVariations, // Pass text variations
+            headlineVariations: campaignData.headlineVariations, // Pass headline variations
+            primaryText: campaignData.primaryText, // Pass main primary text
+            headline: campaignData.headline, // Pass main headline
+            description: campaignData.description, // Pass description
+            url: campaignData.url, // Pass URL
+            displayLink: campaignData.displayLink, // Pass display link
+            callToAction: campaignData.callToAction // Pass CTA
+          }
         );
 
         if (batchResult.summary.successRate >= 90) {
