@@ -15,7 +15,8 @@ import {
   Alert,
   Paper,
   Avatar,
-  Stack
+  Stack,
+  LinearProgress
 } from '@mui/material';
 import {
   SwapHoriz,
@@ -28,7 +29,8 @@ import {
   Settings,
   Check,
   KeyboardArrowDown,
-  AccountBox
+  AccountBox,
+  Inventory
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import resourceApi, { ResourceConfig, ResourcePreset } from '../services/resourceApi';
@@ -37,6 +39,13 @@ import { cacheFetch } from '../utils/debounce';
 
 interface ResourceSwitcherProps {
   onResourceSwitch?: (config: ResourceConfig) => void;
+}
+
+interface AdLimitInfo {
+  adCount: number;
+  adLimit: number;
+  usagePercent: number;
+  remaining: number;
 }
 
 const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch }) => {
@@ -51,6 +60,8 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
     business?: string;
   }>({});
   const [error, setError] = useState<string | null>(null);
+  const [adLimits, setAdLimits] = useState<AdLimitInfo | null>(null);
+  const [loadingLimits, setLoadingLimits] = useState(false);
 
   useEffect(() => {
     loadCurrentConfig();
@@ -101,11 +112,14 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
       const resourcesResponse = await facebookAuthApi.getResources();
       if (resourcesResponse.success) {
         const { adAccounts, pages, pixels } = resourcesResponse.data;
-        
+
         const names: any = {};
         if (config.adAccountId) {
           const adAccount = adAccounts?.find((acc: any) => acc.id === config.adAccountId);
           names.adAccount = adAccount?.name || config.adAccountId;
+
+          // Load ad limits for the current ad account
+          loadAdLimits(config.adAccountId);
         }
         if (config.pageId) {
           const page = pages?.find((p: any) => p.id === config.pageId);
@@ -115,11 +129,37 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
           const pixel = pixels?.find((p: any) => p.id === config.pixelId);
           names.pixel = pixel?.name || config.pixelId;
         }
-        
+
         setResourceNames(names);
       }
     } catch (error) {
       console.error('Failed to load resource names:', error);
+    }
+  };
+
+  const loadAdLimits = async (adAccountId: string) => {
+    try {
+      setLoadingLimits(true);
+      const response = await facebookAuthApi.getAdLimits(adAccountId);
+      if (response.success && response.data) {
+        setAdLimits({
+          adCount: response.data.adCount,
+          adLimit: response.data.adLimit,
+          usagePercent: response.data.usagePercent,
+          remaining: response.data.remaining
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load ad limits:', error);
+      // Set default values on error
+      setAdLimits({
+        adCount: 0,
+        adLimit: 5000,
+        usagePercent: 0,
+        remaining: 5000
+      });
+    } finally {
+      setLoadingLimits(false);
     }
   };
 
@@ -331,6 +371,57 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
                   </Box>
                 </Box>
               ) : null}
+
+              {/* Ad Limit Display */}
+              {currentConfig?.adAccountId && (
+                <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #e4e6eb' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Avatar sx={{ width: 24, height: 24, backgroundColor: '#fff3e0' }}>
+                      <Inventory sx={{ fontSize: 14, color: '#ff9800' }} />
+                    </Avatar>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="caption" sx={{ fontSize: '11px', color: '#65676b' }}>
+                        Ad Limit
+                      </Typography>
+                      {loadingLimits ? (
+                        <CircularProgress size={12} sx={{ ml: 1 }} />
+                      ) : adLimits ? (
+                        <Typography variant="body2" sx={{ fontSize: '13px', fontWeight: 500 }}>
+                          {adLimits.adCount.toLocaleString()} / {adLimits.adLimit.toLocaleString()} ads
+                        </Typography>
+                      ) : (
+                        <Typography variant="body2" sx={{ fontSize: '13px', color: '#65676b' }}>
+                          Loading...
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  {adLimits && (
+                    <>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(adLimits.usagePercent, 100)}
+                        sx={{
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: '#e4e6eb',
+                          '& .MuiLinearProgress-bar': {
+                            borderRadius: 3,
+                            backgroundColor: adLimits.usagePercent >= 90
+                              ? '#f44336'
+                              : adLimits.usagePercent >= 70
+                                ? '#ff9800'
+                                : '#4caf50'
+                          }
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ fontSize: '10px', color: '#65676b', mt: 0.5, display: 'block' }}>
+                        {adLimits.remaining.toLocaleString()} remaining ({100 - adLimits.usagePercent}% available)
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              )}
             </Stack>
           </Paper>
         </Box>

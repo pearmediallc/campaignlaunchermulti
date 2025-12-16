@@ -223,6 +223,40 @@ export const facebookAuthApi = {
   getPixels: async (refresh: boolean = false): Promise<{ pixels: any[] }> => {
     const response = await api.get(`/auth/facebook/pixels?refresh=${refresh}`);
     return response.data;
+  },
+
+  // Get ad limits for a specific ad account
+  getAdLimits: async (adAccountId: string): Promise<{
+    success: boolean;
+    data: {
+      accountId: string;
+      name?: string;
+      adCount: number;
+      adLimit: number;
+      usagePercent: number;
+      remaining: number;
+      error?: string;
+    };
+  }> => {
+    const response = await api.get(`/auth/facebook/ad-limits/${adAccountId}`);
+    return response.data;
+  },
+
+  // Get ad limits for all ad accounts
+  getAllAdLimits: async (): Promise<{
+    success: boolean;
+    data: Array<{
+      accountId: string;
+      name: string;
+      adCount: number;
+      adLimit: number;
+      usagePercent: number;
+      remaining: number;
+      error?: string;
+    }>;
+  }> => {
+    const response = await api.get('/auth/facebook/ad-limits');
+    return response.data;
   }
 };
 

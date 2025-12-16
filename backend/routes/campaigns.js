@@ -630,7 +630,14 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
       id: result.campaignId,
       name: result.campaignName,
       copyNumber: result.copyNumber,
-      success: true
+      // CRITICAL: Include accurate counts for UI display
+      adSetsCreated: result.adSetsCreated,
+      adsCreated: result.adsCreated,
+      adSetsFailed: result.adSetsFailed || 0,
+      adsFailed: result.adsFailed || 0,
+      failedDetails: result.failedDetails || [],
+      success: result.status === 'success',
+      partialSuccess: result.status === 'partial'
     }));
 
     // Add failed copies to the results

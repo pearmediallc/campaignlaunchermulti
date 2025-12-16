@@ -372,6 +372,194 @@ router.post('/resources/select', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * Get ad limits for an ad account
+ * Returns the current ad count and maximum ad limit
+ */
+router.get('/ad-limits/:adAccountId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountId } = req.params;
+
+    const facebookAuth = await db.FacebookAuth.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!facebookAuth || !facebookAuth.accessToken) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Facebook authentication found'
+      });
+    }
+
+    // Decrypt token
+    let accessToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      accessToken = decryptToken(facebookAuth.accessToken);
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
+    if (!accessToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Failed to decrypt access token'
+      });
+    }
+
+    // Fetch ad limits from Facebook Graph API
+    const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
+    const response = await axios.get(
+      `https://graph.facebook.com/v18.0/${accountId}`,
+      {
+        params: {
+          fields: 'name,account_id,ad_count,ad_limit,currency,account_status',
+          access_token: accessToken
+        }
+      }
+    );
+
+    const adAccount = response.data;
+
+    // Calculate usage percentage
+    const usagePercent = adAccount.ad_limit > 0
+      ? Math.round((adAccount.ad_count / adAccount.ad_limit) * 100)
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        accountId: adAccount.account_id || adAccountId,
+        name: adAccount.name,
+        adCount: adAccount.ad_count || 0,
+        adLimit: adAccount.ad_limit || 5000, // Default limit is typically 5000
+        usagePercent,
+        remaining: (adAccount.ad_limit || 5000) - (adAccount.ad_count || 0),
+        currency: adAccount.currency,
+        status: adAccount.account_status
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching ad limits:', error.response?.data || error.message);
+
+    // Return default limits if API fails
+    res.json({
+      success: true,
+      data: {
+        accountId: req.params.adAccountId,
+        adCount: 0,
+        adLimit: 5000,
+        usagePercent: 0,
+        remaining: 5000,
+        error: 'Could not fetch live data'
+      }
+    });
+  }
+});
+
+/**
+ * Get ad limits for all user's ad accounts
+ */
+router.get('/ad-limits', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const facebookAuth = await db.FacebookAuth.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!facebookAuth || !facebookAuth.accessToken) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Facebook authentication found'
+      });
+    }
+
+    // Decrypt token
+    let accessToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      accessToken = decryptToken(facebookAuth.accessToken);
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
+    if (!accessToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Failed to decrypt access token'
+      });
+    }
+
+    // Get all ad accounts
+    const adAccounts = facebookAuth.adAccounts || [];
+    const limits = [];
+
+    // Fetch limits for each account (max 5 to avoid rate limits)
+    const accountsToFetch = adAccounts.slice(0, 5);
+
+    for (const account of accountsToFetch) {
+      try {
+        const accountId = account.id.startsWith('act_') ? account.id : `act_${account.id}`;
+
+        const response = await axios.get(
+          `https://graph.facebook.com/v18.0/${accountId}`,
+          {
+            params: {
+              fields: 'name,account_id,ad_count,ad_limit',
+              access_token: accessToken
+            }
+          }
+        );
+
+        const data = response.data;
+        const adLimit = data.ad_limit || 5000;
+        const adCount = data.ad_count || 0;
+
+        limits.push({
+          accountId: account.id,
+          name: data.name || account.name,
+          adCount,
+          adLimit,
+          usagePercent: Math.round((adCount / adLimit) * 100),
+          remaining: adLimit - adCount
+        });
+
+      } catch (err) {
+        // Add with default values if fetch fails
+        limits.push({
+          accountId: account.id,
+          name: account.name,
+          adCount: 0,
+          adLimit: 5000,
+          usagePercent: 0,
+          remaining: 5000,
+          error: 'Could not fetch'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: limits
+    });
+
+  } catch (error) {
+    console.error('Error fetching ad limits:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch ad limits'
+    });
+  }
+});
+
 // Helper functions
 function encryptToken(token) {
   const algorithm = 'aes-256-gcm';

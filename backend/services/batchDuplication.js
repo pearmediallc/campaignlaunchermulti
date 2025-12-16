@@ -1,13 +1,21 @@
 const axios = require('axios');
+const FailureTracker = require('./FailureTracker');
 
 /**
  * Batch API Duplication Service
  * Reduces API calls from 200+ to just 2-3 by using Facebook's Batch API
+ *
+ * IMPORTANT: This service includes:
+ * 1. Batch API for efficient operations
+ * 2. Sequential fallback when batch operations fail
+ * 3. FailureTracker integration for accurate failure reporting
+ * 4. Retry mechanism for failed entities
  */
 class BatchDuplicationService {
-  constructor(accessToken, adAccountId, pageId, pixelId) {
+  constructor(accessToken, adAccountId, pageId, pixelId, userId = null) {
     this.accessToken = accessToken;
     this.adAccountId = adAccountId;
+    this.userId = userId; // For FailureTracker integration
     this.pageId = pageId; // ADDED: Store pageId to match 1-50-1 pattern
     this.pixelId = pixelId; // ADDED: Store pixelId for tracking
     this.baseURL = 'https://graph.facebook.com/v18.0';
@@ -562,8 +570,14 @@ class BatchDuplicationService {
    * Prepare campaign body from template data
    */
   prepareCampaignBodyFromTemplate(templateData) {
+    // Add [Launcher] prefix if not already present
+    let campaignName = templateData.campaignName || 'New Campaign';
+    if (!campaignName.startsWith('[Launcher]')) {
+      campaignName = `[Launcher] ${campaignName}`;
+    }
+
     const body = {
-      name: templateData.campaignName || 'New Campaign',
+      name: campaignName,
       objective: templateData.objective || 'OUTCOME_LEADS',
       status: 'ACTIVE', // Create campaigns as ACTIVE by default
       special_ad_categories: JSON.stringify(templateData.specialAdCategories || [])
@@ -1906,45 +1920,61 @@ class BatchDuplicationService {
           }
         }
 
-        // Step 4: Process results
-        console.log('\n📊 Processing results...');
+        // Step 4: Process results using accurate counting
+        console.log('\n📊 Processing results with accurate counting...');
 
+        // Use the accurate counting method to get real success/failure counts
+        const counts = this.getAccurateCounts(batchResults);
+
+        // Extract successful IDs
         for (let i = 0; i < batchResults.length; i++) {
           const result = batchResults[i];
-          const isAdSet = i % 2 === 0; // Even = ad set, odd = ad
+          const isAdSet = i % 2 === 0;
           const objectNumber = Math.floor(i / 2) + 1;
 
           if (result && result.code === 200 && result.body) {
             const body = JSON.parse(result.body);
-
             if (isAdSet) {
               newAdSetIds.push(body.id);
             } else {
               newAdIds.push(body.id);
             }
           } else if (result) {
-            // Operation failed
             const errorMsg = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
             const errorDetails = errorMsg?.error?.message || 'Unknown error';
 
             if (isAdSet) {
               console.error(`❌ Ad Set ${objectNumber} failed (op ${i}):`, errorDetails);
             } else if (result.code !== 960) {
-              // Only log ad failures if not caused by dependent ad set failures
               console.error(`❌ Ad ${objectNumber} failed (op ${i}):`, errorDetails);
             }
 
-            failedOperations.push({ operation: i, error: errorDetails });
+            failedOperations.push({
+              operation: i,
+              error: errorDetails,
+              type: isAdSet ? 'adset' : 'ad',
+              index: objectNumber - 1
+            });
           }
         }
 
-        console.log('\n✅ Copy results:');
+        // CRITICAL: Use accurate counts, not expected counts
+        console.log('\n✅ Copy results (ACCURATE COUNTS):');
         console.log(`   Campaign: ${createdCampaignId || 'FAILED'}`);
-        console.log(`   Ad Sets Created: ${newAdSetIds.length}/${adSetsCount}`);
-        console.log(`   Ads Created: ${newAdIds.length}/${totalAds}`);
+        console.log(`   Ad Sets Created: ${counts.adSetsCreated}/${adSetsCount} (${counts.adSetsFailed} failed)`);
+        console.log(`   Ads Created: ${counts.adsCreated}/${totalAds} (${counts.adsFailed} failed)`);
 
         if (failedOperations.length > 0) {
-          console.log(`   ⚠️  Failed Operations: ${failedOperations.length}`);
+          console.log(`   ⚠️  Total Failed Operations: ${failedOperations.length}`);
+
+          // Track failures if userId is available
+          if (this.userId) {
+            await this.trackFailedEntities(counts.failedDetails, {
+              campaignId: createdCampaignId,
+              campaignName: campaignCopyName,
+              strategyType: 'campaign_multiplication'
+            });
+          }
         }
 
         allResults.push({
@@ -1955,9 +1985,15 @@ class BatchDuplicationService {
           },
           adSets: newAdSetIds,
           ads: newAdIds,
+          // CRITICAL: Return accurate counts
+          adSetsCreated: counts.adSetsCreated,
+          adsCreated: counts.adsCreated,
+          adSetsFailed: counts.adSetsFailed,
+          adsFailed: counts.adsFailed,
           operations: allOperations.length,
           batchesExecuted: batches.length,
-          failed: failedOperations.length
+          failed: failedOperations.length,
+          failedDetails: counts.failedDetails
         });
       }
 
@@ -2126,6 +2162,243 @@ class BatchDuplicationService {
     }
 
     return this.encodeBody(body);
+  }
+
+  // ============================================================================
+  // SEQUENTIAL FALLBACK FOR FAILED BATCH OPERATIONS
+  // ============================================================================
+
+  /**
+   * Retry failed ad sets/ads sequentially with FailureTracker integration
+   * This is used when batch operations fail for some items
+   *
+   * @param {Array} failedItems - Array of failed operation details
+   * @param {Object} context - Context with campaign details for recreating items
+   * @returns {Object} - Results with recovered and still-failed items
+   */
+  async retryFailedItemsSequentially(failedItems, context) {
+    console.log(`\n🔄 Sequential fallback: Retrying ${failedItems.length} failed items...`);
+
+    const recovered = [];
+    const stillFailed = [];
+
+    for (const failedItem of failedItems) {
+      try {
+        if (failedItem.type === 'adset') {
+          // Retry ad set creation
+          const result = await this.createAdSetSequentially(failedItem.data, context);
+          if (result.success) {
+            recovered.push({
+              type: 'adset',
+              originalIndex: failedItem.index,
+              newId: result.id
+            });
+            console.log(`✅ Recovered ad set ${failedItem.index + 1}: ${result.id}`);
+
+            // If ad set recovered, try to create its ad
+            if (failedItem.adData) {
+              const adResult = await this.createAdSequentially(failedItem.adData, result.id, context);
+              if (adResult.success) {
+                recovered.push({
+                  type: 'ad',
+                  originalIndex: failedItem.index,
+                  newId: adResult.id
+                });
+                console.log(`✅ Recovered ad ${failedItem.index + 1}: ${adResult.id}`);
+              } else {
+                stillFailed.push({
+                  type: 'ad',
+                  originalIndex: failedItem.index,
+                  error: adResult.error
+                });
+              }
+            }
+          } else {
+            stillFailed.push({
+              type: 'adset',
+              originalIndex: failedItem.index,
+              error: result.error
+            });
+          }
+        } else if (failedItem.type === 'ad' && failedItem.adSetId) {
+          // Retry ad creation (ad set already exists)
+          const result = await this.createAdSequentially(failedItem.data, failedItem.adSetId, context);
+          if (result.success) {
+            recovered.push({
+              type: 'ad',
+              originalIndex: failedItem.index,
+              newId: result.id
+            });
+            console.log(`✅ Recovered ad ${failedItem.index + 1}: ${result.id}`);
+          } else {
+            stillFailed.push({
+              type: 'ad',
+              originalIndex: failedItem.index,
+              error: result.error
+            });
+          }
+        }
+
+        // Small delay between sequential operations
+        await this.delay(500);
+
+      } catch (error) {
+        console.error(`❌ Sequential retry failed for ${failedItem.type} ${failedItem.index + 1}:`, error.message);
+        stillFailed.push({
+          type: failedItem.type,
+          originalIndex: failedItem.index,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`\n📊 Sequential fallback complete:`);
+    console.log(`   Recovered: ${recovered.length}`);
+    console.log(`   Still failed: ${stillFailed.length}`);
+
+    return { recovered, stillFailed };
+  }
+
+  /**
+   * Create a single ad set using sequential API call
+   */
+  async createAdSetSequentially(adSetData, context) {
+    try {
+      const accountId = this.adAccountId.replace('act_', '');
+      const response = await axios.post(
+        `${this.baseURL}/act_${accountId}/adsets`,
+        null,
+        {
+          params: {
+            ...adSetData,
+            access_token: this.accessToken
+          }
+        }
+      );
+      return { success: true, id: response.data.id };
+    } catch (error) {
+      const errorMsg = error.response?.data?.error?.message || error.message;
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
+   * Create a single ad using sequential API call
+   */
+  async createAdSequentially(adData, adSetId, context) {
+    try {
+      const accountId = this.adAccountId.replace('act_', '');
+      const response = await axios.post(
+        `${this.baseURL}/act_${accountId}/ads`,
+        null,
+        {
+          params: {
+            ...adData,
+            adset_id: adSetId,
+            access_token: this.accessToken
+          }
+        }
+      );
+      return { success: true, id: response.data.id };
+    } catch (error) {
+      const errorMsg = error.response?.data?.error?.message || error.message;
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
+   * Track failed entities using FailureTracker service
+   *
+   * @param {Array} failedItems - Array of failed items with details
+   * @param {Object} context - Context with campaign info
+   */
+  async trackFailedEntities(failedItems, context) {
+    if (!this.userId) {
+      console.log('⚠️ No userId provided, skipping failure tracking');
+      return;
+    }
+
+    for (const item of failedItems) {
+      try {
+        await FailureTracker.safeTrackFailedEntity({
+          userId: this.userId,
+          campaignId: context.campaignId,
+          campaignName: context.campaignName,
+          adsetId: item.type === 'adset' ? null : item.adSetId,
+          adsetName: item.type === 'adset' ? item.name : null,
+          adId: item.type === 'ad' ? null : null,
+          adName: item.type === 'ad' ? item.name : null,
+          entityType: item.type,
+          error: { message: item.error },
+          strategyType: context.strategyType || 'batch_duplication',
+          metadata: {
+            originalIndex: item.originalIndex,
+            batchIndex: item.batchIndex
+          }
+        });
+      } catch (trackError) {
+        console.error('⚠️ Failed to track failure:', trackError.message);
+      }
+    }
+  }
+
+  /**
+   * Get accurate counts of successful operations
+   * CRITICAL: This fixes the issue where 46 ads were created but 50 were reported
+   */
+  getAccurateCounts(batchResults) {
+    let adSetsCreated = 0;
+    let adsCreated = 0;
+    let adSetsFailed = 0;
+    let adsFailed = 0;
+    const failedDetails = [];
+
+    for (let i = 0; i < batchResults.length; i++) {
+      const result = batchResults[i];
+      const isAdSet = i % 2 === 0;
+      const pairIndex = Math.floor(i / 2);
+
+      if (result && result.code === 200 && result.body) {
+        if (isAdSet) {
+          adSetsCreated++;
+        } else {
+          adsCreated++;
+        }
+      } else if (result) {
+        // Failed operation
+        const errorBody = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+        const errorMessage = errorBody?.error?.message || 'Unknown error';
+
+        if (isAdSet) {
+          adSetsFailed++;
+          failedDetails.push({
+            type: 'adset',
+            index: pairIndex,
+            error: errorMessage,
+            code: result.code
+          });
+        } else {
+          // Only count ad failure if not a dependency failure (code 960)
+          if (result.code !== 960) {
+            adsFailed++;
+            failedDetails.push({
+              type: 'ad',
+              index: pairIndex,
+              error: errorMessage,
+              code: result.code
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      adSetsCreated,
+      adsCreated,
+      adSetsFailed,
+      adsFailed,
+      failedDetails
+    };
   }
 }
 

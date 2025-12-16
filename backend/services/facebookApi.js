@@ -5550,23 +5550,29 @@ class FacebookAPI {
         );
 
         // Transform batch result to match expected format
+        // Note: batchResult.campaigns contains objects with { campaign: { id, name }, adSets, ads, ... }
+        // CRITICAL: Use accurate counts from the result, not assumed values
         return {
           success: batchResult.success,
           method: 'batch_multiplication',
-          results: batchResult.campaigns.map((campaign, index) => ({
-            copyNumber: index + 1,
-            campaignId: campaign.campaignId,
-            campaignName: campaign.campaignName,
-            adSetsCreated: campaign.adSetsCreated || 50,
-            adsCreated: campaign.adsCreated || 50,
-            status: 'success',
+          results: batchResult.campaigns.map((result, index) => ({
+            copyNumber: result.copyNumber || index + 1,
+            campaignId: result.campaign?.id || result.campaignId,
+            campaignName: result.campaign?.name || result.campaignName,
+            // Use accurate counts - prioritize explicit counts over array lengths
+            adSetsCreated: result.adSetsCreated ?? result.adSets?.length ?? 0,
+            adsCreated: result.adsCreated ?? result.ads?.length ?? 0,
+            adSetsFailed: result.adSetsFailed || 0,
+            adsFailed: result.adsFailed || 0,
+            failedDetails: result.failedDetails || [],
+            status: result.failed > 0 ? 'partial' : 'success',
             method: 'batch'
           })),
           errors: batchResult.errors || [],
           stats: {
             totalCopies: multiplyCount,
             successfulCopies: batchResult.campaigns.length,
-            apiCallsSaved: batchResult.apiCallsSaved,
+            apiCallsSaved: batchResult.summary?.apiCallsSaved || batchResult.apiCallsSaved,
             method: 'batch_multiplication'
           }
         };
