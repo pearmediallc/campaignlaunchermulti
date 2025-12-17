@@ -382,6 +382,9 @@ const Strategy150Container: React.FC = () => {
         // Call to action
         callToAction: campaignData.callToAction || 'LEARN_MORE',
 
+        // Display link (optional - clean URL shown in the ad)
+        displayLink: campaignData.displayLink,
+
         // Required field for CampaignFormData
         conversionLocation: campaignData.conversionLocation || 'website',
 
