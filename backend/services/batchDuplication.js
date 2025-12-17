@@ -2150,6 +2150,121 @@ class BatchDuplicationService {
       const failedPairs = [];
       const orphanedAdSets = [];
 
+      // =========================================================================
+      // PRE-CLEANUP: Remove orphan ad sets from previous failed runs BEFORE creating new ones
+      // This ensures we don't accumulate orphans across multiple attempts
+      // =========================================================================
+      console.log('\n🧹 Step 1.5: Pre-cleanup - checking for orphan ad sets from previous runs...');
+      let preCleanupOrphansDeleted = 0;
+      try {
+        // Get existing "Copy N" ad sets in this campaign
+        const existingAdSetsResponse = await axios.get(
+          `${this.baseURL}/${campaignId}/adsets`,
+          {
+            params: {
+              fields: 'id,name',
+              limit: 100,
+              access_token: this.accessToken
+            }
+          }
+        );
+
+        const existingAdSets = existingAdSetsResponse.data?.data || [];
+        const copyAdSets = existingAdSets.filter(adSet => adSet.name.match(/- Copy \d+$/));
+
+        if (copyAdSets.length > 0) {
+          console.log(`     📋 Found ${copyAdSets.length} existing "Copy N" ad sets - checking for orphans...`);
+
+          // Use batch API to check ads for multiple ad sets at once (more efficient)
+          const batchRequests = copyAdSets.map(adSet => ({
+            method: 'GET',
+            relative_url: `${adSet.id}/ads?fields=id&limit=1`
+          }));
+
+          // Process in chunks of 50 to avoid batch limits
+          const chunkSize = 50;
+          const orphanAdSetIds = [];
+
+          for (let i = 0; i < batchRequests.length; i += chunkSize) {
+            const chunk = batchRequests.slice(i, i + chunkSize);
+            const adSetsChunk = copyAdSets.slice(i, i + chunkSize);
+
+            try {
+              const batchResponse = await axios.post(
+                this.baseURL,
+                { batch: JSON.stringify(chunk), access_token: this.accessToken },
+                { timeout: 30000 }
+              );
+
+              // Check each response to find orphans (ad sets without ads)
+              batchResponse.data.forEach((result, idx) => {
+                if (result && result.code === 200) {
+                  try {
+                    const body = JSON.parse(result.body);
+                    const hasAds = body.data && body.data.length > 0;
+                    if (!hasAds) {
+                      orphanAdSetIds.push(adSetsChunk[idx]);
+                    }
+                  } catch (e) {
+                    // If we can't parse, assume it's not an orphan
+                  }
+                }
+              });
+            } catch (batchError) {
+              // If batch fails due to rate limit, skip pre-cleanup
+              if (batchError.response?.data?.error?.code === 17) {
+                console.log(`     ⚠️ Rate limited - skipping pre-cleanup (will clean up after creation)`);
+                break;
+              }
+              console.log(`     ⚠️ Batch check failed: ${batchError.message}`);
+            }
+
+            // Small delay between chunks
+            if (i + chunkSize < batchRequests.length) {
+              await this.delay(500);
+            }
+          }
+
+          // Delete orphan ad sets
+          if (orphanAdSetIds.length > 0) {
+            console.log(`     🗑️ Found ${orphanAdSetIds.length} orphan ad sets - deleting...`);
+
+            for (const adSet of orphanAdSetIds) {
+              try {
+                await axios.delete(`${this.baseURL}/${adSet.id}`, { params: { access_token: this.accessToken } });
+                console.log(`     🗑️ Deleted orphan: ${adSet.id} (${adSet.name})`);
+                preCleanupOrphansDeleted++;
+                const copyMatch = adSet.name.match(/- Copy (\d+)$/);
+                if (copyMatch) {
+                  orphanedAdSets.push({ adSetId: adSet.id, pairNumber: parseInt(copyMatch[1]), deleted: true, phase: 'pre-cleanup' });
+                }
+              } catch (deleteError) {
+                if (deleteError.response?.data?.error?.code === 17) {
+                  console.log(`     ⚠️ Rate limited during deletion - stopping pre-cleanup`);
+                  break;
+                }
+                console.error(`     ❌ Failed to delete orphan ${adSet.id}: ${deleteError.message}`);
+              }
+              await this.delay(200);
+            }
+
+            console.log(`     ✅ Pre-cleanup complete: ${preCleanupOrphansDeleted} orphans deleted`);
+          } else {
+            console.log(`     ✅ No orphans found - all existing ad sets have ads`);
+          }
+        } else {
+          console.log(`     ✅ No existing "Copy N" ad sets found - clean slate`);
+        }
+      } catch (preCleanupError) {
+        // If pre-cleanup fails due to rate limit, continue with creation
+        if (preCleanupError.response?.data?.error?.code === 17) {
+          console.log(`     ⚠️ Rate limited - skipping pre-cleanup`);
+        } else {
+          console.error(`     ⚠️ Pre-cleanup check failed: ${preCleanupError.message}`);
+        }
+        // Continue with creation regardless of pre-cleanup failure
+      }
+
       // Prepare text variations once (used for all pairs)
       // CRITICAL: Deduplicate text arrays - Facebook rejects duplicates with error:
       // "Duplicate of ad asset values are not allowed"
@@ -2675,82 +2790,101 @@ class BatchDuplicationService {
         }
       }
 
-      // Final cleanup: Verify all ad sets have ads, delete any remaining orphans
-      console.log(`\n🔍 Step 5: Final verification and cleanup...`);
-      try {
-        // First get all ad sets in this campaign
-        const adSetsResponse = await axios.get(
-          `${this.baseURL}/${campaignId}/adsets`,
-          {
-            params: {
-              fields: 'id,name',
-              limit: 100,
-              access_token: this.accessToken
-            }
-          }
-        );
+      // Final cleanup: Light verification - orphans were already cleaned up in pre-cleanup
+      // This is a backup in case any orphans were created during this run
+      console.log(`\n🔍 Step 5: Final verification (backup cleanup)...`);
+      let finalCleanupOrphans = 0;
 
-        const allAdSets = adSetsResponse.data?.data || [];
-        console.log(`     📋 Found ${allAdSets.length} total ad sets in campaign`);
+      // Skip final cleanup if we already hit rate limits or if all pairs succeeded
+      if (successfulPairs.length >= count) {
+        console.log(`     ✅ All ${count} pairs created successfully - skipping detailed verification`);
+        console.log(`     ℹ️ Pre-cleanup removed ${preCleanupOrphansDeleted} orphans from previous runs`);
+      } else {
+        // Only do final cleanup if there were failures (potential orphans from this run)
+        try {
+          // Wait a moment for Facebook's eventual consistency
+          await this.delay(2000);
 
-        // Filter to only "Copy N" ad sets (duplicates)
-        const copyAdSets = allAdSets.filter(adSet => adSet.name.match(/- Copy \d+$/));
-        console.log(`     📋 Found ${copyAdSets.length} duplicate ad sets to verify`);
-
-        let orphansDeleted = 0;
-
-        // Check each copy ad set for ads
-        for (const adSet of copyAdSets) {
-          try {
-            // Check if this ad set has any ads
-            const adsResponse = await axios.get(
-              `${this.baseURL}/${adSet.id}/ads`,
-              {
-                params: {
-                  fields: 'id',
-                  limit: 1,
-                  access_token: this.accessToken
-                }
+          // Use batch API to efficiently check all ad sets at once
+          const adSetsResponse = await axios.get(
+            `${this.baseURL}/${campaignId}/adsets`,
+            {
+              params: {
+                fields: 'id,name',
+                limit: 100,
+                access_token: this.accessToken
               }
+            }
+          );
+
+          const allAdSets = adSetsResponse.data?.data || [];
+          const copyAdSets = allAdSets.filter(adSet => adSet.name.match(/- Copy \d+$/));
+
+          console.log(`     📋 Verifying ${copyAdSets.length} duplicate ad sets...`);
+
+          if (copyAdSets.length > 0) {
+            // Use batch API to check ads for all ad sets at once
+            const batchRequests = copyAdSets.map(adSet => ({
+              method: 'GET',
+              relative_url: `${adSet.id}/ads?fields=id&limit=1`
+            }));
+
+            const batchResponse = await axios.post(
+              this.baseURL,
+              { batch: JSON.stringify(batchRequests), access_token: this.accessToken },
+              { timeout: 30000 }
             );
 
-            const hasAd = adsResponse.data?.data?.length > 0;
+            // Find orphans
+            const orphansToDelete = [];
+            batchResponse.data.forEach((result, idx) => {
+              if (result && result.code === 200) {
+                try {
+                  const body = JSON.parse(result.body);
+                  const hasAds = body.data && body.data.length > 0;
+                  if (!hasAds) {
+                    orphansToDelete.push(copyAdSets[idx]);
+                  }
+                } catch (e) {}
+              }
+            });
 
-            if (!hasAd) {
-              // This is an orphan - delete it
-              const copyMatch = adSet.name.match(/- Copy (\d+)$/);
+            // Delete orphans (if any)
+            for (const adSet of orphansToDelete) {
               try {
                 await axios.delete(`${this.baseURL}/${adSet.id}`, { params: { access_token: this.accessToken } });
-                console.log(`     🗑️ Final cleanup: Deleted orphan ad set ${adSet.id} (${adSet.name})`);
-                orphansDeleted++;
+                console.log(`     🗑️ Deleted orphan: ${adSet.id} (${adSet.name})`);
+                finalCleanupOrphans++;
+                const copyMatch = adSet.name.match(/- Copy (\d+)$/);
                 if (copyMatch) {
-                  orphanedAdSets.push({ adSetId: adSet.id, pairNumber: parseInt(copyMatch[1]), deleted: true });
+                  orphanedAdSets.push({ adSetId: adSet.id, pairNumber: parseInt(copyMatch[1]), deleted: true, phase: 'final-cleanup' });
                 }
               } catch (deleteError) {
-                console.error(`     ❌ Failed to delete orphan ${adSet.id}: ${deleteError.message}`);
+                if (deleteError.response?.data?.error?.code === 17) {
+                  console.log(`     ⚠️ Rate limited - orphan cleanup will happen on next run`);
+                  break;
+                }
               }
+              await this.delay(200);
             }
-          } catch (checkError) {
-            console.error(`     ⚠️ Could not verify ad set ${adSet.id}: ${checkError.message}`);
           }
 
-          // Small delay to avoid rate limiting
-          await this.delay(100);
-        }
-
-        if (orphansDeleted > 0) {
-          console.log(`     ✅ Final cleanup removed ${orphansDeleted} orphan ad sets`);
-        } else {
-          console.log(`     ✅ No orphans found - all ad sets have ads`);
-        }
-      } catch (cleanupError) {
-        console.error(`     ⚠️ Final cleanup check failed: ${cleanupError.message}`);
-        // Log more details for debugging
-        if (cleanupError.response) {
-          console.error(`     ⚠️ Status: ${cleanupError.response.status}`);
-          console.error(`     ⚠️ Data: ${JSON.stringify(cleanupError.response.data)}`);
+          if (finalCleanupOrphans > 0) {
+            console.log(`     ✅ Final cleanup removed ${finalCleanupOrphans} orphan ad sets`);
+          } else {
+            console.log(`     ✅ No orphans from this run - all ad sets have ads`);
+          }
+        } catch (cleanupError) {
+          // Rate limit or other error - orphans will be cleaned up on next run via pre-cleanup
+          if (cleanupError.response?.data?.error?.code === 17) {
+            console.log(`     ⚠️ Rate limited - skipping final cleanup (orphans will be cleaned on next run)`);
+          } else {
+            console.error(`     ⚠️ Final cleanup skipped: ${cleanupError.message}`);
+          }
         }
       }
+
+      const totalOrphansDeleted = preCleanupOrphansDeleted + finalCleanupOrphans;
 
       // Final stats
       const newAdSetIds = successfulPairs.map(p => p.adSetId);
@@ -2760,7 +2894,7 @@ class BatchDuplicationService {
       console.log(`\n📊 OPTIMIZED BATCH RESULTS:`);
       console.log(`   ✅ Successful pairs: ${successfulPairs.length}/${count}`);
       console.log(`   ❌ Failed pairs: ${failedPairs.length}/${count}`);
-      console.log(`   🗑️  Orphaned ad sets cleaned: ${orphanedAdSets.filter(o => o.deleted).length}`);
+      console.log(`   🗑️  Orphans cleaned (pre): ${preCleanupOrphansDeleted}, (post): ${finalCleanupOrphans}, (total): ${totalOrphansDeleted}`);
       console.log(`   ✅ 1:1 Ratio maintained: ${successfulPairs.length} ad sets, ${successfulPairs.length} ads`);
 
       if (failedPairs.length > 0) {
@@ -2779,7 +2913,7 @@ class BatchDuplicationService {
       console.log(`✅ Created ${newAdSetIds.length} ad sets with ${newAdIds.length} ads`);
       console.log(`✅ API calls used: ${actualApiCalls} (vs ${count} with atomic pairs)`);
       console.log(`✅ API call savings: ${count - actualApiCalls} calls (${Math.round((1 - actualApiCalls / count) * 100)}% reduction)`);
-      console.log(`✅ Orphans prevented: ${orphanedAdSets.filter(o => o.deleted).length} deleted immediately`);
+      console.log(`✅ Orphans cleaned: ${totalOrphansDeleted} (${preCleanupOrphansDeleted} pre-cleanup, ${finalCleanupOrphans} post-cleanup)`);
 
       return {
         success: true,
