@@ -70,57 +70,108 @@ class BatchDuplicationService {
       actualAds: 0,
       expectedAdSets: expectedAdSets,
       extrasDeleted: 0,
+      orphansDeleted: 0,
       corrections: []
     };
 
     try {
-      // ONE API call to get all ad sets with their ad counts
-      const response = await axios.get(
+      // Step 1: Get all ad sets (simple query - no nested fields)
+      console.log(`   📊 Fetching ad sets...`);
+      const adSetsResponse = await axios.get(
         `${this.baseURL}/${campaignId}/adsets`,
         {
           params: {
-            fields: 'id,name,ads.limit(0).summary(true)',
-            limit: 200, // Should be enough for most campaigns
+            fields: 'id,name',
+            limit: 200,
             access_token: this.accessToken
           },
           timeout: 30000
         }
       );
 
-      const adSets = response.data?.data || [];
+      const adSets = adSetsResponse.data?.data || [];
       results.actualAdSets = adSets.length;
-      results.actualAds = adSets.reduce((sum, adSet) => {
-        return sum + (adSet.ads?.summary?.total_count || 0);
-      }, 0);
+      console.log(`   📊 Found ${adSets.length} ad sets`);
 
-      console.log(`   Actual: ${results.actualAdSets} ad sets, ${results.actualAds} ads`);
+      // Step 2: Get all ads (simple query)
+      console.log(`   📊 Fetching ads...`);
+      const adsResponse = await axios.get(
+        `${this.baseURL}/${campaignId}/ads`,
+        {
+          params: {
+            fields: 'id,adset_id',
+            limit: 200,
+            access_token: this.accessToken
+          },
+          timeout: 30000
+        }
+      );
 
-      // Check if we have extras
+      const ads = adsResponse.data?.data || [];
+      results.actualAds = ads.length;
+      console.log(`   📊 Found ${ads.length} ads`);
+
+      // Build a map of ad set IDs that have ads
+      const adSetIdsWithAds = new Set(ads.map(ad => ad.adset_id));
+
+      // Find orphan ad sets (ad sets without any ads)
+      const orphanAdSets = adSets.filter(adSet =>
+        !adSetIdsWithAds.has(adSet.id) && adSet.id !== originalAdSetId
+      );
+
+      console.log(`   📊 Summary: ${adSets.length} ad sets, ${ads.length} ads, ${orphanAdSets.length} orphans`);
+
+      // Step 3: Delete orphan ad sets (ad sets without ads)
+      if (orphanAdSets.length > 0) {
+        console.log(`   ⚠️ Found ${orphanAdSets.length} orphan ad sets (no ads) - deleting...`);
+
+        for (const adSet of orphanAdSets) {
+          try {
+            await axios.delete(`${this.baseURL}/${adSet.id}`, {
+              params: { access_token: this.accessToken }
+            });
+            console.log(`   🗑️ Deleted orphan: ${adSet.id} (${adSet.name})`);
+            results.corrections.push({
+              action: 'deleted_orphan',
+              adSetId: adSet.id,
+              adSetName: adSet.name,
+              reason: 'no_ads'
+            });
+            results.orphansDeleted++;
+            results.actualAdSets--;
+            await this.delay(200);
+          } catch (deleteError) {
+            console.error(`   ❌ Failed to delete orphan ${adSet.id}: ${deleteError.message}`);
+          }
+        }
+        console.log(`   ✅ Deleted ${results.orphansDeleted} orphan ad sets`);
+      }
+
+      // Step 4: Check if we still have extras (more ad sets than expected)
       if (results.actualAdSets > expectedAdSets) {
         const extrasCount = results.actualAdSets - expectedAdSets;
-        console.log(`   ⚠️ Found ${extrasCount} extra ad sets - will delete extras`);
+        console.log(`   ⚠️ Still have ${extrasCount} extra ad sets - deleting highest copy numbers...`);
 
         // Find duplicate "Copy N" ad sets to delete (keep the ones with lowest copy numbers)
         const copyAdSets = adSets
-          .filter(adSet => adSet.name.match(/- Copy \d+$/))
+          .filter(adSet =>
+            adSet.name.match(/- Copy \d+$/) &&
+            adSetIdsWithAds.has(adSet.id) && // Only consider ad sets with ads
+            adSet.id !== originalAdSetId
+          )
           .map(adSet => {
             const match = adSet.name.match(/- Copy (\d+)$/);
             return {
               id: adSet.id,
               name: adSet.name,
-              copyNumber: match ? parseInt(match[1]) : 0,
-              adCount: adSet.ads?.summary?.total_count || 0
+              copyNumber: match ? parseInt(match[1]) : 0
             };
           })
-          .sort((a, b) => b.copyNumber - a.copyNumber); // Sort highest first (delete highest copy numbers)
+          .sort((a, b) => b.copyNumber - a.copyNumber); // Sort highest first
 
-        // Delete extras (from highest copy number down)
         let deleted = 0;
         for (const adSet of copyAdSets) {
           if (deleted >= extrasCount) break;
-
-          // Skip the original ad set
-          if (adSet.id === originalAdSetId) continue;
 
           try {
             await axios.delete(`${this.baseURL}/${adSet.id}`, {
@@ -128,24 +179,24 @@ class BatchDuplicationService {
             });
             console.log(`   🗑️ Deleted extra: ${adSet.id} (${adSet.name})`);
             results.corrections.push({
-              action: 'deleted',
+              action: 'deleted_extra',
               adSetId: adSet.id,
               adSetName: adSet.name,
-              reason: 'extra_duplicate'
+              reason: 'over_limit'
             });
             deleted++;
             results.extrasDeleted++;
-            await this.delay(200); // Small delay between deletions
+            results.actualAdSets--;
+            results.actualAds--; // Each deleted ad set had 1 ad
+            await this.delay(200);
           } catch (deleteError) {
-            console.error(`   ❌ Failed to delete ${adSet.id}: ${deleteError.message}`);
+            console.error(`   ❌ Failed to delete extra ${adSet.id}: ${deleteError.message}`);
           }
         }
-
         console.log(`   ✅ Deleted ${deleted} extra ad sets`);
       } else if (results.actualAdSets < expectedAdSets) {
-        // Less than expected - some truly failed (log but don't retry to avoid more duplicates)
         const shortfall = expectedAdSets - results.actualAdSets;
-        console.log(`   ⚠️ ${shortfall} ad sets short of expected - some batches may have truly failed`);
+        console.log(`   ⚠️ ${shortfall} ad sets short of expected - some batches truly failed`);
         results.corrections.push({
           action: 'shortfall_detected',
           missing: shortfall,
@@ -156,15 +207,14 @@ class BatchDuplicationService {
       }
 
       results.verified = true;
-
-      // Update final counts after corrections
-      if (results.extrasDeleted > 0) {
-        results.actualAdSets -= results.extrasDeleted;
-        results.actualAds -= results.extrasDeleted; // Assuming 1 ad per ad set
-      }
+      console.log(`   ✅ Final verified count: ${results.actualAdSets} ad sets, ${results.actualAds} ads`);
 
     } catch (error) {
       console.error(`   ❌ Smart verification failed: ${error.message}`);
+      // Log more details for debugging
+      if (error.response?.data) {
+        console.error(`   ❌ API Error details:`, JSON.stringify(error.response.data).substring(0, 500));
+      }
       results.error = error.message;
     }
 
@@ -2908,21 +2958,22 @@ class BatchDuplicationService {
       const verificationResult = await this.smartVerifyAndCorrect(campaignId, expectedTotalAdSets, originalAdSetId);
 
       // Update counts based on verification
-      let finalCleanupOrphans = verificationResult.extrasDeleted || 0;
+      const smartVerifyCleanup = (verificationResult.orphansDeleted || 0) + (verificationResult.extrasDeleted || 0);
       if (verificationResult.corrections) {
         verificationResult.corrections.forEach(correction => {
-          if (correction.action === 'deleted') {
+          if (correction.action === 'deleted_orphan' || correction.action === 'deleted_extra') {
             orphanedAdSets.push({
               adSetId: correction.adSetId,
               pairNumber: 0,
               deleted: true,
-              phase: 'smart-verification'
+              phase: 'smart-verification',
+              reason: correction.reason
             });
           }
         });
       }
 
-      const totalOrphansDeleted = preCleanupOrphansDeleted + finalCleanupOrphans;
+      const totalCleanup = preCleanupOrphansDeleted + smartVerifyCleanup;
 
       // Final stats
       const newAdSetIds = successfulPairs.map(p => p.adSetId);
@@ -2936,8 +2987,9 @@ class BatchDuplicationService {
       console.log(`      - Actual ad sets in campaign: ${verificationResult.actualAdSets}`);
       console.log(`      - Actual ads in campaign: ${verificationResult.actualAds}`);
       console.log(`      - Expected ad sets: ${expectedTotalAdSets}`);
-      console.log(`      - Extras deleted: ${verificationResult.extrasDeleted}`);
-      console.log(`   🗑️ Orphans cleaned (pre): ${preCleanupOrphansDeleted}, (smart-verify): ${finalCleanupOrphans}, (total): ${totalOrphansDeleted}`);
+      console.log(`      - Orphans deleted (no ads): ${verificationResult.orphansDeleted || 0}`);
+      console.log(`      - Extras deleted (over limit): ${verificationResult.extrasDeleted || 0}`);
+      console.log(`   🗑️ Total cleanup: ${totalCleanup} (pre=${preCleanupOrphansDeleted}, smart-verify=${smartVerifyCleanup})`);
 
       if (failedPairs.length > 0) {
         console.log(`\n⚠️  Failed Pairs Details:`);
@@ -2976,7 +3028,9 @@ class BatchDuplicationService {
           actualAdSets: verificationResult.actualAdSets,
           actualAds: verificationResult.actualAds,
           expectedAdSets: expectedTotalAdSets,
-          extrasDeleted: verificationResult.extrasDeleted,
+          orphansDeleted: verificationResult.orphansDeleted || 0,
+          extrasDeleted: verificationResult.extrasDeleted || 0,
+          totalCleanup: totalCleanup,
           corrections: verificationResult.corrections
         },
         summary: {
