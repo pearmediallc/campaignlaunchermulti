@@ -183,7 +183,7 @@ const FailureNotificationBadge: React.FC = () => {
               ) : (
                 <List disablePadding>
                   {campaignGroups.map((group, index) => (
-                    <Box key={group.campaignId}>
+                    <Box key={group.campaignId || `group-${index}`}>
                       {index > 0 && <Divider sx={{ my: 1 }} />}
                       <Accordion
                         expanded={expandedCampaign === group.campaignId}
@@ -195,7 +195,7 @@ const FailureNotificationBadge: React.FC = () => {
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
                             <ErrorIcon color="error" fontSize="small" />
                             <Typography variant="body2" fontWeight="medium" sx={{ flexGrow: 1 }}>
-                              {group.campaignName}
+                              {group.campaignName || 'Unknown Campaign'}
                             </Typography>
                             <Chip
                               label={`${group.unresolvedCount} failure${group.unresolvedCount !== 1 ? 's' : ''}`}
@@ -207,7 +207,7 @@ const FailureNotificationBadge: React.FC = () => {
                         <AccordionDetails>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                             <Typography variant="caption" color="text.secondary">
-                              Campaign ID: {group.campaignId.substring(0, 20)}...
+                              Campaign ID: {group.campaignId ? (group.campaignId.length > 20 ? `${group.campaignId.substring(0, 20)}...` : group.campaignId) : 'N/A'}
                             </Typography>
 
                             {/* Failure Summary */}
