@@ -1492,6 +1492,20 @@ class BatchDuplicationService {
       body.adset_schedule = JSON.stringify(adScheduling);
     }
 
+    // ===== DYNAMIC CREATIVE FLAG =====
+    // CRITICAL: Set is_dynamic_creative = true when using text variations or dynamic creative
+    // This enables Facebook to test multiple text/media combinations
+    const hasTextVariations = (templateData.primaryTextVariations && templateData.primaryTextVariations.filter(t => t?.trim()).length > 0) ||
+                              (templateData.headlineVariations && templateData.headlineVariations.filter(h => h?.trim()).length > 0);
+    const hasDynamicMedia = templateData.dynamicCreativeEnabled || templateData.dynamicImages?.length > 0 || templateData.dynamicVideos?.length > 0;
+
+    if (templateData.dynamicTextEnabled || templateData.dynamicCreativeEnabled || hasTextVariations || hasDynamicMedia) {
+      body.is_dynamic_creative = true;
+      if (adSetIndex === 0) {
+        console.log(`  📊 Ad Set 1: is_dynamic_creative = true (text variations or dynamic media enabled)`);
+      }
+    }
+
     return this.encodeBody(body);
   }
 
@@ -1680,14 +1694,19 @@ class BatchDuplicationService {
   /**
    * Prepare ad body from template data
    * 100% ROOT EFFECT: All ads get IDENTICAL creatives
+   * Supports BOTH regular ads and dynamic creatives with text variations
    */
   prepareAdBodyFromTemplate(templateData, adIndex, adSetIdRef) {
-    // DEBUG: Log displayLink value on first ad
+    // DEBUG: Log creative settings on first ad
     if (adIndex === 0) {
-      console.log('🔍 DEBUG - prepareAdBodyFromTemplate displayLink check:');
+      console.log('🔍 DEBUG - prepareAdBodyFromTemplate check:');
       console.log('  📦 templateData.displayLink:', templateData.displayLink);
       console.log('  📦 templateData.url:', templateData.url);
       console.log('  📦 templateData.mediaType:', templateData.mediaType);
+      console.log('  📦 templateData.dynamicTextEnabled:', templateData.dynamicTextEnabled);
+      console.log('  📦 templateData.dynamicCreativeEnabled:', templateData.dynamicCreativeEnabled);
+      console.log('  📦 templateData.primaryTextVariations:', templateData.primaryTextVariations?.length || 0);
+      console.log('  📦 templateData.headlineVariations:', templateData.headlineVariations?.length || 0);
     }
 
     const body = {
@@ -1696,118 +1715,220 @@ class BatchDuplicationService {
       status: 'ACTIVE' // Create ads as ACTIVE by default
     };
 
-    // ===== CREATIVE =====
-    const creative = {
-      object_story_spec: {
-        page_id: this.pageId
+    // ===== CHECK FOR DYNAMIC CREATIVE / TEXT VARIATIONS =====
+    // If dynamicTextEnabled or dynamicCreativeEnabled, use asset_feed_spec
+    const hasTextVariations = (templateData.primaryTextVariations && templateData.primaryTextVariations.filter(t => t?.trim()).length > 0) ||
+                              (templateData.headlineVariations && templateData.headlineVariations.filter(h => h?.trim()).length > 0);
+    const hasDynamicMedia = templateData.dynamicCreativeEnabled || templateData.dynamicImages?.length > 0 || templateData.dynamicVideos?.length > 0;
+    const useDynamicCreative = templateData.dynamicTextEnabled || templateData.dynamicCreativeEnabled || hasTextVariations || hasDynamicMedia;
+
+    if (useDynamicCreative) {
+      // ===== DYNAMIC CREATIVE WITH asset_feed_spec =====
+      console.log(`  🎨 Ad ${adIndex + 1}: Using Dynamic Creative (asset_feed_spec)`);
+
+      const assetFeedSpec = {};
+
+      // Build and deduplicate primary texts (bodies)
+      let primaryTexts = [];
+      if (templateData.primaryText && templateData.primaryText.trim()) {
+        primaryTexts.push(templateData.primaryText.trim());
       }
-    };
-
-    // Handle different media types
-    if ((templateData.mediaType === 'video' || templateData.mediaType === 'single_video') && templateData.videoId) {
-      // VIDEO AD
-      creative.object_story_spec.video_data = {
-        video_id: templateData.videoId,
-        message: templateData.primaryText || '',
-        title: templateData.headline || '',
-        link_description: templateData.description || '',
-        call_to_action: {
-          type: templateData.callToAction || 'LEARN_MORE',
-          value: {
-            link: templateData.url || ''
-          }
-        }
-      };
-
-      // NOTE: Facebook does NOT support displayLink for video ads
-      // The link_caption field is not valid for video_data creatives
-
-      // Add thumbnail
-      if (templateData.videoThumbnail) {
-        if (templateData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
-          creative.object_story_spec.video_data.image_hash = templateData.videoThumbnail;
-        } else {
-          creative.object_story_spec.video_data.image_url = templateData.videoThumbnail;
-        }
-      } else if (templateData.imageHash) {
-        creative.object_story_spec.video_data.image_hash = templateData.imageHash;
+      if (templateData.primaryTextVariations) {
+        const validVariations = templateData.primaryTextVariations.filter(text => text && text.trim()).map(t => t.trim());
+        primaryTexts.push(...validVariations);
+      }
+      // CRITICAL: Deduplicate - Facebook rejects duplicates
+      primaryTexts = [...new Set(primaryTexts)];
+      if (primaryTexts.length > 0) {
+        assetFeedSpec.bodies = primaryTexts.map(text => ({ text }));
+        if (adIndex === 0) console.log(`  📝 Bodies (${primaryTexts.length}):`, primaryTexts);
       }
 
-    } else if (templateData.mediaType === 'carousel' && templateData.carouselCards) {
-      // CAROUSEL AD
-      creative.object_story_spec.link_data = {
-        link: templateData.url || '',
-        message: templateData.primaryText || '',
-        child_attachments: templateData.carouselCards.map(card => ({
-          link: card.link || templateData.url || '',
-          name: card.headline || '',
-          description: card.description || '',
-          image_hash: card.imageHash,
-          call_to_action: {
-            type: card.callToAction || templateData.callToAction || 'LEARN_MORE'
-          }
-        })),
-        call_to_action: {
-          type: templateData.callToAction || 'LEARN_MORE'
-        }
-      };
+      // Build and deduplicate headlines (titles)
+      let headlines = [];
+      if (templateData.headline && templateData.headline.trim()) {
+        headlines.push(templateData.headline.trim());
+      }
+      if (templateData.headlineVariations) {
+        const validVariations = templateData.headlineVariations.filter(h => h && h.trim()).map(h => h.trim());
+        headlines.push(...validVariations);
+      }
+      // CRITICAL: Deduplicate - Facebook rejects duplicates
+      headlines = [...new Set(headlines)];
+      if (headlines.length > 0) {
+        assetFeedSpec.titles = headlines.map(text => ({ text }));
+        if (adIndex === 0) console.log(`  📰 Titles (${headlines.length}):`, headlines);
+      }
 
-      // FIX: Use 'caption' not 'link_caption' for display URL
+      // Description
+      if (templateData.description) {
+        assetFeedSpec.descriptions = [{ text: templateData.description }];
+      }
+
+      // Link URLs with optional display link
+      const linkUrlObj = { website_url: templateData.url || '' };
       if (templateData.displayLink) {
-        creative.object_story_spec.link_data.caption = templateData.displayLink;
+        linkUrlObj.display_url = templateData.displayLink;
+        if (adIndex === 0) console.log(`  🔗 Display URL: ${templateData.displayLink}`);
+      }
+      assetFeedSpec.link_urls = [linkUrlObj];
+
+      // Call to action
+      assetFeedSpec.call_to_action_types = [templateData.callToAction || 'LEARN_MORE'];
+
+      // Handle media for asset_feed_spec
+      // Priority: Dynamic media > Single media
+      if (templateData.dynamicImages && templateData.dynamicImages.length > 0) {
+        assetFeedSpec.images = templateData.dynamicImages.map(hash => ({ hash }));
+        if (adIndex === 0) console.log(`  📸 Dynamic Images: ${templateData.dynamicImages.length}`);
+      } else if (templateData.imageHash) {
+        assetFeedSpec.images = [{ hash: templateData.imageHash }];
+        if (adIndex === 0) console.log(`  📸 Single Image: ${templateData.imageHash}`);
       }
 
-    } else if (templateData.mediaType === 'carousel' && templateData.carouselImages) {
-      // CAROUSEL AD from image hashes
-      creative.object_story_spec.link_data = {
-        link: templateData.url || '',
-        message: templateData.primaryText || '',
-        child_attachments: templateData.carouselImages.map((imageHash) => ({
+      if (templateData.dynamicVideos && templateData.dynamicVideos.length > 0) {
+        assetFeedSpec.videos = templateData.dynamicVideos.map(videoId => ({ video_id: videoId }));
+        if (adIndex === 0) console.log(`  📹 Dynamic Videos: ${templateData.dynamicVideos.length}`);
+      } else if (templateData.videoId) {
+        const videoObj = { video_id: templateData.videoId };
+        if (templateData.videoThumbnail) {
+          if (templateData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
+            videoObj.thumbnail_hash = templateData.videoThumbnail;
+          } else {
+            videoObj.thumbnail_url = templateData.videoThumbnail;
+          }
+        }
+        assetFeedSpec.videos = [videoObj];
+        if (adIndex === 0) console.log(`  📹 Single Video: ${templateData.videoId}`);
+      }
+
+      // Set ad format based on what media we have
+      const hasVideos = assetFeedSpec.videos && assetFeedSpec.videos.length > 0;
+      const hasImages = assetFeedSpec.images && assetFeedSpec.images.length > 0;
+
+      if (hasVideos && hasImages) {
+        assetFeedSpec.ad_formats = ['AUTOMATIC_FORMAT'];
+      } else if (hasVideos) {
+        assetFeedSpec.ad_formats = ['SINGLE_VIDEO'];
+      } else if (hasImages) {
+        assetFeedSpec.ad_formats = ['SINGLE_IMAGE'];
+      }
+
+      body.creative = JSON.stringify({
+        asset_feed_spec: assetFeedSpec,
+        object_story_spec: { page_id: this.pageId }
+      });
+
+    } else {
+      // ===== REGULAR CREATIVE with object_story_spec =====
+      const creative = {
+        object_story_spec: {
+          page_id: this.pageId
+        }
+      };
+
+      // Handle different media types
+      if ((templateData.mediaType === 'video' || templateData.mediaType === 'single_video') && templateData.videoId) {
+        // VIDEO AD
+        creative.object_story_spec.video_data = {
+          video_id: templateData.videoId,
+          message: templateData.primaryText || '',
+          title: templateData.headline || '',
+          link_description: templateData.description || '',
+          call_to_action: {
+            type: templateData.callToAction || 'LEARN_MORE',
+            value: {
+              link: templateData.url || ''
+            }
+          }
+        };
+
+        // NOTE: Facebook does NOT support displayLink for video ads
+        // The link_caption field is not valid for video_data creatives
+
+        // Add thumbnail
+        if (templateData.videoThumbnail) {
+          if (templateData.videoThumbnail.match(/^[a-f0-9]{32}$/i)) {
+            creative.object_story_spec.video_data.image_hash = templateData.videoThumbnail;
+          } else {
+            creative.object_story_spec.video_data.image_url = templateData.videoThumbnail;
+          }
+        } else if (templateData.imageHash) {
+          creative.object_story_spec.video_data.image_hash = templateData.imageHash;
+        }
+
+      } else if (templateData.mediaType === 'carousel' && templateData.carouselCards) {
+        // CAROUSEL AD
+        creative.object_story_spec.link_data = {
           link: templateData.url || '',
-          name: templateData.headline || '',
-          description: templateData.description || '',
-          image_hash: imageHash,
+          message: templateData.primaryText || '',
+          child_attachments: templateData.carouselCards.map(card => ({
+            link: card.link || templateData.url || '',
+            name: card.headline || '',
+            description: card.description || '',
+            image_hash: card.imageHash,
+            call_to_action: {
+              type: card.callToAction || templateData.callToAction || 'LEARN_MORE'
+            }
+          })),
           call_to_action: {
             type: templateData.callToAction || 'LEARN_MORE'
           }
-        })),
-        call_to_action: {
-          type: templateData.callToAction || 'LEARN_MORE'
+        };
+
+        // FIX: Use 'caption' not 'link_caption' for display URL
+        if (templateData.displayLink) {
+          creative.object_story_spec.link_data.caption = templateData.displayLink;
         }
-      };
 
-      // FIX: Use 'caption' not 'link_caption' for display URL
-      if (templateData.displayLink) {
-        creative.object_story_spec.link_data.caption = templateData.displayLink;
-      }
+      } else if (templateData.mediaType === 'carousel' && templateData.carouselImages) {
+        // CAROUSEL AD from image hashes
+        creative.object_story_spec.link_data = {
+          link: templateData.url || '',
+          message: templateData.primaryText || '',
+          child_attachments: templateData.carouselImages.map((imageHash) => ({
+            link: templateData.url || '',
+            name: templateData.headline || '',
+            description: templateData.description || '',
+            image_hash: imageHash,
+            call_to_action: {
+              type: templateData.callToAction || 'LEARN_MORE'
+            }
+          })),
+          call_to_action: {
+            type: templateData.callToAction || 'LEARN_MORE'
+          }
+        };
 
-    } else {
-      // SINGLE IMAGE AD (default)
-      creative.object_story_spec.link_data = {
-        link: templateData.url || '',
-        message: templateData.primaryText || '',
-        name: templateData.headline || '',
-        description: templateData.description || '',
-        call_to_action: {
-          type: templateData.callToAction || 'LEARN_MORE'
+        // FIX: Use 'caption' not 'link_caption' for display URL
+        if (templateData.displayLink) {
+          creative.object_story_spec.link_data.caption = templateData.displayLink;
         }
-      };
 
-      // FIX: Use 'caption' not 'link_caption' for display URL
-      if (templateData.displayLink) {
-        creative.object_story_spec.link_data.caption = templateData.displayLink;
+      } else {
+        // SINGLE IMAGE AD (default)
+        creative.object_story_spec.link_data = {
+          link: templateData.url || '',
+          message: templateData.primaryText || '',
+          name: templateData.headline || '',
+          description: templateData.description || '',
+          call_to_action: {
+            type: templateData.callToAction || 'LEARN_MORE'
+          }
+        };
+
+        // FIX: Use 'caption' not 'link_caption' for display URL
+        if (templateData.displayLink) {
+          creative.object_story_spec.link_data.caption = templateData.displayLink;
+        }
+
+        if (templateData.imageHash) {
+          creative.object_story_spec.link_data.image_hash = templateData.imageHash;
+        }
       }
 
-      if (templateData.imageHash) {
-        creative.object_story_spec.link_data.image_hash = templateData.imageHash;
-      }
+      body.creative = JSON.stringify(creative);
     }
-
-    // NOTE: degrees_of_freedom_spec with image_cropping REMOVED
-    // It was causing 400 errors on all ad types. Will implement user-controlled
-    // image cropping before upload instead (like Facebook's Ads Manager UI)
-
-    body.creative = JSON.stringify(creative);
 
     // ===== TRACKING =====
     // REMOVED: tracking_specs is redundant - pixel tracking is already set at ad set level via promoted_object
