@@ -1692,9 +1692,8 @@ class BatchDuplicationService {
         }
       };
 
-      if (templateData.displayLink) {
-        creative.object_story_spec.video_data.call_to_action.value.link_caption = templateData.displayLink;
-      }
+      // NOTE: Facebook does NOT support displayLink for video ads
+      // The link_caption field is not valid for video_data creatives
 
       // Add thumbnail
       if (templateData.videoThumbnail) {
@@ -1726,8 +1725,9 @@ class BatchDuplicationService {
         }
       };
 
+      // FIX: Use 'caption' not 'link_caption' for display URL
       if (templateData.displayLink) {
-        creative.object_story_spec.link_data.link_caption = templateData.displayLink;
+        creative.object_story_spec.link_data.caption = templateData.displayLink;
       }
 
     } else if (templateData.mediaType === 'carousel' && templateData.carouselImages) {
@@ -1749,8 +1749,9 @@ class BatchDuplicationService {
         }
       };
 
+      // FIX: Use 'caption' not 'link_caption' for display URL
       if (templateData.displayLink) {
-        creative.object_story_spec.link_data.link_caption = templateData.displayLink;
+        creative.object_story_spec.link_data.caption = templateData.displayLink;
       }
 
     } else {
@@ -1765,8 +1766,9 @@ class BatchDuplicationService {
         }
       };
 
+      // FIX: Use 'caption' not 'link_caption' for display URL
       if (templateData.displayLink) {
-        creative.object_story_spec.link_data.link_caption = templateData.displayLink;
+        creative.object_story_spec.link_data.caption = templateData.displayLink;
       }
 
       if (templateData.imageHash) {
@@ -3842,9 +3844,7 @@ class BatchDuplicationService {
             value: { link: templateData.url || '' }
           }
         };
-        if (templateData.displayLink) {
-          objectStorySpec.video_data.link_caption = templateData.displayLink;
-        }
+        // NOTE: Facebook does NOT support displayLink for video ads
         if (mediaHashes.thumbnailHash) {
           objectStorySpec.video_data.image_hash = mediaHashes.thumbnailHash;
         }

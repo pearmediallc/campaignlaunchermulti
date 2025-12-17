@@ -1125,35 +1125,17 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
       // Helper function to transform batch results (defined inline for now)
       function transformBatchResultToStrategy150Format(batchResult, templateData, campaignName) {
-        // Extract campaign ID from first batch result (operation 0)
-        const campaignResult = batchResult.results[0];
-        let campaignId = null;
-        if (campaignResult && campaignResult.code === 200 && campaignResult.body) {
-          const body = JSON.parse(campaignResult.body);
-          campaignId = body.id;
-        }
+        // batchResult structure from createFromTemplateBatch:
+        // {
+        //   success, partialSuccess, operations, batchesExecuted, apiCallsSaved,
+        //   campaignId, adSetsCreated, adsCreated, adSetsFailed, adsFailed, failedDetails
+        // }
 
-        // Extract ad set IDs (operations 1-50, even indices after campaign)
-        const adSetIds = [];
-        const adIds = [];
+        const campaignId = batchResult.campaignId;
+        const adSetsCreated = batchResult.adSetsCreated || 0;
+        const adsCreated = batchResult.adsCreated || 0;
 
-        for (let i = 1; i < batchResult.results.length; i++) {
-          const result = batchResult.results[i];
-          const isAdSet = (i - 1) % 2 === 0; // After campaign, pattern is: adset, ad, adset, ad...
-
-          if (result && result.code === 200 && result.body) {
-            const body = JSON.parse(result.body);
-            if (body.id) {
-              if (isAdSet) {
-                adSetIds.push(body.id);
-              } else {
-                adIds.push(body.id);
-              }
-            }
-          }
-        }
-
-        console.log(`📊 Parsed results: Campaign=${campaignId}, AdSets=${adSetIds.length}, Ads=${adIds.length}`);
+        console.log(`📊 Batch results: Campaign=${campaignId}, AdSets=${adSetsCreated}/50, Ads=${adsCreated}/50`);
 
         // Return format matching createStrategy150Campaign() response
         return {
@@ -1162,15 +1144,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             name: campaignName
           },
           adSet: {
-            id: adSetIds[0], // First ad set (for compatibility)
+            // We don't have individual IDs from batch - use campaign ID as placeholder
+            id: `batch-adset-${campaignId}`,
             name: `${campaignName} - Ad Set 1`
           },
-          ads: adIds.slice(0, 1).map((id, i) => ({ // Only return first ad for compatibility
-            id,
-            name: `${campaignName} - Ad ${i + 1}`
-          })),
-          allAdSets: adSetIds, // Include all ad sets for tracking
-          allAds: adIds,       // Include all ads for tracking
+          ads: [{
+            id: `batch-ad-${campaignId}`,
+            name: `${campaignName} - Ad 1`
+          }],
+          allAdSetsCreated: adSetsCreated,
+          allAdsCreated: adsCreated,
           postId: null, // Batch doesn't create a post (ads use creative directly)
           mediaHashes: {
             imageHash: templateData.imageHash,
@@ -1181,8 +1164,15 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             operations: batchResult.operations,
             batchesExecuted: batchResult.batchesExecuted,
             apiCallsSaved: batchResult.apiCallsSaved,
-            method: 'batch'
-          }
+            adSetsCreated: adSetsCreated,
+            adsCreated: adsCreated,
+            adSetsFailed: batchResult.adSetsFailed || 0,
+            adsFailed: batchResult.adsFailed || 0,
+            method: 'batch',
+            success: batchResult.success,
+            partialSuccess: batchResult.partialSuccess
+          },
+          failedDetails: batchResult.failedDetails
         };
       }
 
