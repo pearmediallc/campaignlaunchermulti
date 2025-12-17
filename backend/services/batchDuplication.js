@@ -1091,6 +1091,16 @@ class BatchDuplicationService {
 
       // Process batch results
       if (batchResults) {
+        // DEBUG: Log first batch result to see actual structure
+        if (batchNum === 0 && batchResults.length > 0) {
+          console.log(`  🔍 DEBUG - First batch result structure:`);
+          console.log(`     Result count: ${batchResults.length}`);
+          console.log(`     First result: ${JSON.stringify(batchResults[0]).substring(0, 500)}`);
+          if (batchResults[1]) {
+            console.log(`     Second result: ${JSON.stringify(batchResults[1]).substring(0, 500)}`);
+          }
+        }
+
         // Results are interleaved: [adset-0, ad-0, adset-1, ad-1, ...]
         for (let i = 0; i < batchResults.length; i += 2) {
           const adSetResult = batchResults[i];
@@ -1104,48 +1114,69 @@ class BatchDuplicationService {
           let adSetError = null;
           let adError = null;
 
-          // Parse ad set result
-          if (adSetResult?.code === 200 && adSetResult.body) {
+          // Parse ad set result - handle both string and object body
+          if (adSetResult?.code === 200) {
             try {
-              const body = JSON.parse(adSetResult.body);
-              if (body.id && !body.error) {
+              const body = typeof adSetResult.body === 'string'
+                ? JSON.parse(adSetResult.body)
+                : adSetResult.body;
+              if (body?.id && !body?.error) {
                 adSetId = body.id;
                 adSetSuccess = true;
-              } else if (body.error) {
-                adSetError = body.error.message || 'Unknown error in response body';
+              } else if (body?.error) {
+                adSetError = body.error.message || body.error.error_user_msg || 'Unknown error in response body';
               }
             } catch (e) {
               adSetError = `Parse error: ${e.message}`;
             }
           } else if (adSetResult?.body) {
             try {
-              const body = JSON.parse(adSetResult.body);
-              adSetError = body.error?.message || `HTTP ${adSetResult.code}`;
+              const body = typeof adSetResult.body === 'string'
+                ? JSON.parse(adSetResult.body)
+                : adSetResult.body;
+              adSetError = body?.error?.message || body?.error?.error_user_msg || `HTTP ${adSetResult.code}`;
             } catch (e) {
               adSetError = `HTTP ${adSetResult?.code || 'unknown'}`;
             }
+          } else {
+            adSetError = `No result at index ${i}`;
           }
 
-          // Parse ad result
-          if (adResult?.code === 200 && adResult.body) {
+          // Parse ad result - handle both string and object body
+          if (adResult?.code === 200) {
             try {
-              const body = JSON.parse(adResult.body);
-              if (body.id && !body.error) {
+              const body = typeof adResult.body === 'string'
+                ? JSON.parse(adResult.body)
+                : adResult.body;
+              if (body?.id && !body?.error) {
                 adId = body.id;
                 adSuccess = true;
-              } else if (body.error) {
-                adError = body.error.message || 'Unknown error in response body';
+              } else if (body?.error) {
+                adError = body.error.message || body.error.error_user_msg || 'Unknown error in response body';
               }
             } catch (e) {
               adError = `Parse error: ${e.message}`;
             }
           } else if (adResult?.body) {
             try {
-              const body = JSON.parse(adResult.body);
-              adError = body.error?.message || `HTTP ${adResult.code}`;
+              const body = typeof adResult.body === 'string'
+                ? JSON.parse(adResult.body)
+                : adResult.body;
+              adError = body?.error?.message || body?.error?.error_user_msg || `HTTP ${adResult.code}`;
             } catch (e) {
               adError = `HTTP ${adResult?.code || 'unknown'}`;
             }
+          } else {
+            adError = `No result at index ${i + 1}`;
+          }
+
+          // DEBUG: Log first pair parsing result
+          if (batchNum === 0 && i === 0) {
+            console.log(`  🔍 DEBUG - First pair parsing:`);
+            console.log(`     adSetResult.code: ${adSetResult?.code}`);
+            console.log(`     adSetId: ${adSetId}, adSetSuccess: ${adSetSuccess}, adSetError: ${adSetError}`);
+            console.log(`     adResult.code: ${adResult?.code}`);
+            console.log(`     adId: ${adId}, adSuccess: ${adSuccess}, adError: ${adError}`);
           }
 
           // Track actual results for this pair
