@@ -2391,9 +2391,17 @@ class BatchDuplicationService {
             }
 
             // Check pair success
+            // CRITICAL FIX: If ad was created successfully, ad set MUST exist (ad references it)
+            // Facebook batch sometimes returns null for ad set but still creates it
             if (adSetSuccess && adSuccess) {
-              // SUCCESS: Both ad set and ad created
+              // SUCCESS: Both ad set and ad created (normal case)
               successfulPairs.push({ adSetId, adId, pairNumber });
+              console.log(`     ✅ Pair ${pairNumber} SUCCESS (both parsed)`);
+            } else if (!adSetSuccess && adSuccess) {
+              // INFERRED SUCCESS: Ad created = ad set must exist (Facebook batch quirk)
+              // The ad set was created but response was null - mark as success
+              console.log(`     ✅ Pair ${pairNumber} SUCCESS (inferred from ad creation - ad set response was null)`);
+              successfulPairs.push({ adSetId: `inferred-from-ad-${adId}`, adId, pairNumber });
             } else if (adSetSuccess && !adSuccess) {
               // ORPHAN: Ad set created but ad failed - mark for deletion
               failedAdSetIndices.add(i);
@@ -2404,7 +2412,7 @@ class BatchDuplicationService {
               orphanedAdSets.push({ adSetId, pairNumber, deleted: false });
               failedPairs.push({ pairNumber, reason: 'ad_creation_failed', adSetId });
             } else {
-              // Both failed or only ad set failed
+              // Both failed - true failure
               const adSetErrorMsg = adSetResult?.body ? (() => {
                 try { return JSON.parse(adSetResult.body).error?.message; } catch { return 'Unknown'; }
               })() : 'Unknown error';
@@ -2486,6 +2494,17 @@ class BatchDuplicationService {
             }
           }
         }
+      }
+
+      // EARLY EXIT CHECK: If we already have enough successful pairs, skip retries
+      // This handles the case where batch succeeded but ad set responses were null
+      console.log(`\n📊 Step 3.5: Checking if we already have enough pairs...`);
+      console.log(`     Expected: ${count}, Successful: ${successfulPairs.length}, Failed: ${failedPairs.length}`);
+
+      if (successfulPairs.length >= count) {
+        console.log(`     ✅ Already have ${successfulPairs.length} successful pairs - skipping retries!`);
+        // Clear failed pairs since we inferred success from ad creation
+        failedPairs.length = 0;
       }
 
       // Step 4: SMART RETRY - First verify what actually exists to avoid duplicates
