@@ -3723,11 +3723,21 @@ class BatchDuplicationService {
       body.promoted_object = JSON.stringify(originalAdSet.promoted_object);
     }
 
-    // FORCE 1-DAY CLICK, 1-DAY VIEW ATTRIBUTION (matching Strategy 150 behavior)
-    body.attribution_spec = JSON.stringify([
-      { event_type: 'CLICK_THROUGH', window_days: 1 },
-      { event_type: 'VIEW_THROUGH', window_days: 1 }
-    ]);
+    // Attribution settings - USE ORIGINAL if available, otherwise default to 1-day click + 1-day view
+    if (originalAdSet.attribution_spec) {
+      // Use the original ad set's attribution settings for 100% accuracy
+      body.attribution_spec = typeof originalAdSet.attribution_spec === 'string'
+        ? originalAdSet.attribution_spec
+        : JSON.stringify(originalAdSet.attribution_spec);
+      console.log(`  📊 Using original attribution_spec for ad set copy ${copyNumber}`);
+    } else {
+      // Default fallback only if original doesn't have attribution_spec
+      body.attribution_spec = JSON.stringify([
+        { event_type: 'CLICK_THROUGH', window_days: 1 },
+        { event_type: 'VIEW_THROUGH', window_days: 1 }
+      ]);
+      console.log(`  📊 Using default attribution_spec (1-day click + 1-day view) for ad set copy ${copyNumber}`);
+    }
 
     // Spending limits (CRITICAL: preserve these!)
     if (originalAdSet.daily_min_spend_target !== undefined && originalAdSet.daily_min_spend_target !== null) {

@@ -3971,17 +3971,29 @@ class FacebookAPI {
                     console.log(`  ✅ Added uploaded image hash to asset_feed_spec: ${variation.imageHash}`);
                   } else if (variation.useOriginalMedia && originalDynamicMediaAssets) {
                     // When using original media from a Dynamic Creative ad, copy ALL assets
-                    console.log(`  📋 Using original Dynamic Creative media assets...`);
+                    // SANITIZE: Only copy allowed fields to avoid "Invalid parameter" errors
+                    console.log(`  📋 Using original Dynamic Creative media assets (sanitized)...`);
 
-                    // Add all original images
+                    // Add all original images - sanitize to only include hash/url
                     if (originalDynamicMediaAssets.images && originalDynamicMediaAssets.images.length > 0) {
-                      creative.asset_feed_spec.images = originalDynamicMediaAssets.images;
+                      creative.asset_feed_spec.images = originalDynamicMediaAssets.images.map(img => {
+                        const sanitized = {};
+                        if (img.hash) sanitized.hash = img.hash;
+                        if (img.url) sanitized.url = img.url;
+                        return sanitized;
+                      });
                       console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} original images to asset_feed_spec`);
                     }
 
-                    // Add all original videos
+                    // Add all original videos - sanitize to only include video_id and thumbnail
                     if (originalDynamicMediaAssets.videos && originalDynamicMediaAssets.videos.length > 0) {
-                      creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos;
+                      creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos.map(vid => {
+                        const sanitized = {};
+                        if (vid.video_id) sanitized.video_id = vid.video_id;
+                        if (vid.thumbnail_url) sanitized.thumbnail_url = vid.thumbnail_url;
+                        if (vid.thumbnail_hash) sanitized.thumbnail_hash = vid.thumbnail_hash;
+                        return sanitized;
+                      });
                       console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} original videos to asset_feed_spec`);
                     }
 
@@ -4110,17 +4122,29 @@ class FacebookAPI {
                     console.log(`  ✅ Added uploaded image hash to asset_feed_spec: ${variation.imageHash}`);
                   } else if (variation.useOriginalMedia && originalDynamicMediaAssets) {
                     // When using original media from a Dynamic Creative ad, copy ALL assets
-                    console.log(`  📋 Using original Dynamic Creative media assets...`);
+                    // SANITIZE: Only copy allowed fields to avoid "Invalid parameter" errors
+                    console.log(`  📋 Using original Dynamic Creative media assets (sanitized)...`);
 
-                    // Add all original images
+                    // Add all original images - sanitize to only include hash/url
                     if (originalDynamicMediaAssets.images && originalDynamicMediaAssets.images.length > 0) {
-                      creative.asset_feed_spec.images = originalDynamicMediaAssets.images;
+                      creative.asset_feed_spec.images = originalDynamicMediaAssets.images.map(img => {
+                        const sanitized = {};
+                        if (img.hash) sanitized.hash = img.hash;
+                        if (img.url) sanitized.url = img.url;
+                        return sanitized;
+                      });
                       console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} original images to asset_feed_spec`);
                     }
 
-                    // Add all original videos
+                    // Add all original videos - sanitize to only include video_id and thumbnail
                     if (originalDynamicMediaAssets.videos && originalDynamicMediaAssets.videos.length > 0) {
-                      creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos;
+                      creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos.map(vid => {
+                        const sanitized = {};
+                        if (vid.video_id) sanitized.video_id = vid.video_id;
+                        if (vid.thumbnail_url) sanitized.thumbnail_url = vid.thumbnail_url;
+                        if (vid.thumbnail_hash) sanitized.thumbnail_hash = vid.thumbnail_hash;
+                        return sanitized;
+                      });
                       console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} original videos to asset_feed_spec`);
                     }
 
@@ -4459,16 +4483,29 @@ class FacebookAPI {
                 // Dynamic Creative with multiple media assets
                 console.log(`  🎨 Using Dynamic Creative media assets from original ad`);
 
-                // Add all images
+                // Add all images - SANITIZE to only include allowed fields (hash)
+                // Facebook API response may include extra fields that cause "Invalid parameter" error
                 if (originalDynamicMediaAssets.images.length > 0) {
-                  creative.asset_feed_spec.images = originalDynamicMediaAssets.images;
-                  console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} images to Dynamic Creative`);
+                  creative.asset_feed_spec.images = originalDynamicMediaAssets.images.map(img => {
+                    const sanitized = {};
+                    if (img.hash) sanitized.hash = img.hash;
+                    if (img.url) sanitized.url = img.url;
+                    return sanitized;
+                  });
+                  console.log(`  ✅ Added ${originalDynamicMediaAssets.images.length} images to Dynamic Creative (sanitized)`);
                 }
 
-                // Add all videos
+                // Add all videos - SANITIZE to only include allowed fields (video_id, thumbnail_url/hash)
+                // Facebook API response may include extra fields like page_id that cause "Invalid parameter" error
                 if (originalDynamicMediaAssets.videos.length > 0) {
-                  creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos;
-                  console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} videos to Dynamic Creative`);
+                  creative.asset_feed_spec.videos = originalDynamicMediaAssets.videos.map(vid => {
+                    const sanitized = {};
+                    if (vid.video_id) sanitized.video_id = vid.video_id;
+                    if (vid.thumbnail_url) sanitized.thumbnail_url = vid.thumbnail_url;
+                    if (vid.thumbnail_hash) sanitized.thumbnail_hash = vid.thumbnail_hash;
+                    return sanitized;
+                  });
+                  console.log(`  ✅ Added ${originalDynamicMediaAssets.videos.length} videos to Dynamic Creative (sanitized)`);
                 }
 
                 // Dynamic Creative can have mixed media

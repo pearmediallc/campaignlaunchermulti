@@ -1146,9 +1146,21 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
             } else {
               // CBO: Do NOT set budget at ad set level, it's already set at campaign level
+              // But PRESERVE spendingLimits which are allowed with CBO
               delete adSetParams.dailyBudget;
               delete adSetParams.lifetimeBudget;
-              delete adSetParams.adSetBudget;
+              // CRITICAL: Preserve spendingLimits when deleting adSetBudget
+              const spendingLimits = adSetParams.adSetBudget?.spendingLimits;
+              if (adSetParams.adSetBudget) {
+                delete adSetParams.adSetBudget.dailyBudget;
+                delete adSetParams.adSetBudget.lifetimeBudget;
+                // Keep spendingLimits in adSetBudget if it exists
+              }
+              // Also ensure spendingLimits is available at root level for facebookApi
+              if (spendingLimits && spendingLimits.enabled) {
+                adSetParams.spendingLimits = spendingLimits;
+                console.log(`  💰 Preserving spending limits for ad set ${i + 2}: max=$${spendingLimits.dailyMax || 'N/A'}`);
+              }
               console.log(`  📊 Using CBO - no ad set budget needed for ad set ${i + 2}`);
             }
 
