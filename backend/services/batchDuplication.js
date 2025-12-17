@@ -819,13 +819,23 @@ class BatchDuplicationService {
       }
 
       // ===== STEP 4B: Retry completely failed pairs (both ad set and ad failed) =====
+      // IMPORTANT: Only retry if we have actual complete failures (not orphans)
+      // Limit retries to avoid creating too many duplicates
+      const maxRetriesToAttempt = Math.min(failedPairIndices.length, 10); // Cap at 10 retries
+
       if (failedPairIndices.length > 0) {
-        console.log(`\n🔄 Step 4B: Retrying ${failedPairIndices.length} completely failed pairs atomically...`);
+        console.log(`\n🔄 Step 4B: Retrying ${maxRetriesToAttempt} of ${failedPairIndices.length} completely failed pairs...`);
+        if (failedPairIndices.length > 10) {
+          console.log(`  ⚠️ Limiting retries to prevent excessive API calls`);
+        }
 
-        for (const pairIndex of failedPairIndices) {
+        let retrySuccessCount = 0;
+        let retryOrphanCount = 0;
+        let retryFailCount = 0;
+
+        for (let i = 0; i < maxRetriesToAttempt; i++) {
+          const pairIndex = failedPairIndices[i];
           try {
-            console.log(`  📤 Retrying pair ${pairIndex + 1}...`);
-
             // Create atomic batch for this single pair
             const adSetBody = this.prepareAdSetBodyFromTemplate(templateData, pairIndex, campaignId);
             const adBody = this.prepareAdBodyFromTemplate(templateData, pairIndex, `{result=0:$.id}`);
@@ -847,67 +857,105 @@ class BatchDuplicationService {
 
             let adSetId = null;
             let adId = null;
+            let adSetError = null;
+            let adError = null;
 
+            // Parse ad set result properly
             if (adSetResult?.code === 200 && adSetResult.body) {
               try {
                 const body = JSON.parse(adSetResult.body);
-                if (body.id && !body.error) adSetId = body.id;
-              } catch (e) {}
+                if (body.id && !body.error) {
+                  adSetId = body.id;
+                } else if (body.error) {
+                  adSetError = body.error.message;
+                }
+              } catch (e) {
+                adSetError = 'Parse error';
+              }
+            } else if (adSetResult?.body) {
+              try {
+                const body = JSON.parse(adSetResult.body);
+                adSetError = body.error?.message || `HTTP ${adSetResult.code}`;
+              } catch (e) {
+                adSetError = `HTTP ${adSetResult?.code || 'unknown'}`;
+              }
             }
 
+            // Parse ad result properly
             if (adResult?.code === 200 && adResult.body) {
               try {
                 const body = JSON.parse(adResult.body);
-                if (body.id && !body.error) adId = body.id;
-              } catch (e) {}
+                if (body.id && !body.error) {
+                  adId = body.id;
+                } else if (body.error) {
+                  adError = body.error.message;
+                }
+              } catch (e) {
+                adError = 'Parse error';
+              }
+            } else if (adResult?.body) {
+              try {
+                const body = JSON.parse(adResult.body);
+                adError = body.error?.message || `HTTP ${adResult.code}`;
+              } catch (e) {
+                adError = `HTTP ${adResult?.code || 'unknown'}`;
+              }
             }
 
             if (adSetId && adId) {
               successfulPairs.push({ pairIndex, adSetId, adId });
               adSetsCreated++;
               adsCreated++;
-              console.log(`     ✅ Pair ${pairIndex + 1} retry succeeded!`);
+              retrySuccessCount++;
 
               // Remove from failed details
               failedDetails = failedDetails.filter(f =>
                 !(f.name?.includes(`Ad Set ${pairIndex + 1}`) || f.name?.includes(`Ad ${pairIndex + 1}`))
               );
             } else if (adSetId && !adId) {
-              // Orphan created during retry - delete it immediately
-              console.log(`     ⚠️ Pair ${pairIndex + 1}: Ad set created but ad failed - deleting orphan...`);
+              // Orphan created during retry - delete it immediately to avoid extra ad sets
+              retryOrphanCount++;
               try {
                 await axios.delete(`${this.baseURL}/${adSetId}`, { params: { access_token: this.accessToken } });
-                console.log(`     🗑️ Deleted orphaned ad set ${adSetId}`);
               } catch (e) {
-                console.error(`     ❌ Failed to delete orphan: ${e.message}`);
+                // If delete fails, count the orphan
+                adSetsCreated++;
+                console.error(`     ⚠️ Pair ${pairIndex + 1}: Created orphan ${adSetId}, delete failed: ${e.message}`);
               }
             } else {
-              console.log(`     ❌ Pair ${pairIndex + 1} retry failed`);
+              retryFailCount++;
             }
 
             // Delay between retries
-            await this.delay(2000);
+            await this.delay(1500);
           } catch (retryError) {
-            // Log the actual Facebook error if available
-            const fbError = retryError.response?.data?.error?.message || retryError.message;
-            console.error(`     ❌ Pair ${pairIndex + 1} retry error: ${fbError}`);
-
-            // If this is a batch response, try to parse individual results
+            retryFailCount++;
+            // Check if the error response contains successful creations (batch API quirk)
             if (retryError.response?.data && Array.isArray(retryError.response.data)) {
               const results = retryError.response.data;
-              results.forEach((r, idx) => {
-                if (r?.body) {
-                  try {
-                    const body = JSON.parse(r.body);
-                    if (body.error) {
-                      console.error(`        ${idx === 0 ? 'Ad Set' : 'Ad'}: ${body.error.message}`);
+              let createdAdSetId = null;
+
+              // Check if ad set was actually created despite error
+              if (results[0]?.code === 200 && results[0]?.body) {
+                try {
+                  const body = JSON.parse(results[0].body);
+                  if (body.id && !body.error) {
+                    createdAdSetId = body.id;
+                    // Delete the orphan
+                    try {
+                      await axios.delete(`${this.baseURL}/${createdAdSetId}`, { params: { access_token: this.accessToken } });
+                    } catch (e) {
+                      adSetsCreated++;
+                      console.error(`     ⚠️ Orphan created during error: ${createdAdSetId}`);
                     }
-                  } catch (e) {}
-                }
-              });
+                  }
+                } catch (e) {}
+              }
             }
           }
         }
+
+        console.log(`  📊 Retry results: ${retrySuccessCount} succeeded, ${retryOrphanCount} orphans cleaned, ${retryFailCount} failed`);
       }
 
       const adSetsFailed = numAdSets - adSetsCreated;
@@ -1100,13 +1148,7 @@ class BatchDuplicationService {
             }
           }
 
-          // Log first few errors to help debug
-          if (globalPairIndex < 3 && (adSetError || adError)) {
-            console.log(`  🔍 Pair ${globalPairIndex + 1} debug:`);
-            if (adSetError) console.log(`     Ad Set Error: ${adSetError}`);
-            if (adError) console.log(`     Ad Error: ${adError}`);
-          }
-
+          // Track actual results for this pair
           if (adSetSuccess && adSuccess) {
             // SUCCESS: Complete pair
             successfulPairs.push({ pairIndex: globalPairIndex, adSetId, adId });
@@ -1118,35 +1160,33 @@ class BatchDuplicationService {
             orphanedAdSets.push({ pairIndex: globalPairIndex, adSetId });
             adSetsCreated++; // Count the ad set as created
 
-            const errorMsg = adResult?.body ? (() => {
-              try { return JSON.parse(adResult.body).error?.message; } catch { return 'Unknown'; }
-            })() : 'No response';
             failedDetails.push({
               type: 'ad',
               name: `${templateData.campaignName || 'Campaign'} - Ad ${globalPairIndex + 1}`,
-              message: errorMsg,
+              message: adError || 'Unknown error',
               code: adResult?.code
             });
-            console.log(`  ⚠️ Pair ${globalPairIndex + 1}: Ad set ${adSetId} created but ad failed - will retry ad only`);
           } else {
             // COMPLETE FAILURE: Both ad set and ad failed (or ad set failed)
             failedPairIndices.push(globalPairIndex);
 
-            const errorMsg = adSetResult?.body ? (() => {
-              try { return JSON.parse(adSetResult.body).error?.message; } catch { return 'Unknown'; }
-            })() : 'No response';
             failedDetails.push({
               type: 'adset',
               name: `${templateData.campaignName || 'Campaign'} - Ad Set ${globalPairIndex + 1}`,
-              message: errorMsg,
+              message: adSetError || 'Unknown error',
               code: adSetResult?.code
             });
           }
         }
 
-        const successCount = Math.floor(batchResults.filter(r => r?.code === 200).length / 2);
-        const failCount = Math.floor(batch.operations.length / 2) - successCount;
-        console.log(`  ✅ Batch ${batchNum + 1} complete: ${successCount} pairs succeeded, ${failCount} pairs failed`);
+        // Calculate ACTUAL success/failure counts (not HTTP status codes)
+        const batchPairCount = Math.floor(batch.operations.length / 2);
+        const batchStartPairIndex = Math.floor(batch.startIndex / 2);
+        const batchSuccessCount = successfulPairs.filter(p => p.pairIndex >= batchStartPairIndex && p.pairIndex < batchStartPairIndex + batchPairCount).length;
+        const batchOrphanCount = orphanedAdSets.filter(o => o.pairIndex >= batchStartPairIndex && o.pairIndex < batchStartPairIndex + batchPairCount).length;
+        const batchFailCount = batchPairCount - batchSuccessCount - batchOrphanCount;
+
+        console.log(`  ✅ Batch ${batchNum + 1} complete: ${batchSuccessCount} pairs OK, ${batchOrphanCount} orphans (ad set OK, ad failed), ${batchFailCount} failed`);
       }
 
       // Delay between batches
