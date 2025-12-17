@@ -1057,67 +1057,81 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           console.log(`📊 Existing ad sets: ${existingAdSetCount}, Target: ${targetAdSetCount}`);
           console.log(`🔄 Creating ${adSetsToCreate} additional ad sets...`);
 
-          // TRY BATCH FIRST
+          // TRY BATCH FIRST (but skip for Dynamic Creative - batch has asset_feed_spec issues)
           let duplicatedAdSets = [];
           let usedBatchMethod = false;
 
-          try {
-            console.log(`  🚀 Attempting BATCH API method...`);
+          // Check if Dynamic Creative is enabled - if so, skip batch method entirely
+          const isDynamicCreative = campaignData.dynamicCreativeEnabled === true ||
+                                    campaignData.dynamicCreativeEnabled === 'true';
 
-            const BatchDuplicationService = require('../services/batchDuplication');
-            const batchService = new BatchDuplicationService(
-              decryptedToken,
-              selectedAdAccountId.replace('act_', ''),
-              selectedPageId,
-              selectedPixelId
-            );
+          if (isDynamicCreative) {
+            console.log(`  ⚠️ Dynamic Creative enabled - using SEQUENTIAL method`);
+            console.log(`    Reason: Batch API has asset_feed_spec compatibility issues with Dynamic Creative`);
+          }
 
-            const batchResult = await batchService.duplicateAdSetsBatch(
-              result.adSet.id,
-              result.campaign.id,
-              result.postId,
-              adSetsToCreate,
-              {
-                ...campaignData,
-                mediaHashes: result.mediaHashes, // Pass media hashes for dynamic creatives
-                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled, // Pass dynamic creative flag
-                dynamicTextEnabled: campaignData.dynamicTextEnabled, // Pass dynamic text flag
-                primaryTextVariations: campaignData.primaryTextVariations, // Pass text variations
-                headlineVariations: campaignData.headlineVariations, // Pass headline variations
-                primaryText: campaignData.primaryText, // Pass main primary text
-                headline: campaignData.headline, // Pass main headline
-                description: campaignData.description, // Pass description
-                url: campaignData.url, // Pass URL
-                displayLink: campaignData.displayLink, // Pass display link
-                callToAction: campaignData.callToAction // Pass CTA
+          if (!isDynamicCreative) {
+            try {
+              console.log(`  🚀 Attempting BATCH API method...`);
+
+              const BatchDuplicationService = require('../services/batchDuplication');
+              const batchService = new BatchDuplicationService(
+                decryptedToken,
+                selectedAdAccountId.replace('act_', ''),
+                selectedPageId,
+                selectedPixelId
+              );
+
+              const batchResult = await batchService.duplicateAdSetsBatch(
+                result.adSet.id,
+                result.campaign.id,
+                result.postId,
+                adSetsToCreate,
+                {
+                  ...campaignData,
+                  mediaHashes: result.mediaHashes, // Pass media hashes for dynamic creatives
+                  dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled, // Pass dynamic creative flag
+                  dynamicTextEnabled: campaignData.dynamicTextEnabled, // Pass dynamic text flag
+                  primaryTextVariations: campaignData.primaryTextVariations, // Pass text variations
+                  headlineVariations: campaignData.headlineVariations, // Pass headline variations
+                  primaryText: campaignData.primaryText, // Pass main primary text
+                  headline: campaignData.headline, // Pass main headline
+                  description: campaignData.description, // Pass description
+                  url: campaignData.url, // Pass URL
+                  displayLink: campaignData.displayLink, // Pass display link
+                  callToAction: campaignData.callToAction // Pass CTA
+                }
+              );
+
+              if (batchResult.summary.successRate >= 90) {
+                usedBatchMethod = true;
+                duplicatedAdSets = batchResult.adSets.map((as, idx) => ({
+                  adSet: { id: as.id, name: as.name },
+                  ad: { id: batchResult.ads[idx]?.id }
+                }));
+
+                console.log(`  ✅ BATCH API successful!`);
+                console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetsToCreate}`);
+                console.log(`    Ads: ${batchResult.ads.length}/${adSetsToCreate}`);
+                console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
+                console.log(`    API Calls Saved: ${batchResult.apiCallsSaved}`);
+              } else {
+                throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
               }
-            );
 
-            if (batchResult.summary.successRate >= 90) {
-              usedBatchMethod = true;
-              duplicatedAdSets = batchResult.adSets.map((as, idx) => ({
-                adSet: { id: as.id, name: as.name },
-                ad: { id: batchResult.ads[idx]?.id }
-              }));
-
-              console.log(`  ✅ BATCH API successful!`);
-              console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetsToCreate}`);
-              console.log(`    Ads: ${batchResult.ads.length}/${adSetsToCreate}`);
-              console.log(`    Success Rate: ${batchResult.summary.successRate}%`);
-              console.log(`    API Calls Saved: ${batchResult.apiCallsSaved}`);
-            } else {
-              throw new Error(`Batch success rate too low: ${batchResult.summary.successRate}%`);
+            } catch (batchError) {
+              console.warn(`  ⚠️  BATCH API failed: ${batchError.message}`);
+              console.log(`  🔄 Falling back to SEQUENTIAL method...`);
             }
+          }
 
-          } catch (batchError) {
-            console.warn(`  ⚠️  BATCH API failed: ${batchError.message}`);
-            console.log(`  🔄 Falling back to SEQUENTIAL method...`);
-
-            // SEQUENTIAL FALLBACK
+          // SEQUENTIAL FALLBACK - runs if batch was skipped (Dynamic Creative) or failed
+          if (!usedBatchMethod) {
+            console.log(`  📋 Using SEQUENTIAL method for ad set duplication...`);
             const failedCreations = [];
 
             for (let i = 0; i < adSetsToCreate; i++) {
-          try {
+              try {
             // Prepare ad set parameters based on budget level
             const adSetParams = {
               ...campaignData,
@@ -1451,10 +1465,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           console.log(`✅ Target count already achieved: ${currentCount}/${targetCount}`);
         }
 
-        console.log(`  ✅ SEQUENTIAL method completed`);
-        console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetsToCreate}`);
-
-        } // End of batch catch (sequential fallback)
+            console.log(`  ✅ SEQUENTIAL method completed`);
+            console.log(`    Ad Sets: ${duplicatedAdSets.length}/${adSetsToCreate}`);
+          } // End of if (!usedBatchMethod) - sequential fallback
 
         console.log(`\n📊 DUPLICATION TOTALS:`);
         console.log(`  Method: ${usedBatchMethod ? 'BATCH_API' : 'SEQUENTIAL'}`);
