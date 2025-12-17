@@ -1322,31 +1322,45 @@ class FacebookAPI {
         console.log('  Has dynamic media:', hasDynamicMedia);
 
         // Build arrays including main text + variations
-        const primaryTexts = [];
-        const headlines = [];
+        let primaryTexts = [];
+        let headlines = [];
 
         // Add main text first if it exists
         if (adData.primaryText && adData.primaryText.trim()) {
-          primaryTexts.push(adData.primaryText);
+          primaryTexts.push(adData.primaryText.trim());
         }
         // Add variations
         if (adData.primaryTextVariations) {
-          const validVariations = adData.primaryTextVariations.filter(text => text && text.trim());
+          const validVariations = adData.primaryTextVariations.filter(text => text && text.trim()).map(t => t.trim());
           primaryTexts.push(...validVariations);
         }
 
         // Add main headline first if it exists
         if (adData.headline && adData.headline.trim()) {
-          headlines.push(adData.headline);
+          headlines.push(adData.headline.trim());
         }
         // Add variations
         if (adData.headlineVariations) {
-          const validVariations = adData.headlineVariations.filter(headline => headline && headline.trim());
+          const validVariations = adData.headlineVariations.filter(headline => headline && headline.trim()).map(h => h.trim());
           headlines.push(...validVariations);
         }
 
-        console.log(`  📝 Primary Text Options: ${primaryTexts.length} (main + variations)`);
-        console.log(`  📰 Headline Options: ${headlines.length} (main + variations)`);
+        // CRITICAL: Deduplicate text arrays - Facebook rejects duplicates with error:
+        // "Duplicate of ad asset values are not allowed" / "Please enter a unique headline for each field"
+        const originalPrimaryCount = primaryTexts.length;
+        const originalHeadlineCount = headlines.length;
+        primaryTexts = [...new Set(primaryTexts)];
+        headlines = [...new Set(headlines)];
+
+        if (primaryTexts.length < originalPrimaryCount) {
+          console.log(`  ⚠️ Removed ${originalPrimaryCount - primaryTexts.length} duplicate primary text(s)`);
+        }
+        if (headlines.length < originalHeadlineCount) {
+          console.log(`  ⚠️ Removed ${originalHeadlineCount - headlines.length} duplicate headline(s)`);
+        }
+
+        console.log(`  📝 Primary Text Options: ${primaryTexts.length} (main + variations, deduplicated)`);
+        console.log(`  📰 Headline Options: ${headlines.length} (main + variations, deduplicated)`);
 
         // Use Facebook's asset_feed_spec for dynamic creative / text variations
         creative.asset_feed_spec = {
@@ -3899,20 +3913,24 @@ class FacebookAPI {
 
                   if (hasDynamicTexts) {
                     // Variation has its own dynamic arrays
-                    primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
-                    headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
+                    primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim()).map(t => t.trim());
+                    headlines = variation.headlineVariations.filter(headline => headline && headline.trim()).map(h => h.trim());
                   } else if (variation.primaryText || variation.headline) {
                     // Variation has simple text values - wrap them in arrays
                     console.log(`  📝 Using variation's simple text values...`);
                     console.log(`    Primary: "${variation.primaryText || 'FALLBACK TO FORM DATA'}"`);
                     console.log(`    Headline: "${variation.headline || 'FALLBACK TO FORM DATA'}"`);
-                    primaryTexts = variation.primaryText ? [variation.primaryText] : [formData.primaryText];
-                    headlines = variation.headline ? [variation.headline] : [formData.headline];
+                    primaryTexts = variation.primaryText ? [variation.primaryText.trim()] : [formData.primaryText?.trim()].filter(Boolean);
+                    headlines = variation.headline ? [variation.headline.trim()] : [formData.headline?.trim()].filter(Boolean);
                   } else {
                     // No variation values - use original form data
-                    primaryTexts = formData.primaryTextVariations || [formData.primaryText];
-                    headlines = formData.headlineVariations || [formData.headline];
+                    primaryTexts = (formData.primaryTextVariations || [formData.primaryText]).filter(t => t?.trim()).map(t => t.trim());
+                    headlines = (formData.headlineVariations || [formData.headline]).filter(h => h?.trim()).map(h => h.trim());
                   }
+
+                  // CRITICAL: Deduplicate text arrays - Facebook rejects duplicates
+                  primaryTexts = [...new Set(primaryTexts)];
+                  headlines = [...new Set(headlines)];
 
                   creative = {
                     object_story_spec: {
@@ -4031,16 +4049,26 @@ class FacebookAPI {
                   // Non-dynamic ad set BUT variation has text variations - use asset_feed_spec
                   console.log(`  📝 Non-dynamic ad set but variation has text variations - using asset_feed_spec`);
 
-                  const primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim());
-                  const headlines = variation.headlineVariations.filter(headline => headline && headline.trim());
+                  let primaryTexts = variation.primaryTextVariations.filter(text => text && text.trim()).map(t => t.trim());
+                  let headlines = variation.headlineVariations.filter(headline => headline && headline.trim()).map(h => h.trim());
 
                   // Include the main text as well if it exists
-                  if (variation.primaryText && !primaryTexts.includes(variation.primaryText)) {
-                    primaryTexts.unshift(variation.primaryText);
+                  if (variation.primaryText && variation.primaryText.trim()) {
+                    const trimmedPrimary = variation.primaryText.trim();
+                    if (!primaryTexts.includes(trimmedPrimary)) {
+                      primaryTexts.unshift(trimmedPrimary);
+                    }
                   }
-                  if (variation.headline && !headlines.includes(variation.headline)) {
-                    headlines.unshift(variation.headline);
+                  if (variation.headline && variation.headline.trim()) {
+                    const trimmedHeadline = variation.headline.trim();
+                    if (!headlines.includes(trimmedHeadline)) {
+                      headlines.unshift(trimmedHeadline);
+                    }
                   }
+
+                  // CRITICAL: Deduplicate text arrays - Facebook rejects duplicates
+                  primaryTexts = [...new Set(primaryTexts)];
+                  headlines = [...new Set(headlines)];
 
                   creative = {
                     object_story_spec: {

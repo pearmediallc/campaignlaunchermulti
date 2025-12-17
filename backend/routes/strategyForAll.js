@@ -954,33 +954,248 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
       } catch (batchError) {
         console.warn(`  ⚠️  BATCH API failed: ${batchError.message}`);
-        console.log(`  🔄 Falling back to SEQUENTIAL method...`);
+        console.log(`  🔄 Falling back to SEQUENTIAL method with deficit recovery...`);
 
-        const StrategyForAllDuplication = require('../services/strategyForAllDuplication');
-        const duplicationService = new StrategyForAllDuplication(userFacebookApi);
+        // SEQUENTIAL FALLBACK with full field passing (matching StrategyForAds)
+        const duplicatedAdSets = [];
+        const failedCreations = [];
 
-        const sequentialResults = await duplicationService.duplicateAdSetsSequential(
-          result.adSet.id,
-          result.campaign.id,
-          result.postId,
-          adSetCount,
-          campaignData
-        );
+        for (let i = 0; i < adSetCount; i++) {
+          try {
+            // Prepare ad set parameters based on budget level
+            const adSetParams = {
+              ...campaignData,
+              campaignId: result.campaign.id,
+              adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+            };
+
+            // CRITICAL: Only set ad set budget if NOT using Campaign Budget Optimization
+            if (campaignData.budgetLevel === 'adset') {
+              adSetParams.dailyBudget = campaignData.dailyBudget;
+              adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
+            } else {
+              // CBO: Do NOT set budget at ad set level
+              delete adSetParams.dailyBudget;
+              delete adSetParams.lifetimeBudget;
+              delete adSetParams.adSetBudget;
+              console.log(`  📊 Using CBO - no ad set budget needed for ad set ${i + 2}`);
+            }
+
+            // Create the ad set
+            const newAdSet = await userFacebookApi.createAdSet(adSetParams);
+
+            if (newAdSet) {
+              // CRITICAL: Pass ALL fields including media for ad creation
+              const adParams = {
+                ...campaignData,
+                adsetId: newAdSet.id,
+                adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
+                postId: result.postId,
+                // Explicitly ensure these creative fields are passed
+                displayLink: campaignData.displayLink,
+                url: campaignData.url,
+                headline: campaignData.headline,
+                primaryText: campaignData.primaryText,
+                description: campaignData.description,
+                callToAction: campaignData.callToAction,
+                // Pass through dynamic creative media
+                dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
+                dynamicImages: result.mediaHashes?.dynamicImages,
+                dynamicVideos: result.mediaHashes?.dynamicVideos,
+                imageHash: result.mediaHashes?.imageHash,
+                videoId: result.mediaHashes?.videoId,
+                carouselCards: result.mediaHashes?.carouselCards,
+                mediaAssets: result.mediaHashes,
+                imagePath: campaignData.imagePath,
+                videoPath: campaignData.videoPath,
+                imagePaths: campaignData.imagePaths,
+                mediaType: campaignData.mediaType,
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                primaryTextVariations: campaignData.primaryTextVariations,
+                headlineVariations: campaignData.headlineVariations
+              };
+
+              console.log(`  🔗 Creating ad with display link: ${adParams.displayLink}`);
+
+              const newAd = await userFacebookApi.createAd(adParams);
+              duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+              console.log(`  ✅ Created ad set ${i + 2} of ${adSetCount + 1}`);
+            }
+
+          } catch (adSetError) {
+            console.error(`  ❌ Failed to create ad set ${i + 2}:`, adSetError.message);
+
+            // Track failed creation
+            await FailureTracker.safeTrackFailedEntity({
+              userId,
+              campaignId: result.campaign.id,
+              campaignName: campaignData.campaignName,
+              adsetId: null,
+              adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+              entityType: 'adset',
+              error: adSetError,
+              strategyType: 'strategyForAll',
+              metadata: {
+                index: i + 2,
+                targetAdSetCount: adSetCount + 1,
+                budgetLevel: campaignData.budgetLevel
+              }
+            });
+
+            failedCreations.push({
+              index: i + 2,
+              type: 'adset',
+              error: adSetError
+            });
+          }
+        }
+
+        // ============================================================
+        // DEFICIT RECOVERY PHASE - GUARANTEED COUNT DELIVERY
+        // ============================================================
+        console.log('\n🎯 ========== DEFICIT RECOVERY PHASE ==========');
+
+        // Query Facebook for ACTUAL ad set count to avoid duplicates
+        const targetCount = adSetCount + 1; // +1 for initial ad set
+        let currentCount = 1 + duplicatedAdSets.length;
+
+        try {
+          const axios = require('axios');
+          const actualAdSetsResponse = await axios.get(
+            `https://graph.facebook.com/v18.0/${result.campaign.id}/adsets`,
+            {
+              params: {
+                access_token: decryptedToken,
+                fields: 'id,name',
+                limit: 100
+              }
+            }
+          );
+          currentCount = actualAdSetsResponse.data?.data?.length || currentCount;
+          console.log(`📊 Actual ad sets on Facebook: ${currentCount} (queried from API)`);
+        } catch (countError) {
+          console.warn(`⚠️ Could not query Facebook for ad set count, using calculated count: ${currentCount}`);
+        }
+
+        const deficit = targetCount - currentCount;
+        console.log(`📊 Target: ${targetCount} ad sets`);
+        console.log(`📊 Current: ${currentCount} ad sets`);
+        console.log(`📊 Deficit: ${deficit} ad sets`);
+
+        if (deficit > 0) {
+          console.log(`\n🔄 Creating ${deficit} additional ad sets to reach target count...`);
+
+          for (let d = 0; d < deficit; d++) {
+            const nextIndex = currentCount + d + 1;
+
+            try {
+              console.log(`\n  📝 Creating deficit ad set ${d + 1}/${deficit} (Index: ${nextIndex})...`);
+
+              // Wait between deficit creations
+              if (d > 0) {
+                console.log(`  ⏳ Waiting 15s before next creation...`);
+                await new Promise(resolve => setTimeout(resolve, 15000));
+              }
+
+              const adSetParams = {
+                ...campaignData,
+                campaignId: result.campaign.id,
+                adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+              };
+
+              if (campaignData.budgetLevel === 'adset') {
+                adSetParams.dailyBudget = campaignData.dailyBudget;
+                adSetParams.lifetimeBudget = campaignData.lifetimeBudget;
+              } else {
+                delete adSetParams.dailyBudget;
+                delete adSetParams.lifetimeBudget;
+                delete adSetParams.adSetBudget;
+              }
+
+              const newAdSet = await userFacebookApi.createAdSet(adSetParams);
+
+              if (newAdSet) {
+                console.log(`  ✅ Deficit ad set ${d + 1} created: ${newAdSet.id}`);
+
+                const adParams = {
+                  ...campaignData,
+                  adsetId: newAdSet.id,
+                  adName: `[Launcher] ${campaignData.campaignName} - Ad ${nextIndex}`,
+                  postId: result.postId,
+                  displayLink: campaignData.displayLink,
+                  url: campaignData.url,
+                  headline: campaignData.headline,
+                  primaryText: campaignData.primaryText,
+                  description: campaignData.description,
+                  callToAction: campaignData.callToAction,
+                  dynamicCreativeMediaPaths: campaignData.dynamicCreativeMediaPaths,
+                  dynamicImages: result.mediaHashes?.dynamicImages,
+                  dynamicVideos: result.mediaHashes?.dynamicVideos,
+                  imageHash: result.mediaHashes?.imageHash,
+                  videoId: result.mediaHashes?.videoId,
+                  carouselCards: result.mediaHashes?.carouselCards,
+                  mediaAssets: result.mediaHashes,
+                  mediaType: campaignData.mediaType,
+                  dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                  dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                  primaryTextVariations: campaignData.primaryTextVariations,
+                  headlineVariations: campaignData.headlineVariations
+                };
+
+                const newAd = await userFacebookApi.createAd(adParams);
+
+                if (newAd) {
+                  console.log(`  ✅ Deficit ad ${d + 1} created: ${newAd.id}`);
+                  duplicatedAdSets.push({ adSet: newAdSet, ad: newAd });
+                }
+              }
+
+            } catch (deficitError) {
+              console.error(`  ❌ Deficit creation ${d + 1}/${deficit} failed:`, deficitError.message);
+
+              await FailureTracker.safeTrackFailedEntity({
+                userId,
+                campaignId: result.campaign.id,
+                campaignName: campaignData.campaignName,
+                adsetId: null,
+                adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                entityType: 'adset',
+                error: deficitError,
+                strategyType: 'strategyForAll',
+                metadata: {
+                  deficitRecovery: true,
+                  index: nextIndex,
+                  targetAdSetCount: targetCount
+                }
+              });
+            }
+          }
+
+          const finalCount = 1 + duplicatedAdSets.length;
+          console.log(`📊 Final count after deficit recovery: ${finalCount}/${targetCount}`);
+
+          if (finalCount < targetCount) {
+            console.warn(`⚠️ Still missing ${targetCount - finalCount} ad sets after all attempts`);
+          }
+        } else {
+          console.log(`✅ Target count already achieved: ${currentCount}/${targetCount}`);
+        }
 
         batchResult = {
-          adSets: sequentialResults.adSets || [],
-          ads: sequentialResults.ads || [],
+          adSets: duplicatedAdSets.map(d => d.adSet),
+          ads: duplicatedAdSets.map(d => d.ad),
           operations: adSetCount * 2,
           batchesExecuted: adSetCount * 2,
           apiCallsSaved: 0,
           summary: {
             totalExpected: adSetCount,
-            totalSuccess: sequentialResults.adSets?.length || 0,
-            successRate: Math.round(((sequentialResults.adSets?.length || 0) / adSetCount) * 100)
+            totalSuccess: duplicatedAdSets.length,
+            successRate: Math.round((duplicatedAdSets.length / adSetCount) * 100)
           }
         };
 
-        console.log(`  ✅ SEQUENTIAL method completed`);
+        console.log(`  ✅ SEQUENTIAL method with deficit recovery completed`);
         console.log(`    Ad Sets: ${batchResult.adSets.length}/${adSetCount}`);
       }
 
@@ -993,7 +1208,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       result.batchStats = {
         method: result.duplicationMethod,
         operations: batchResult.operations,
-        apiCallsSaved: batchResult.apiCallsSaved,
+        apiCallsSaved: batchResult.apiCallsSaved || 0,
         successRate: batchResult.summary.successRate
       };
 
@@ -1001,6 +1216,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       console.log(`  ✅ Total Ad Sets: ${result.totalAdSets}/${1 + adSetCount} (1 initial + ${batchResult.adSets.length} duplicates)`);
       console.log(`  ✅ Total Ads: ${result.totalAds}/${1 + adSetCount}`);
       console.log(`  ✅ Method: ${result.duplicationMethod}`);
+      if (campaignData.dynamicCreativeEnabled || campaignData.dynamicTextEnabled) {
+        console.log(`  ✅ 100% Root Effect: All ${result.totalAdSets} ad sets use identical targeting`);
+        console.log(`  ✅ Creative Type: Dynamic Creative (asset_feed_spec with shared media)`);
+      } else {
+        console.log(`  ✅ 100% Root Effect: All ${result.totalAdSets} ads use post ID ${result.postId}`);
+      }
+      console.log('========================================\n');
     } else if (adSetCount > 0 && !result.postId) {
       console.warn(`\n⚠️  Post ID not captured - skipping batch duplication`);
     } else {

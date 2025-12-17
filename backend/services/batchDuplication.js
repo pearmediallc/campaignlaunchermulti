@@ -2030,16 +2030,35 @@ class BatchDuplicationService {
       const orphanedAdSets = [];
 
       // Prepare text variations once (used for all pairs)
-      const textVariations = (formData.dynamicTextEnabled || formData.dynamicCreativeEnabled) ? {
-        primaryTexts: formData.primaryTextVariations || (formData.primaryText ? [formData.primaryText] : []),
-        headlines: formData.headlineVariations || (formData.headline ? [formData.headline] : []),
-        primaryText: formData.primaryText,
-        headline: formData.headline,
-        description: formData.description,
-        url: formData.url,
-        displayLink: formData.displayLink,
-        callToAction: formData.callToAction
-      } : null;
+      // CRITICAL: Deduplicate text arrays - Facebook rejects duplicates with error:
+      // "Duplicate of ad asset values are not allowed"
+      let textVariations = null;
+      if (formData.dynamicTextEnabled || formData.dynamicCreativeEnabled) {
+        // Build and deduplicate primaryTexts
+        let primaryTexts = formData.primaryTextVariations
+          ? formData.primaryTextVariations.filter(t => t && t.trim()).map(t => t.trim())
+          : (formData.primaryText ? [formData.primaryText.trim()] : []);
+        primaryTexts = [...new Set(primaryTexts)];
+
+        // Build and deduplicate headlines
+        let headlines = formData.headlineVariations
+          ? formData.headlineVariations.filter(h => h && h.trim()).map(h => h.trim())
+          : (formData.headline ? [formData.headline.trim()] : []);
+        headlines = [...new Set(headlines)];
+
+        textVariations = {
+          primaryTexts,
+          headlines,
+          primaryText: formData.primaryText,
+          headline: formData.headline,
+          description: formData.description,
+          url: formData.url,
+          displayLink: formData.displayLink,
+          callToAction: formData.callToAction
+        };
+
+        console.log(`  📝 Text variations prepared: ${primaryTexts.length} primary texts, ${headlines.length} headlines (deduplicated)`);
+      }
 
       // HEAVY PAYLOAD DETECTION: Estimate payload size
       // Dynamic creatives with multiple images/videos can exceed socket limits
@@ -3796,17 +3815,20 @@ class BatchDuplicationService {
         page_id: this.pageId
       };
 
-      // Add text variations
+      // Add text variations (DEDUPLICATED to avoid Facebook error)
+      // Facebook rejects: "Duplicate of ad asset values are not allowed"
       if (templateData.primaryTextVariations?.length > 0) {
-        assetFeedSpec.bodies = templateData.primaryTextVariations.map(text => ({ text }));
+        const uniquePrimaryTexts = [...new Set(templateData.primaryTextVariations.filter(t => t && t.trim()).map(t => t.trim()))];
+        assetFeedSpec.bodies = uniquePrimaryTexts.map(text => ({ text }));
       } else if (templateData.primaryText) {
-        assetFeedSpec.bodies = [{ text: templateData.primaryText }];
+        assetFeedSpec.bodies = [{ text: templateData.primaryText.trim() }];
       }
 
       if (templateData.headlineVariations?.length > 0) {
-        assetFeedSpec.titles = templateData.headlineVariations.map(text => ({ text }));
+        const uniqueHeadlines = [...new Set(templateData.headlineVariations.filter(h => h && h.trim()).map(h => h.trim()))];
+        assetFeedSpec.titles = uniqueHeadlines.map(text => ({ text }));
       } else if (templateData.headline) {
-        assetFeedSpec.titles = [{ text: templateData.headline }];
+        assetFeedSpec.titles = [{ text: templateData.headline.trim() }];
       }
 
       if (templateData.description) {
