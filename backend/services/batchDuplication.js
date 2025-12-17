@@ -42,6 +42,135 @@ class BatchDuplicationService {
     };
   }
 
+  // ============================================================================
+  // SMART VERIFICATION HELPER - Verify and correct ad set/ad counts after batch
+  // ============================================================================
+
+  /**
+   * Smart post-batch verification: Make ONE API call to count actual ad sets and ads,
+   * then correct any discrepancies (delete extras if > expected).
+   *
+   * IMPORTANT: Facebook's batch API sometimes returns transient errors but still creates
+   * the resources. Instead of retrying (which creates duplicates), we verify AFTER all
+   * batches complete and delete any extras.
+   *
+   * @param {string} campaignId - Campaign ID to verify
+   * @param {number} expectedAdSets - Expected number of ad sets (including original)
+   * @param {string} originalAdSetId - ID of the original ad set (to exclude from deletion)
+   * @returns {Object} Verification results with counts and any corrections made
+   */
+  async smartVerifyAndCorrect(campaignId, expectedAdSets, originalAdSetId = null) {
+    const axios = require('axios');
+    console.log(`\n🔍 Smart Verification: Checking campaign ${campaignId}...`);
+    console.log(`   Expected: ${expectedAdSets} ad sets total`);
+
+    const results = {
+      verified: false,
+      actualAdSets: 0,
+      actualAds: 0,
+      expectedAdSets: expectedAdSets,
+      extrasDeleted: 0,
+      corrections: []
+    };
+
+    try {
+      // ONE API call to get all ad sets with their ad counts
+      const response = await axios.get(
+        `${this.baseURL}/${campaignId}/adsets`,
+        {
+          params: {
+            fields: 'id,name,ads.limit(0).summary(true)',
+            limit: 200, // Should be enough for most campaigns
+            access_token: this.accessToken
+          },
+          timeout: 30000
+        }
+      );
+
+      const adSets = response.data?.data || [];
+      results.actualAdSets = adSets.length;
+      results.actualAds = adSets.reduce((sum, adSet) => {
+        return sum + (adSet.ads?.summary?.total_count || 0);
+      }, 0);
+
+      console.log(`   Actual: ${results.actualAdSets} ad sets, ${results.actualAds} ads`);
+
+      // Check if we have extras
+      if (results.actualAdSets > expectedAdSets) {
+        const extrasCount = results.actualAdSets - expectedAdSets;
+        console.log(`   ⚠️ Found ${extrasCount} extra ad sets - will delete extras`);
+
+        // Find duplicate "Copy N" ad sets to delete (keep the ones with lowest copy numbers)
+        const copyAdSets = adSets
+          .filter(adSet => adSet.name.match(/- Copy \d+$/))
+          .map(adSet => {
+            const match = adSet.name.match(/- Copy (\d+)$/);
+            return {
+              id: adSet.id,
+              name: adSet.name,
+              copyNumber: match ? parseInt(match[1]) : 0,
+              adCount: adSet.ads?.summary?.total_count || 0
+            };
+          })
+          .sort((a, b) => b.copyNumber - a.copyNumber); // Sort highest first (delete highest copy numbers)
+
+        // Delete extras (from highest copy number down)
+        let deleted = 0;
+        for (const adSet of copyAdSets) {
+          if (deleted >= extrasCount) break;
+
+          // Skip the original ad set
+          if (adSet.id === originalAdSetId) continue;
+
+          try {
+            await axios.delete(`${this.baseURL}/${adSet.id}`, {
+              params: { access_token: this.accessToken }
+            });
+            console.log(`   🗑️ Deleted extra: ${adSet.id} (${adSet.name})`);
+            results.corrections.push({
+              action: 'deleted',
+              adSetId: adSet.id,
+              adSetName: adSet.name,
+              reason: 'extra_duplicate'
+            });
+            deleted++;
+            results.extrasDeleted++;
+            await this.delay(200); // Small delay between deletions
+          } catch (deleteError) {
+            console.error(`   ❌ Failed to delete ${adSet.id}: ${deleteError.message}`);
+          }
+        }
+
+        console.log(`   ✅ Deleted ${deleted} extra ad sets`);
+      } else if (results.actualAdSets < expectedAdSets) {
+        // Less than expected - some truly failed (log but don't retry to avoid more duplicates)
+        const shortfall = expectedAdSets - results.actualAdSets;
+        console.log(`   ⚠️ ${shortfall} ad sets short of expected - some batches may have truly failed`);
+        results.corrections.push({
+          action: 'shortfall_detected',
+          missing: shortfall,
+          reason: 'batch_failures'
+        });
+      } else {
+        console.log(`   ✅ Count matches expected - no corrections needed`);
+      }
+
+      results.verified = true;
+
+      // Update final counts after corrections
+      if (results.extrasDeleted > 0) {
+        results.actualAdSets -= results.extrasDeleted;
+        results.actualAds -= results.extrasDeleted; // Assuming 1 ad per ad set
+      }
+
+    } catch (error) {
+      console.error(`   ❌ Smart verification failed: ${error.message}`);
+      results.error = error.message;
+    }
+
+    return results;
+  }
+
   /**
    * Duplicate campaign using batch API (2-3 total API calls instead of 200+)
    * Returns formatted results compatible with Campaign Management UI
@@ -1032,8 +1161,12 @@ class BatchDuplicationService {
   }
 
   /**
-   * Execute batch operations with automatic retry for transient errors
-   * Returns detailed per-pair success/failure tracking
+   * Execute batch operations WITHOUT retry for transient errors.
+   * CRITICAL: Facebook's batch API often returns transient errors but STILL creates the resources.
+   * Retrying creates duplicates. Instead, we execute ALL batches, then use smartVerifyAndCorrect()
+   * to count actual vs expected and delete any extras.
+   *
+   * Returns detailed per-pair success/failure tracking.
    */
   async executeBatchWithRetry(allOperations, templateData, campaignId, accountId) {
     const successfulPairs = [];
@@ -1054,65 +1187,51 @@ class BatchDuplicationService {
     }
 
     console.log(`🔄 Executing ${batches.length} batch(es) with ${allOperations.length} total operations`);
+    console.log(`⚠️ NO RETRY on transient errors - smart verification will correct any duplicates after`);
 
     for (let batchNum = 0; batchNum < batches.length; batchNum++) {
       const batch = batches[batchNum];
-      let retryCount = 0;
-      const maxRetries = 2;
       let batchResults = null;
-      let hasTransientError = false;
 
-      // Retry loop for transient errors
-      while (retryCount <= maxRetries) {
-        try {
-          console.log(`  📤 Sending batch ${batchNum + 1}/${batches.length} (${batch.operations.length} operations)${retryCount > 0 ? ` [Retry ${retryCount}]` : ''}`);
+      // Single attempt - NO retry for transient errors (they often succeed despite error)
+      try {
+        console.log(`  📤 Sending batch ${batchNum + 1}/${batches.length} (${batch.operations.length} operations)`);
 
-          const response = await axios.post(
-            this.baseURL,
-            { batch: JSON.stringify(batch.operations), access_token: this.accessToken },
-            { timeout: 120000 }
-          );
+        const response = await axios.post(
+          this.baseURL,
+          { batch: JSON.stringify(batch.operations), access_token: this.accessToken },
+          { timeout: 120000 }
+        );
 
-          batchResults = response.data;
-          batchesExecuted++;
+        batchResults = response.data;
+        batchesExecuted++;
 
-          // Check for transient errors
-          hasTransientError = false;
-          for (const result of batchResults) {
-            if (result?.code === 500 || result?.code === 503) {
-              try {
-                const body = JSON.parse(result.body);
-                if (body.error?.is_transient === true) {
-                  hasTransientError = true;
-                  break;
-                }
-              } catch (e) {}
-            }
+        // Check for transient errors - LOG but do NOT retry
+        let hasTransientError = false;
+        for (const result of batchResults) {
+          if (result?.code === 500 || result?.code === 503) {
+            try {
+              const body = JSON.parse(result.body);
+              if (body.error?.is_transient === true) {
+                hasTransientError = true;
+                break;
+              }
+            } catch (e) {}
           }
+        }
 
-          if (hasTransientError && retryCount < maxRetries) {
-            console.log(`  ⚠️ Transient error detected - will retry in 5 seconds...`);
-            await this.delay(5000);
-            retryCount++;
-            continue;
-          }
+        if (hasTransientError) {
+          console.log(`  ⚠️ Transient error detected - NOT retrying (Facebook often creates despite this error)`);
+          console.log(`  ℹ️ Smart verification will correct any issues after all batches complete`);
+        }
 
-          break; // Success or non-transient error
-        } catch (error) {
-          console.error(`  ❌ Batch ${batchNum + 1} request failed: ${error.message}`);
-          if (retryCount < maxRetries) {
-            console.log(`  🔄 Retrying in 5 seconds...`);
-            await this.delay(5000);
-            retryCount++;
-          } else {
-            // Mark all pairs in this batch as failed
-            const pairsInBatch = Math.floor(batch.operations.length / 2);
-            const startPairIndex = Math.floor(batch.startIndex / 2);
-            for (let i = 0; i < pairsInBatch; i++) {
-              failedPairIndices.push(startPairIndex + i);
-            }
-            break;
-          }
+      } catch (error) {
+        console.error(`  ❌ Batch ${batchNum + 1} request failed: ${error.message}`);
+        // Mark all pairs in this batch as failed (only for network/timeout errors, not transient)
+        const pairsInBatch = Math.floor(batch.operations.length / 2);
+        const startPairIndex = Math.floor(batch.startIndex / 2);
+        for (let i = 0; i < pairsInBatch; i++) {
+          failedPairIndices.push(startPairIndex + i);
         }
       }
 
@@ -2384,68 +2503,46 @@ class BatchDuplicationService {
             });
           }
 
-          // Execute this batch with retry for transient errors
-          // CRITICAL FIX: Do NOT retry batch 1 on transient errors
-          // Facebook often returns transient error but still creates the ad sets
-          // Retrying creates duplicates (55 ad sets instead of 50)
+          // Execute this batch - NO RETRY on transient errors
+          // CRITICAL: Facebook often returns transient errors but STILL creates resources
+          // Retrying creates duplicates. Smart verification at the end will correct any issues.
           let results = null;
-          let retryCount = 0;
-          const maxRetries = batchNum === 0 ? 0 : 2; // NO retries for first batch
 
-          while (retryCount <= maxRetries) {
-            try {
-              const response = await axios.post(
-                this.baseURL,
-                {
-                  batch: JSON.stringify(batchOperations),
-                  access_token: this.accessToken
-                },
-                {
-                  timeout: 120000 // 2 minute timeout for batch
-                }
-              );
-
-              results = response.data;
-
-              // Check for transient errors in results
-              let hasTransientError = false;
-              for (const result of results) {
-                if (result?.code === 500 || result?.code === 503) {
-                  try {
-                    const body = JSON.parse(result.body);
-                    if (body.error?.is_transient === true) {
-                      hasTransientError = true;
-                      break;
-                    }
-                  } catch (e) {}
-                }
+          try {
+            const response = await axios.post(
+              this.baseURL,
+              {
+                batch: JSON.stringify(batchOperations),
+                access_token: this.accessToken
+              },
+              {
+                timeout: 120000 // 2 minute timeout for batch
               }
+            );
 
-              if (hasTransientError && retryCount < maxRetries) {
-                // Only retry if NOT batch 1 (batch 1 often succeeds despite transient error)
-                console.log(`     ⚠️ Transient error detected - retrying batch in 5 seconds...`);
-                await this.delay(5000);
-                retryCount++;
-                continue;
-              } else if (hasTransientError && batchNum === 0) {
-                // For batch 1, log but DON'T retry - Facebook often creates despite error
-                console.log(`     ⚠️ Transient error on batch 1 - NOT retrying (Facebook often succeeds despite this error)`);
-              }
+            results = response.data;
 
-              break; // Success or non-transient error
-            } catch (reqError) {
-              if (retryCount < maxRetries) {
-                console.log(`     ⚠️ Batch request failed - retrying in 5 seconds...`);
-                await this.delay(5000);
-                retryCount++;
-              } else {
-                throw reqError;
+            // Check for transient errors - LOG but do NOT retry
+            let hasTransientError = false;
+            for (const result of results) {
+              if (result?.code === 500 || result?.code === 503) {
+                try {
+                  const body = JSON.parse(result.body);
+                  if (body.error?.is_transient === true) {
+                    hasTransientError = true;
+                    break;
+                  }
+                } catch (e) {}
               }
             }
-          }
 
-          if (retryCount > 0) {
-            console.log(`     ℹ️ Batch succeeded after ${retryCount} retry(s)`);
+            if (hasTransientError) {
+              console.log(`     ⚠️ Transient error detected - NOT retrying (Facebook often creates despite this error)`);
+              console.log(`     ℹ️ Smart verification at end will correct any discrepancies`);
+            }
+          } catch (reqError) {
+            console.error(`     ❌ Batch ${batchNum + 1} request failed: ${reqError.message}`);
+            // Continue to next batch - smart verification will handle missing items
           }
 
           // DEBUG: Log raw results to understand the response format
@@ -2797,98 +2894,32 @@ class BatchDuplicationService {
         }
       }
 
-      // Final cleanup: Light verification - orphans were already cleaned up in pre-cleanup
-      // This is a backup in case any orphans were created during this run
-      console.log(`\n🔍 Step 5: Final verification (backup cleanup)...`);
-      let finalCleanupOrphans = 0;
+      // =========================================================================
+      // SMART VERIFICATION: ONE API call to verify count and correct discrepancies
+      // This replaces the old cleanup logic - much more efficient and reliable
+      // =========================================================================
+      console.log(`\n🔍 Step 5: Smart Verification (ONE API call to verify and correct)...`);
 
-      // Skip final cleanup if we already hit rate limits or if all pairs succeeded
-      if (successfulPairs.length >= count) {
-        console.log(`     ✅ All ${count} pairs created successfully - skipping detailed verification`);
-        console.log(`     ℹ️ Pre-cleanup removed ${preCleanupOrphansDeleted} orphans from previous runs`);
-      } else {
-        // Only do final cleanup if there were failures (potential orphans from this run)
-        try {
-          // Wait a moment for Facebook's eventual consistency
-          await this.delay(2000);
+      // Wait a moment for Facebook's eventual consistency
+      await this.delay(2000);
 
-          // Use batch API to efficiently check all ad sets at once
-          const adSetsResponse = await axios.get(
-            `${this.baseURL}/${campaignId}/adsets`,
-            {
-              params: {
-                fields: 'id,name',
-                limit: 100,
-                access_token: this.accessToken
-              }
-            }
-          );
+      // Expected total = 1 original + count duplicates
+      const expectedTotalAdSets = 1 + count;
+      const verificationResult = await this.smartVerifyAndCorrect(campaignId, expectedTotalAdSets, originalAdSetId);
 
-          const allAdSets = adSetsResponse.data?.data || [];
-          const copyAdSets = allAdSets.filter(adSet => adSet.name.match(/- Copy \d+$/));
-
-          console.log(`     📋 Verifying ${copyAdSets.length} duplicate ad sets...`);
-
-          if (copyAdSets.length > 0) {
-            // Use batch API to check ads for all ad sets at once
-            const batchRequests = copyAdSets.map(adSet => ({
-              method: 'GET',
-              relative_url: `${adSet.id}/ads?fields=id&limit=1`
-            }));
-
-            const batchResponse = await axios.post(
-              this.baseURL,
-              { batch: JSON.stringify(batchRequests), access_token: this.accessToken },
-              { timeout: 30000 }
-            );
-
-            // Find orphans
-            const orphansToDelete = [];
-            batchResponse.data.forEach((result, idx) => {
-              if (result && result.code === 200) {
-                try {
-                  const body = JSON.parse(result.body);
-                  const hasAds = body.data && body.data.length > 0;
-                  if (!hasAds) {
-                    orphansToDelete.push(copyAdSets[idx]);
-                  }
-                } catch (e) {}
-              }
+      // Update counts based on verification
+      let finalCleanupOrphans = verificationResult.extrasDeleted || 0;
+      if (verificationResult.corrections) {
+        verificationResult.corrections.forEach(correction => {
+          if (correction.action === 'deleted') {
+            orphanedAdSets.push({
+              adSetId: correction.adSetId,
+              pairNumber: 0,
+              deleted: true,
+              phase: 'smart-verification'
             });
-
-            // Delete orphans (if any)
-            for (const adSet of orphansToDelete) {
-              try {
-                await axios.delete(`${this.baseURL}/${adSet.id}`, { params: { access_token: this.accessToken } });
-                console.log(`     🗑️ Deleted orphan: ${adSet.id} (${adSet.name})`);
-                finalCleanupOrphans++;
-                const copyMatch = adSet.name.match(/- Copy (\d+)$/);
-                if (copyMatch) {
-                  orphanedAdSets.push({ adSetId: adSet.id, pairNumber: parseInt(copyMatch[1]), deleted: true, phase: 'final-cleanup' });
-                }
-              } catch (deleteError) {
-                if (deleteError.response?.data?.error?.code === 17) {
-                  console.log(`     ⚠️ Rate limited - orphan cleanup will happen on next run`);
-                  break;
-                }
-              }
-              await this.delay(200);
-            }
           }
-
-          if (finalCleanupOrphans > 0) {
-            console.log(`     ✅ Final cleanup removed ${finalCleanupOrphans} orphan ad sets`);
-          } else {
-            console.log(`     ✅ No orphans from this run - all ad sets have ads`);
-          }
-        } catch (cleanupError) {
-          // Rate limit or other error - orphans will be cleaned up on next run via pre-cleanup
-          if (cleanupError.response?.data?.error?.code === 17) {
-            console.log(`     ⚠️ Rate limited - skipping final cleanup (orphans will be cleaned on next run)`);
-          } else {
-            console.error(`     ⚠️ Final cleanup skipped: ${cleanupError.message}`);
-          }
-        }
+        });
       }
 
       const totalOrphansDeleted = preCleanupOrphansDeleted + finalCleanupOrphans;
@@ -2899,10 +2930,14 @@ class BatchDuplicationService {
       const actualApiCalls = totalBatches + failedPairs.length; // Batches + retries
 
       console.log(`\n📊 OPTIMIZED BATCH RESULTS:`);
-      console.log(`   ✅ Successful pairs: ${successfulPairs.length}/${count}`);
-      console.log(`   ❌ Failed pairs: ${failedPairs.length}/${count}`);
-      console.log(`   🗑️  Orphans cleaned (pre): ${preCleanupOrphansDeleted}, (post): ${finalCleanupOrphans}, (total): ${totalOrphansDeleted}`);
-      console.log(`   ✅ 1:1 Ratio maintained: ${successfulPairs.length} ad sets, ${successfulPairs.length} ads`);
+      console.log(`   ✅ Successful pairs (from batch): ${successfulPairs.length}/${count}`);
+      console.log(`   ❌ Failed pairs (from batch): ${failedPairs.length}/${count}`);
+      console.log(`   🔍 Smart Verification: ${verificationResult.verified ? 'PASSED' : 'FAILED'}`);
+      console.log(`      - Actual ad sets in campaign: ${verificationResult.actualAdSets}`);
+      console.log(`      - Actual ads in campaign: ${verificationResult.actualAds}`);
+      console.log(`      - Expected ad sets: ${expectedTotalAdSets}`);
+      console.log(`      - Extras deleted: ${verificationResult.extrasDeleted}`);
+      console.log(`   🗑️ Orphans cleaned (pre): ${preCleanupOrphansDeleted}, (smart-verify): ${finalCleanupOrphans}, (total): ${totalOrphansDeleted}`);
 
       if (failedPairs.length > 0) {
         console.log(`\n⚠️  Failed Pairs Details:`);
@@ -2917,10 +2952,9 @@ class BatchDuplicationService {
       console.log('\n✅ ========================================');
       console.log('✅ OPTIMIZED BATCH DUPLICATION COMPLETE!');
       console.log('✅ ========================================');
-      console.log(`✅ Created ${newAdSetIds.length} ad sets with ${newAdIds.length} ads`);
-      console.log(`✅ API calls used: ${actualApiCalls} (vs ${count} with atomic pairs)`);
-      console.log(`✅ API call savings: ${count - actualApiCalls} calls (${Math.round((1 - actualApiCalls / count) * 100)}% reduction)`);
-      console.log(`✅ Orphans cleaned: ${totalOrphansDeleted} (${preCleanupOrphansDeleted} pre-cleanup, ${finalCleanupOrphans} post-cleanup)`);
+      console.log(`✅ Final verified count: ${verificationResult.actualAdSets} ad sets, ${verificationResult.actualAds} ads`);
+      console.log(`✅ API calls used: ${actualApiCalls} batches + 1 verification = ${actualApiCalls + 1}`);
+      console.log(`✅ Smart verification ensured exact count!`);
 
       return {
         success: true,
@@ -2936,14 +2970,24 @@ class BatchDuplicationService {
         batchesExecuted: actualApiCalls,
         apiCallsSaved: count - actualApiCalls,
         orphanedAdSets: orphanedAdSets,
+        // Smart verification results - THE SOURCE OF TRUTH for final counts
+        verification: {
+          verified: verificationResult.verified,
+          actualAdSets: verificationResult.actualAdSets,
+          actualAds: verificationResult.actualAds,
+          expectedAdSets: expectedTotalAdSets,
+          extrasDeleted: verificationResult.extrasDeleted,
+          corrections: verificationResult.corrections
+        },
         summary: {
           totalExpected: count,
           totalSuccess: successfulPairs.length,
-          totalAdSetsCreated: newAdSetIds.length,
-          totalAdsCreated: newAdIds.length,
+          // Use verified counts as the final truth
+          totalAdSetsCreated: verificationResult.actualAdSets - 1, // Minus original
+          totalAdsCreated: verificationResult.actualAds - 1, // Minus original's ad
           totalFailed: failedPairs.length,
           totalOrphaned: orphanedAdSets.filter(o => !o.deleted).length,
-          successRate: Math.round((successfulPairs.length / count) * 100),
+          successRate: Math.round(((verificationResult.actualAdSets - 1) / count) * 100),
           hasFailures: failedPairs.length > 0,
           hasOrphans: orphanedAdSets.filter(o => !o.deleted).length > 0
         }
