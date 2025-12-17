@@ -488,15 +488,23 @@ class BatchDuplicationService {
           page_id: this.pageId  // ADDED: Include pageId like 1-50-1 does
         });
       } else if (creative.object_story_spec) {
-        // Use story spec with auto-cropping enabled
-        body.creative = JSON.stringify({
-          object_story_spec: creative.object_story_spec,
-          degrees_of_freedom_spec: {
+        // Use story spec - only add auto-cropping for IMAGE ads (not video)
+        const creativeObj = {
+          object_story_spec: creative.object_story_spec
+        };
+
+        // Only add image_cropping for link_data with images (NOT video_data)
+        const hasImageNotVideo = !creative.object_story_spec.video_data &&
+                                  creative.object_story_spec.link_data?.image_hash;
+        if (hasImageNotVideo) {
+          creativeObj.degrees_of_freedom_spec = {
             creative_features_spec: {
               image_cropping: { enabled: true }
             }
-          }
-        });
+          };
+        }
+
+        body.creative = JSON.stringify(creativeObj);
       } else if (creative.id) {
         // Reference existing creative by ID - ADDED: new fallback option
         body.creative = JSON.stringify({
@@ -1610,16 +1618,23 @@ class BatchDuplicationService {
       }
     }
 
-    // Add degrees_of_freedom_spec for auto-cropping
+    // Add degrees_of_freedom_spec for auto-cropping (IMAGE ADS ONLY)
     // This enables Facebook's Advantage+ Creative to automatically crop images for different placements
     // Facebook will automatically crop to: 1:1 (feed), 9:16 (stories/reels), 1.91:1 (right column)
-    creative.degrees_of_freedom_spec = {
-      creative_features_spec: {
-        image_cropping: {
-          enabled: true
+    // NOTE: image_cropping is NOT supported for video_data ads - only for link_data with images
+    const isImageAd = !templateData.videoId &&
+                      templateData.mediaType !== 'video' &&
+                      templateData.mediaType !== 'single_video';
+
+    if (isImageAd && creative.object_story_spec?.link_data?.image_hash) {
+      creative.degrees_of_freedom_spec = {
+        creative_features_spec: {
+          image_cropping: {
+            enabled: true
+          }
         }
-      }
-    };
+      };
+    }
 
     body.creative = JSON.stringify(creative);
 
@@ -3731,9 +3746,14 @@ class BatchDuplicationService {
       creative = { object_story_spec: objectStorySpec };
     }
 
-    // Add degrees_of_freedom_spec for auto-cropping (only for non-dynamic creative)
+    // Add degrees_of_freedom_spec for auto-cropping (IMAGE ADS ONLY)
     // This enables Facebook's Advantage+ Creative to automatically crop images for different placements
-    if (!creative.asset_feed_spec) {
+    // NOTE: image_cropping is NOT supported for video_data ads - only for link_data with images
+    const isImageAd = !creative.asset_feed_spec &&
+                      !creative.object_story_spec?.video_data &&
+                      creative.object_story_spec?.link_data?.image_hash;
+
+    if (isImageAd) {
       creative.degrees_of_freedom_spec = {
         creative_features_spec: {
           image_cropping: {

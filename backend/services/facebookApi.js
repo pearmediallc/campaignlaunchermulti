@@ -1500,20 +1500,28 @@ class FacebookAPI {
         }
       }
 
-      // Add degrees_of_freedom_spec for auto-cropping (only for non-dynamic creative ads)
+      // Add degrees_of_freedom_spec for auto-cropping (IMAGE ADS ONLY)
       // This enables Facebook's Advantage+ Creative to automatically crop images for different placements
-      // Note: This CANNOT be used with asset_feed_spec (Dynamic Creative) - Facebook will reject it
-      if (!creative.asset_feed_spec) {
+      // NOTE: image_cropping is NOT supported for:
+      //   - asset_feed_spec (Dynamic Creative)
+      //   - video_data (Video ads)
+      //   - object_story_id (Existing posts)
+      const isImageAdEligible = !creative.asset_feed_spec &&
+                                 !creative.object_story_id &&
+                                 !creative.object_story_spec?.video_data &&
+                                 creative.object_story_spec?.link_data?.image_hash;
+
+      if (isImageAdEligible) {
         creative.degrees_of_freedom_spec = {
           creative_features_spec: {
-            // Enable image auto-cropping for different placements
-            // Facebook will automatically crop to: 1:1 (feed), 9:16 (stories/reels), 1.91:1 (right column)
             image_cropping: {
               enabled: true
             }
           }
         };
-        console.log('✅ Enabled auto-crop for placements (degrees_of_freedom_spec)');
+        console.log('✅ Enabled auto-crop for image ad (degrees_of_freedom_spec)');
+      } else {
+        console.log('ℹ️ Auto-crop not applied (video ad, dynamic creative, or no image)');
       }
 
       const params = {
