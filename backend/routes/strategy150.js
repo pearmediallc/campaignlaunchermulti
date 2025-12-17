@@ -971,128 +971,182 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       try {
         if (useBatchCreation) {
           console.log(`\n🚀 ===============================================`);
-          console.log(`🚀 BATCH CREATION MODE (100% ROOT EFFECT)`);
+          console.log(`🚀 HYBRID BATCH MODE (100% ROOT EFFECT WITH POST ID)`);
           console.log(`🚀 ===============================================`);
           console.log(`📝 Creating campaign ${campaignIndex + 1} of ${numberOfCampaigns}: ${currentCampaignName}`);
-          console.log(`📊 This will create 1 campaign + 50 ad sets + 50 ads in ~3 API calls`);
+          console.log(`📊 Phase 1: Create 1-1-1 structure to get Post ID`);
+          console.log(`📊 Phase 2: Batch duplicate 49 ad sets using shared Post ID`);
+          console.log(`📊 Result: True 100% root effect - all ads share same Facebook post`);
 
-          // Step 1: Upload media FIRST (batch needs hashes/IDs, not paths)
-          console.log('\n📤 Step 1: Uploading media assets...');
-          let uploadedImageHash, uploadedVideoId, uploadedVideoThumbnail;
+          // ============================================================
+          // PHASE 1: CREATE 1-1-1 STRUCTURE (Campaign + 1 AdSet + 1 Ad)
+          // This creates the Facebook post that all ads will share
+          // ============================================================
+          console.log('\n📋 PHASE 1: Creating initial 1-1-1 structure...');
 
-          // Reuse media from first campaign if available
-          if (campaignIndex > 0 && mediaHashes) {
-            console.log('♻️  Reusing media from first campaign');
-            uploadedImageHash = mediaHashes.imageHash;
-            uploadedVideoId = mediaHashes.videoId;
-            uploadedVideoThumbnail = mediaHashes.videoThumbnail;
-          } else {
-            // Upload new media
-            if (currentCampaignData.imagePath) {
-              console.log(`📸 Uploading image: ${currentCampaignData.imagePath}`);
-              uploadedImageHash = await userFacebookApi.uploadImage(currentCampaignData.imagePath);
-              console.log(`✅ Image uploaded: ${uploadedImageHash}`);
-            }
+          const initialResult = await userFacebookApi.createCampaignStructure(currentCampaignData);
 
-            if (currentCampaignData.videoPath) {
-              console.log(`📹 Uploading video: ${currentCampaignData.videoPath}`);
-              uploadedVideoId = await userFacebookApi.uploadVideoSmart(currentCampaignData.videoPath);
-              console.log(`✅ Video uploaded: ${uploadedVideoId}`);
+          console.log(`✅ Initial structure created:`);
+          console.log(`   Campaign: ${initialResult.campaign.id}`);
+          console.log(`   Ad Set: ${initialResult.adSet.id}`);
+          console.log(`   Ad: ${initialResult.ads[0]?.id}`);
+          console.log(`   Post ID (initial): ${initialResult.postId || 'Waiting...'}`);
 
-              // Upload custom thumbnail if provided, OR auto-extract from video
-              if (currentCampaignData.videoThumbnailPath) {
-                console.log(`📸 Uploading custom video thumbnail: ${currentCampaignData.videoThumbnailPath}`);
-                uploadedVideoThumbnail = await userFacebookApi.uploadImage(currentCampaignData.videoThumbnailPath);
-                console.log(`✅ Custom thumbnail uploaded: ${uploadedVideoThumbnail}`);
-              } else {
-                // AUTO-EXTRACT THUMBNAIL: Facebook requires a thumbnail for video ads
-                // Extract first frame (index 0) from the video
-                console.log(`📸 Auto-extracting video thumbnail (frame 0)...`);
-                try {
-                  const autoThumbnailPath = await extractVideoThumbnail(currentCampaignData.videoPath, 0);
-                  if (autoThumbnailPath) {
-                    console.log(`✅ Thumbnail extracted: ${autoThumbnailPath}`);
-                    uploadedVideoThumbnail = await userFacebookApi.uploadImage(autoThumbnailPath);
-                    console.log(`✅ Auto-extracted thumbnail uploaded: ${uploadedVideoThumbnail}`);
-                  } else {
-                    console.warn(`⚠️ Could not extract thumbnail from video`);
-                  }
-                } catch (thumbnailError) {
-                  console.warn(`⚠️ Thumbnail extraction failed: ${thumbnailError.message}`);
-                  // Continue without thumbnail - Facebook may reject the ad
+          // Store media hashes from first campaign for reuse
+          if (campaignIndex === 0 && initialResult.mediaHashes) {
+            mediaHashes = initialResult.mediaHashes;
+            console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+          }
+
+          // ============================================================
+          // PHASE 1.5: CAPTURE POST ID WITH ROBUST RETRY
+          // Post ID is REQUIRED for 100% root effect
+          // ============================================================
+          let capturedPostId = initialResult.postId;
+
+          if (!capturedPostId && initialResult.ads[0]?.id) {
+            console.log('\n🔄 PHASE 1.5: Capturing Post ID with robust retry...');
+
+            const maxRetries = 8;
+            const retryDelays = [2000, 3000, 4000, 5000, 6000, 7000, 8000, 10000]; // Progressive delays
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              console.log(`   🔍 Attempt ${attempt + 1}/${maxRetries}...`);
+
+              try {
+                capturedPostId = await userFacebookApi.getPostIdFromAd(initialResult.ads[0].id);
+
+                if (capturedPostId && capturedPostId.includes('_')) {
+                  console.log(`   ✅ Post ID captured on attempt ${attempt + 1}: ${capturedPostId}`);
+                  break;
+                } else if (capturedPostId) {
+                  console.log(`   ⚠️ Invalid post ID format: ${capturedPostId}`);
+                  capturedPostId = null;
                 }
+              } catch (postIdError) {
+                console.log(`   ⚠️ Attempt ${attempt + 1} failed: ${postIdError.message}`);
+              }
+
+              if (attempt < maxRetries - 1) {
+                const delay = retryDelays[attempt];
+                console.log(`   ⏳ Waiting ${delay/1000}s before next attempt...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
               }
             }
 
-            if (currentCampaignData.imagePaths && currentCampaignData.imagePaths.length > 0) {
-              console.log(`📸 Uploading ${currentCampaignData.imagePaths.length} carousel images...`);
-              const carouselHashes = [];
-              for (const imagePath of currentCampaignData.imagePaths) {
-                const hash = await userFacebookApi.uploadImage(imagePath);
-                if (hash) carouselHashes.push(hash);
-              }
-              console.log(`✅ ${carouselHashes.length} carousel images uploaded`);
-              currentCampaignData.carouselImages = carouselHashes;
-            }
+            if (!capturedPostId) {
+              console.error('❌ CRITICAL: Could not capture Post ID after all retries');
+              console.log('📝 Falling back to legacy sequential duplication via frontend...');
 
-            // Store for reuse
-            if (campaignIndex === 0) {
-              mediaHashes = {
-                imageHash: uploadedImageHash,
-                videoId: uploadedVideoId,
-                videoThumbnail: uploadedVideoThumbnail
+              // Return the initial result - frontend will handle duplication
+              result = {
+                campaign: initialResult.campaign,
+                adSet: initialResult.adSet,
+                ads: initialResult.ads,
+                postId: null,
+                mediaHashes: initialResult.mediaHashes,
+                allAdSetsCreated: 1,
+                allAdsCreated: 1,
+                batchStats: {
+                  method: 'sequential_fallback',
+                  reason: 'post_id_capture_failed',
+                  adSetsCreated: 1,
+                  adsCreated: 1
+                }
               };
-              console.log('💾 Stored media hashes for reuse in subsequent campaigns');
+
+              // Continue to next iteration or return result
+              console.log('⚠️ Strategy150 will require frontend duplication for this campaign');
             }
           }
 
-          // Step 2: Initialize Batch Service
-          console.log('\n🔧 Step 2: Initializing Batch Duplication Service...');
-          const BatchDuplicationService = require('../services/batchDuplication');
-          const batchService = new BatchDuplicationService(
-            decryptedToken,
-            selectedAdAccountId.replace('act_', ''),
-            selectedPageId,
-            selectedPixelId
-          );
-          console.log('✅ Batch service initialized');
+          // ============================================================
+          // PHASE 2: BATCH DUPLICATE REMAINING 49 AD SETS
+          // Uses captured Post ID for true 100% root effect
+          // ============================================================
+          if (capturedPostId) {
+            console.log(`\n🚀 PHASE 2: Batch duplicating 49 ad sets with Post ID: ${capturedPostId}`);
 
-          // Step 3: Prepare template data for batch creation
-          console.log('\n📋 Step 3: Preparing template data...');
-          const templateData = {
-            ...currentCampaignData,
-            // Replace file paths with Facebook hashes/IDs
-            imageHash: uploadedImageHash,
-            videoId: uploadedVideoId,
-            videoThumbnail: uploadedVideoThumbnail,
-            // Remove path fields to avoid confusion
-            imagePath: undefined,
-            videoPath: undefined,
-            videoThumbnailPath: undefined
-          };
-          console.log('✅ Template data prepared');
+            const BatchDuplicationService = require('../services/batchDuplication');
+            const batchService = new BatchDuplicationService(
+              decryptedToken,
+              selectedAdAccountId.replace('act_', ''),
+              selectedPageId,
+              selectedPixelId
+            );
 
-          // DEBUG: Log displayLink to verify it's being passed correctly
-          console.log('🔍 DEBUG - Display Link verification:');
-          console.log('  📦 req.body.displayLink:', req.body.displayLink);
-          console.log('  📦 currentCampaignData.displayLink:', currentCampaignData.displayLink);
-          console.log('  📦 templateData.displayLink:', templateData.displayLink);
+            // Execute batch duplication with the captured postId
+            const batchResult = await batchService.duplicateAdSetsBatch(
+              initialResult.adSet.id,
+              initialResult.campaign.id,
+              capturedPostId,
+              49, // Duplicate 49 times (1 original + 49 = 50 total)
+              {
+                campaignName: currentCampaignName,
+                mediaHashes: initialResult.mediaHashes,
+                displayLink: currentCampaignData.displayLink,
+                url: currentCampaignData.url,
+                headline: currentCampaignData.headline,
+                primaryText: currentCampaignData.primaryText,
+                description: currentCampaignData.description,
+                callToAction: currentCampaignData.callToAction
+              }
+            );
 
-          // Step 4: Execute batch creation (1 campaign + 50 ad sets + 50 ads)
-          console.log('\n🚀 Step 4: Executing batch creation...');
-          const batchResult = await batchService.createFromTemplateBatch(
-            templateData,
-            50,  // 50 ad sets (Strategy 150)
-            1    // 1 ad per ad set
-          );
+            console.log(`\n✅ PHASE 2 COMPLETE!`);
+            console.log(`   Ad Sets created: ${batchResult.adSets?.length || 0} / 49`);
+            console.log(`   Ads created: ${batchResult.ads?.length || 0} / 49`);
+            console.log(`   Success rate: ${batchResult.summary?.successRate || 0}%`);
 
-          // Step 5: Transform batch result to match existing response format
-          console.log('\n🔄 Step 5: Transforming batch results...');
-          result = transformBatchResultToStrategy150Format(batchResult, templateData, currentCampaignName);
-          console.log(`✅ Batch creation complete!`);
-          console.log(`   Campaign: ${result.campaign.id}`);
-          console.log(`   Ad Sets: ${result.adSets ? result.adSets.length : 50}`);
-          console.log(`   API calls saved: ${batchResult.apiCallsSaved}`);
+            // Build final result combining Phase 1 + Phase 2
+            const totalAdSets = 1 + (batchResult.adSets?.length || 0);
+            const totalAds = 1 + (batchResult.ads?.length || 0);
+
+            result = {
+              campaign: initialResult.campaign,
+              adSet: initialResult.adSet,
+              ads: initialResult.ads,
+              postId: capturedPostId,
+              mediaHashes: initialResult.mediaHashes,
+              allAdSetsCreated: totalAdSets,
+              allAdsCreated: totalAds,
+              // Include all created ad sets for reference
+              allAdSets: [
+                initialResult.adSet,
+                ...(batchResult.adSets || [])
+              ],
+              allAds: [
+                initialResult.ads[0],
+                ...(batchResult.ads || [])
+              ],
+              batchStats: {
+                method: 'hybrid_batch_with_postid',
+                operations: 1 + (batchResult.operations || 0),
+                batchesExecuted: 1 + (batchResult.batchesExecuted || 0),
+                apiCallsSaved: batchResult.apiCallsSaved || 0,
+                adSetsCreated: totalAdSets,
+                adsCreated: totalAds,
+                adSetsFailed: 50 - totalAdSets,
+                adsFailed: 50 - totalAds,
+                success: totalAdSets >= 45, // 90% success threshold
+                partialSuccess: totalAdSets >= 25 && totalAdSets < 45,
+                postId: capturedPostId
+              },
+              failedDetails: batchResult.failedDetails
+            };
+
+            console.log(`\n📊 ========== STRATEGY 1-50-1 COMPLETE ==========`);
+            console.log(`✅ Campaign: ${result.campaign.id}`);
+            console.log(`✅ Total Ad Sets: ${totalAdSets}/50`);
+            console.log(`✅ Total Ads: ${totalAds}/50`);
+            console.log(`✅ Post ID: ${capturedPostId}`);
+            console.log(`✅ 100% Root Effect: All ${totalAds} ads share the same Facebook post`);
+            console.log(`✅ Method: Hybrid Batch (1-1-1 + Batch Duplication)`);
+            console.log('================================================\n');
+          } else {
+            // Post ID capture failed - result already set above
+            console.log('⚠️ Skipping Phase 2 due to missing Post ID');
+          }
 
         } else {
           // LEGACY MODE: Sequential creation + duplication
@@ -1123,62 +1177,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         throw error;
       }
 
-      // Helper function to transform batch results (defined inline for now)
-      function transformBatchResultToStrategy150Format(batchResult, templateData, campaignName) {
-        // batchResult structure from createFromTemplateBatch:
-        // {
-        //   success, partialSuccess, operations, batchesExecuted, apiCallsSaved,
-        //   campaignId, adSetsCreated, adsCreated, adSetsFailed, adsFailed, failedDetails
-        // }
-
-        const campaignId = batchResult.campaignId;
-        const adSetsCreated = batchResult.adSetsCreated || 0;
-        const adsCreated = batchResult.adsCreated || 0;
-
-        console.log(`📊 Batch results: Campaign=${campaignId}, AdSets=${adSetsCreated}/50, Ads=${adsCreated}/50`);
-
-        // Return format matching createStrategy150Campaign() response
-        return {
-          campaign: {
-            id: campaignId,
-            name: campaignName
-          },
-          adSet: {
-            // We don't have individual IDs from batch - use campaign ID as placeholder
-            id: `batch-adset-${campaignId}`,
-            name: `${campaignName} - Ad Set 1`
-          },
-          ads: [{
-            id: `batch-ad-${campaignId}`,
-            name: `${campaignName} - Ad 1`
-          }],
-          allAdSetsCreated: adSetsCreated,
-          allAdsCreated: adsCreated,
-          postId: null, // Batch doesn't create a post (ads use creative directly)
-          mediaHashes: {
-            imageHash: templateData.imageHash,
-            videoId: templateData.videoId,
-            videoThumbnail: templateData.videoThumbnail
-          },
-          batchStats: {
-            operations: batchResult.operations,
-            batchesExecuted: batchResult.batchesExecuted,
-            apiCallsSaved: batchResult.apiCallsSaved,
-            adSetsCreated: adSetsCreated,
-            adsCreated: adsCreated,
-            adSetsFailed: batchResult.adSetsFailed || 0,
-            adsFailed: batchResult.adsFailed || 0,
-            method: 'batch',
-            success: batchResult.success,
-            partialSuccess: batchResult.partialSuccess
-          },
-          failedDetails: batchResult.failedDetails
-        };
-      }
-
-      // Determine ad set count based on creation method
-      const adSetCount = useBatchCreation ? 50 : 1;
-      const creationMethod = useBatchCreation ? 'batch' : 'sequential';
+      // Determine ad set count based on result (hybrid batch creates all 50, sequential creates 1)
+      const adSetCount = result.allAdSetsCreated || (useBatchCreation ? 50 : 1);
+      const creationMethod = result.batchStats?.method || (useBatchCreation ? 'hybrid_batch_with_postid' : 'sequential');
 
       await AuditService.logRequest(req, 'strategy150.create', 'campaign', result.campaign?.id, 'success', null, {
         campaignId: result.campaign?.id,
@@ -1267,15 +1268,25 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // For single campaign, return the same format as before for backward compatibility
     if (numberOfCampaigns === 1 && createdCampaigns.length === 1) {
       const singleResult = createdCampaigns[0];
-      const isBatchComplete = singleResult.creationMethod === 'batch';
+
+      // Check if batch/hybrid mode completed (either old 'batch' or new 'hybrid_batch_with_postid')
+      // Also check if we have significant ad sets created (>=45 out of 50)
+      const isBatchComplete = singleResult.creationMethod === 'batch' ||
+                              singleResult.creationMethod === 'hybrid_batch_with_postid' ||
+                              (singleResult.batchStats?.adSetsCreated >= 45);
+
+      // For hybrid batch, we now have a real postId (not null like pure batch)
+      const hasPostId = !!singleResult.postId;
+      const adSetsCreated = singleResult.batchStats?.adSetsCreated || singleResult.allAdSetsCreated || 1;
+      const adsCreated = singleResult.batchStats?.adsCreated || singleResult.allAdsCreated || 1;
 
       res.json({
         success: true,
         message: isBatchComplete
-          ? `✅ Strategy 1-50-1 campaign created successfully with all 50 ad sets via batch API!`
+          ? `✅ Strategy 1-50-1 campaign created with ${adSetsCreated} ad sets${hasPostId ? ' (100% root effect with shared Post ID)' : ''}!`
           : responseMessage,
         data: {
-          // If batch mode completed all 50, set phase to 'completed' so frontend skips post ID waiting
+          // If batch mode completed most ad sets, set phase to 'completed' so frontend skips post ID waiting
           phase: isBatchComplete ? 'completed' : 'initial',
           campaign: singleResult.campaign,
           adSet: singleResult.adSet,
@@ -1283,13 +1294,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
           adAccount: facebookAuth.selectedAdAccount, // Add ad account info
           page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
           pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
-          postId: singleResult.postId, // Include postId from result
+          postId: singleResult.postId, // Include postId from result (now available with hybrid batch!)
           // Batch completion indicators for frontend
           batchComplete: isBatchComplete,
           creationMethod: singleResult.creationMethod || 'sequential',
-          allAdSetsCreated: isBatchComplete ? (singleResult.batchStats?.allAdSets?.length || 50) : 1,
-          allAdsCreated: isBatchComplete ? (singleResult.batchStats?.allAds?.length || 50) : 1,
-          batchStats: singleResult.batchStats || null
+          allAdSetsCreated: adSetsCreated,
+          allAdsCreated: adsCreated,
+          batchStats: singleResult.batchStats || null,
+          // NEW: Include all created entities for reference
+          allAdSets: singleResult.allAdSets || null,
+          allAds: singleResult.allAds || null
         }
       });
     } else {

@@ -649,24 +649,34 @@ const Strategy150Container: React.FC = () => {
       const pageName = result.data?.page?.name || data.facebookPage || 'Unknown Page';
       const pixelId = data.pixel || 'No Pixel';
 
-      // Check if batch API created all 50 ad sets at once
+      // Check if batch/hybrid batch API created all 50 ad sets at once
+      // NEW: Support hybrid_batch_with_postid method (creates real postId)
       const isBatchComplete = result.data?.batchComplete === true ||
                                result.data?.creationMethod === 'batch' ||
-                               result.data?.phase === 'completed';
+                               result.data?.creationMethod === 'hybrid_batch_with_postid' ||
+                               result.data?.phase === 'completed' ||
+                               (result.data?.allAdSetsCreated >= 45); // 90% threshold
+
+      // Check if we have a real Post ID (hybrid batch provides this)
+      const hasRealPostId = !!result.data?.postId;
+      const adSetsCreated = result.data?.allAdSetsCreated || result.data?.batchStats?.adSetsCreated || 1;
 
       console.log('🔍 Batch completion check:', {
         batchComplete: result.data?.batchComplete,
         creationMethod: result.data?.creationMethod,
         phase: result.data?.phase,
-        isBatchComplete
+        postId: result.data?.postId,
+        adSetsCreated: adSetsCreated,
+        isBatchComplete,
+        hasRealPostId
       });
 
       // Enhanced message with creation details
       const campaignCount = createdCampaigns.length;
       let enhancedMessage: string;
       if (isBatchComplete) {
-        const adSetsCreated = result.data?.allAdSetsCreated || result.data?.batchStats?.allAdSets?.length || 50;
-        enhancedMessage = `✅ Campaign created with ${adSetsCreated} ad sets via batch API!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
+        const rootEffectMsg = hasRealPostId ? ' (100% root effect)' : '';
+        enhancedMessage = `✅ Campaign created with ${adSetsCreated} ad sets${rootEffectMsg}!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
       } else if (campaignCount > 1) {
         enhancedMessage = `✅ ${campaignCount} campaigns created successfully!\n📊 Account: ${accountName}\n📱 Page: ${pageName}\n🎯 Pixel: ${pixelId}`;
       } else {
@@ -694,10 +704,13 @@ const Strategy150Container: React.FC = () => {
           }],
           // Include batch stats for completion summary
           ...(isBatchComplete && {
-            duplicatedAdSets: Array.from({ length: result.data?.allAdSetsCreated || 50 }, (_, i) => ({
-              id: `batch-adset-${i + 1}`,
-              name: `${data.campaignName} - Ad Set ${i + 1}`
-            }))
+            duplicatedAdSets: Array.from({ length: adSetsCreated }, (_, i) => ({
+              id: result.data?.allAdSets?.[i]?.id || `batch-adset-${i + 1}`,
+              name: result.data?.allAdSets?.[i]?.name || `${data.campaignName} - Ad Set ${i + 1}`
+            })),
+            // NEW: Pass postId and batchStats for completion summary
+            postId: result.data?.postId,
+            batchStats: result.data?.batchStats
           })
         }
       };

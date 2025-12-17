@@ -45,20 +45,28 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
   const [showMultiplyDialog, setShowMultiplyDialog] = useState(false);
   const [showFailureReport, setShowFailureReport] = useState(false);
 
-  // Check if this is batch mode (no post ID, but has duplicatedAdSets)
-  const isBatchMode = !postId && (campaignResult?.data?.duplicatedAdSets?.length || 0) >= 49;
+  // Get postId from props OR from campaignResult (hybrid batch provides it in result)
+  const effectivePostId = postId || campaignResult?.data?.postId;
+
+  // Check if this is batch mode (has duplicatedAdSets >= 45, regardless of postId)
+  // NEW: Hybrid batch mode HAS a real postId, so we check duplicatedAdSets count
+  const isBatchMode = (campaignResult?.data?.duplicatedAdSets?.length || 0) >= 44; // 45+ ad sets = batch
+
+  // Check if we have true 100% root effect (has real postId)
+  const hasRootEffect = !!effectivePostId && effectivePostId !== 'batch-mode';
 
   // Store campaign data in session storage for multiplication
   useEffect(() => {
-    if (campaignResult?.data?.campaign?.id && (postId || isBatchMode)) {
+    if (campaignResult?.data?.campaign?.id && (effectivePostId || isBatchMode)) {
       sessionStorage.setItem('lastCreatedCampaign', JSON.stringify({
         campaignId: campaignResult.data.campaign.id,
-        postId: postId || 'batch-mode', // Use placeholder for batch mode
+        postId: effectivePostId || 'batch-mode',
         isBatchMode: isBatchMode,
+        hasRootEffect: hasRootEffect,
         timestamp: Date.now()
       }));
     }
-  }, [campaignResult, postId, isBatchMode]);
+  }, [campaignResult, effectivePostId, isBatchMode, hasRootEffect]);
 
   const handleOpenFacebookAdsManager = () => {
     const url = `https://www.facebook.com/adsmanager/manage/campaigns?act=${campaignResult?.data?.campaign.id}`;
@@ -138,20 +146,20 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         <Box sx={{ flex: 1, minWidth: 280 }}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <Share sx={{ fontSize: 48, color: 'info.main', mb: 1 }} />
+              <Share sx={{ fontSize: 48, color: hasRootEffect ? 'success.main' : 'info.main', mb: 1 }} />
               <Typography variant="h6" gutterBottom>
-                {isBatchMode ? 'Creation Method' : 'Post ID Used'}
+                {hasRootEffect ? '100% Root Effect' : 'Creation Method'}
               </Typography>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                {isBatchMode
-                  ? 'All 50 ad sets created simultaneously via batch API'
-                  : 'All ad sets share the same creative'}
+                {hasRootEffect
+                  ? 'All 50 ads share the same Facebook Post ID'
+                  : 'All 50 ad sets created via batch API'}
               </Typography>
               <Chip
-                label={isBatchMode ? 'Batch API (Fast)' : postId}
+                label={hasRootEffect ? `Post ID: ${effectivePostId}` : 'Batch API'}
                 variant="outlined"
                 size="small"
-                color={isBatchMode ? 'success' : 'default'}
+                color={hasRootEffect ? 'success' : 'default'}
                 sx={{ mt: 1 }}
               />
             </CardContent>
@@ -172,7 +180,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
               <CheckCircle color="success" />
             </ListItemIcon>
             <ListItemText
-              primary={isBatchMode ? "Campaign Created (Batch API)" : "Initial Campaign (1-1-1)"}
+              primary={hasRootEffect ? "Phase 1: Initial 1-1-1 Created" : "Campaign Created"}
               secondary={`Campaign: ${campaignResult?.data?.campaign.name}`}
             />
           </ListItem>
@@ -182,9 +190,9 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
               <CheckCircle color="success" />
             </ListItemIcon>
             <ListItemText
-              primary={isBatchMode ? "All 50 Ad Sets Created" : "Original Ad Set"}
-              secondary={isBatchMode
-                ? "All ad sets created simultaneously via batch API"
+              primary={hasRootEffect ? "Phase 1.5: Post ID Captured" : "Original Ad Set Created"}
+              secondary={hasRootEffect
+                ? `Post ID: ${effectivePostId} (captured from initial ad)`
                 : `Ad Set: ${campaignResult?.data?.adSet.name}`}
             />
           </ListItem>
@@ -194,10 +202,10 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
               <CheckCircle color="success" />
             </ListItemIcon>
             <ListItemText
-              primary={isBatchMode ? "Creative Applied to All Ads" : "Creative Post Created"}
-              secondary={isBatchMode
-                ? "Each ad uses the same creative with object_story_spec"
-                : `Post ID: ${postId} (used across all ad sets)`}
+              primary={hasRootEffect ? "Phase 2: 49 Ad Sets Batch Created" : "Ad Sets Created"}
+              secondary={hasRootEffect
+                ? "49 additional ad sets created via batch API using shared Post ID"
+                : "All ad sets created via batch API"}
             />
           </ListItem>
 
@@ -206,10 +214,10 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
               <CheckCircle color="success" />
             </ListItemIcon>
             <ListItemText
-              primary={isBatchMode ? "All 50 Ads Created" : "Ad Sets Duplicated"}
-              secondary={isBatchMode
-                ? "50 ads created, one per ad set"
-                : `49 additional ad sets created with "Use Existing Post" setting`}
+              primary={hasRootEffect ? "100% Root Effect Achieved" : "All 50 Ads Created"}
+              secondary={hasRootEffect
+                ? "All 50 ads reference the same Facebook post for unified engagement"
+                : "50 ads created, one per ad set"}
             />
           </ListItem>
 
@@ -219,9 +227,9 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
             </ListItemIcon>
             <ListItemText
               primary="Strategy 1-50-1 Complete"
-              secondary={isBatchMode
-                ? "Campaign structure created in ~15 seconds via batch API!"
-                : "All ad sets now use the same approved creative for consistent messaging"}
+              secondary={hasRootEffect
+                ? "Hybrid batch mode: Fast creation with guaranteed social proof sharing!"
+                : "Campaign structure created via batch API"}
             />
           </ListItem>
         </List>
@@ -347,7 +355,7 @@ const CompletionSummary: React.FC<CompletionSummaryProps> = ({
         <DialogContent>
           <MultiplyContainer
             initialCampaignId={campaignResult?.data?.campaign?.id}
-            initialPostId={postId}
+            initialPostId={effectivePostId}
             onComplete={handleMultiplyComplete}
             standalone={false}
           />
