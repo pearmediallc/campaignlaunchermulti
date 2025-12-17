@@ -1500,29 +1500,9 @@ class FacebookAPI {
         }
       }
 
-      // Add degrees_of_freedom_spec for auto-cropping (IMAGE ADS ONLY)
-      // This enables Facebook's Advantage+ Creative to automatically crop images for different placements
-      // NOTE: image_cropping is NOT supported for:
-      //   - asset_feed_spec (Dynamic Creative)
-      //   - video_data (Video ads)
-      //   - object_story_id (Existing posts)
-      const isImageAdEligible = !creative.asset_feed_spec &&
-                                 !creative.object_story_id &&
-                                 !creative.object_story_spec?.video_data &&
-                                 creative.object_story_spec?.link_data?.image_hash;
-
-      if (isImageAdEligible) {
-        creative.degrees_of_freedom_spec = {
-          creative_features_spec: {
-            image_cropping: {
-              enabled: true
-            }
-          }
-        };
-        console.log('✅ Enabled auto-crop for image ad (degrees_of_freedom_spec)');
-      } else {
-        console.log('ℹ️ Auto-crop not applied (video ad, dynamic creative, or no image)');
-      }
+      // NOTE: degrees_of_freedom_spec with image_cropping REMOVED
+      // It was causing 400 errors even on image ads. Will implement user-controlled
+      // image cropping before upload instead (like Facebook's Ads Manager UI)
 
       const params = {
         name: adName,
