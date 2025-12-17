@@ -264,9 +264,18 @@ class BatchDuplicationService {
           // Step 3: Execute batch (all operations in 1-2 API calls)
           const batchResults = await this.executeBatch(batchRequests);
 
+          // Step 3.5: ORPHAN FIX - Check for and fix orphan ad sets immediately after batch
+          // Orphans occur when ad set is created but ad fails (transient errors)
+          const fixedResults = await this.fixOrphanAdSetsInDuplication(
+            newCampaignId,
+            batchResults,
+            campaignData,
+            copyName
+          );
+
           // Step 4: Transform raw batch results to formatted object
           // Prepend campaign result to batch results for compatibility
-          const allResults = [{ code: 200, body: JSON.stringify({ id: newCampaignId }) }, ...batchResults];
+          const allResults = [{ code: 200, body: JSON.stringify({ id: newCampaignId }) }, ...fixedResults];
 
           const formattedResult = await this.transformBatchResultsToCampaignFormat(
             allResults,
@@ -304,6 +313,168 @@ class BatchDuplicationService {
       console.error('❌ Batch duplication failed:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Fix orphan ad sets in campaign duplication
+   * Orphans occur when ad set is created but ad fails due to transient errors (500/503)
+   * This method detects orphans and creates ads for them
+   *
+   * @param {string} campaignId - The new campaign ID
+   * @param {Array} batchResults - Raw batch results from executeBatch
+   * @param {Object} campaignData - Original campaign data (source)
+   * @param {string} copyName - Name of the copy being created
+   * @returns {Array} Updated batch results with orphan fixes applied
+   */
+  async fixOrphanAdSetsInDuplication(campaignId, batchResults, campaignData, copyName) {
+    console.log(`\n🔍 ORPHAN FIX: Analyzing batch results for campaign ${campaignId}...`);
+
+    // Batch results are INTERLEAVED: [adset-0, ad-0, adset-1, ad-1, ...]
+    // Detect potential orphans: ad set succeeded (code 200 with ID) but ad failed
+    const potentialOrphans = [];
+
+    for (let i = 0; i < batchResults.length; i += 2) {
+      const adSetResult = batchResults[i];
+      const adResult = batchResults[i + 1];
+      const pairIndex = Math.floor(i / 2);
+
+      // Check if ad set succeeded
+      let adSetId = null;
+      if (adSetResult?.code === 200 && adSetResult.body) {
+        try {
+          const body = JSON.parse(adSetResult.body);
+          if (body.id && !body.error) {
+            adSetId = body.id;
+          }
+        } catch (e) {}
+      }
+
+      // Check if ad failed (transient error or any error)
+      let adFailed = false;
+      let adError = null;
+      let isTransient = false;
+
+      if (!adResult || adResult.code !== 200) {
+        adFailed = true;
+        if (adResult?.body) {
+          try {
+            const body = JSON.parse(adResult.body);
+            adError = body.error?.message || `HTTP ${adResult?.code}`;
+            isTransient = body.error?.is_transient === true || adResult?.code >= 500;
+          } catch (e) {
+            adError = `HTTP ${adResult?.code || 'unknown'}`;
+          }
+        }
+      } else if (adResult.body) {
+        try {
+          const body = JSON.parse(adResult.body);
+          if (body.error) {
+            adFailed = true;
+            adError = body.error.message;
+            isTransient = body.error.is_transient === true;
+          }
+        } catch (e) {}
+      }
+
+      // If ad set succeeded but ad failed, this is a potential orphan
+      if (adSetId && adFailed) {
+        potentialOrphans.push({
+          pairIndex,
+          adSetId,
+          adSetResultIndex: i,
+          adResultIndex: i + 1,
+          adError,
+          isTransient
+        });
+        console.log(`   ⚠️ Potential orphan at pair ${pairIndex}: ad set ${adSetId} created, ad failed (${isTransient ? 'TRANSIENT' : 'ERROR'}: ${adError})`);
+      }
+    }
+
+    if (potentialOrphans.length === 0) {
+      console.log(`   ✅ No orphans detected - all ad set/ad pairs are consistent`);
+      return batchResults;
+    }
+
+    console.log(`\n🔧 ORPHAN FIX: Found ${potentialOrphans.length} potential orphan(s) - creating ads for them...`);
+
+    // Get source ad data for recreating ads
+    const sourceAdSets = campaignData.adsets?.data || [];
+    const accountId = (campaignData.account_id || this.adAccountId).replace('act_', '');
+
+    // Clone results so we can update them
+    const updatedResults = [...batchResults];
+    let fixedCount = 0;
+
+    for (const orphan of potentialOrphans) {
+      const sourceAdSet = sourceAdSets[orphan.pairIndex];
+      const sourceAd = sourceAdSet?.ads?.data?.[0];
+
+      if (!sourceAd) {
+        console.log(`   ⚠️ No source ad found for pair ${orphan.pairIndex} - cannot fix`);
+        continue;
+      }
+
+      try {
+        console.log(`   📤 Creating ad for orphan pair ${orphan.pairIndex} (ad set ${orphan.adSetId})...`);
+
+        // Prepare ad body using the existing prepareAdBody method
+        const adBody = this.prepareAdBody(sourceAd, orphan.adSetId);
+
+        // Decode the URL-encoded body to params
+        const adParams = {};
+        adBody.split('&').forEach(pair => {
+          const [key, value] = pair.split('=');
+          adParams[key] = decodeURIComponent(value);
+        });
+        adParams.access_token = this.accessToken;
+
+        const response = await axios.post(
+          `${this.baseURL}/act_${accountId}/ads`,
+          null,
+          { params: adParams, timeout: 60000 }
+        );
+
+        if (response.data?.id) {
+          console.log(`   ✅ Ad created for orphan pair ${orphan.pairIndex}: ${response.data.id}`);
+
+          // Update the batch results to reflect the successful ad creation
+          updatedResults[orphan.adResultIndex] = {
+            code: 200,
+            body: JSON.stringify({ id: response.data.id })
+          };
+          fixedCount++;
+        } else {
+          console.log(`   ❌ Ad creation returned no ID for pair ${orphan.pairIndex}`);
+        }
+
+        // Small delay to avoid rate limits
+        await this.delay(500);
+
+      } catch (error) {
+        const fbError = error.response?.data?.error?.message || error.message;
+        console.log(`   ❌ Failed to create ad for orphan pair ${orphan.pairIndex}: ${fbError}`);
+
+        // If we can't create the ad, delete the orphan ad set to keep counts consistent
+        try {
+          console.log(`   🗑️ Deleting orphan ad set ${orphan.adSetId}...`);
+          await axios.delete(`${this.baseURL}/${orphan.adSetId}`, {
+            params: { access_token: this.accessToken }
+          });
+
+          // Mark the ad set as failed in the results
+          updatedResults[orphan.adSetResultIndex] = {
+            code: 500,
+            body: JSON.stringify({ error: { message: 'Deleted orphan - ad creation failed' } })
+          };
+          console.log(`   ✅ Orphan ad set deleted`);
+        } catch (delError) {
+          console.log(`   ⚠️ Failed to delete orphan ad set: ${delError.message}`);
+        }
+      }
+    }
+
+    console.log(`\n✅ ORPHAN FIX COMPLETE: Fixed ${fixedCount}/${potentialOrphans.length} orphan(s)`);
+    return updatedResults;
   }
 
   /**
