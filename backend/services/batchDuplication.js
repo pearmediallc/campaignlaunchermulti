@@ -2385,9 +2385,12 @@ class BatchDuplicationService {
           }
 
           // Execute this batch with retry for transient errors
+          // CRITICAL FIX: Do NOT retry batch 1 on transient errors
+          // Facebook often returns transient error but still creates the ad sets
+          // Retrying creates duplicates (55 ad sets instead of 50)
           let results = null;
           let retryCount = 0;
-          const maxRetries = 2;
+          const maxRetries = batchNum === 0 ? 0 : 2; // NO retries for first batch
 
           while (retryCount <= maxRetries) {
             try {
@@ -2419,10 +2422,14 @@ class BatchDuplicationService {
               }
 
               if (hasTransientError && retryCount < maxRetries) {
+                // Only retry if NOT batch 1 (batch 1 often succeeds despite transient error)
                 console.log(`     ⚠️ Transient error detected - retrying batch in 5 seconds...`);
                 await this.delay(5000);
                 retryCount++;
                 continue;
+              } else if (hasTransientError && batchNum === 0) {
+                // For batch 1, log but DON'T retry - Facebook often creates despite error
+                console.log(`     ⚠️ Transient error on batch 1 - NOT retrying (Facebook often succeeds despite this error)`);
               }
 
               break; // Success or non-transient error
