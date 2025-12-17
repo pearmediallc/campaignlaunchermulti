@@ -2513,6 +2513,10 @@ class BatchDuplicationService {
       // Track pairs that might have orphan ad sets (ad set created but ad failed)
       const potentialOrphans = [];
 
+      // Track ad sets that need ads created (orphans we found and need to fix)
+      // These will be added to the NEXT batch to avoid extra API calls
+      const pendingOrphanFixes = [];
+
       for (let batchNum = 0; batchNum < totalBatches; batchNum++) {
         const batchStartIndex = batchNum * pairsPerBatch;
         const batchEndIndex = Math.min(batchStartIndex + pairsPerBatch, count);
@@ -2524,6 +2528,38 @@ class BatchDuplicationService {
           // Build batch operations for this group of pairs
           // CRITICAL: Interleave [adset-0, ad-0, adset-1, ad-1, ...] for correct references
           const batchOperations = [];
+
+          // INLINE ORPHAN FIX: If we have pending orphan fixes from previous batch,
+          // add them to THIS batch to avoid separate API calls
+          const orphanFixesInThisBatch = [];
+          if (pendingOrphanFixes.length > 0) {
+            console.log(`     🔧 INLINE FIX: Adding ${pendingOrphanFixes.length} orphan ad creation(s) to this batch`);
+
+            for (const orphanFix of pendingOrphanFixes) {
+              const adBody = this.prepareAdBodyForDuplicate(
+                formData.campaignName || 'Campaign',
+                postId,
+                orphanFix.pairNumber,
+                orphanFix.adSetId, // Use the actual ad set ID we found
+                formData.mediaHashes,
+                formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
+                textVariations,
+                formData
+              );
+
+              batchOperations.push({
+                method: 'POST',
+                relative_url: `act_${accountId}/ads`,
+                body: adBody,
+                name: `orphan-fix-${orphanFix.pairNumber}`
+              });
+
+              orphanFixesInThisBatch.push(orphanFix);
+            }
+
+            // Clear pending fixes since we're adding them to this batch
+            pendingOrphanFixes.length = 0;
+          }
 
           for (let i = 0; i < pairsInThisBatch; i++) {
             const pairNumber = batchStartIndex + i + 1;
@@ -2610,12 +2646,48 @@ class BatchDuplicationService {
           }
 
           // Process results for this batch
-          // Results are interleaved: [adset-0, ad-0, adset-1, ad-1, ...]
+          // IMPORTANT: Results order is [orphan-fixes..., adset-0, ad-0, adset-1, ad-1, ...]
           const failedAdSetIndices = new Set();
 
+          // First, process orphan fix results (they come first in the results array)
+          let resultOffset = 0;
+          if (orphanFixesInThisBatch.length > 0) {
+            console.log(`     📋 Processing ${orphanFixesInThisBatch.length} orphan fix result(s)...`);
+
+            for (let j = 0; j < orphanFixesInThisBatch.length; j++) {
+              const orphanFix = orphanFixesInThisBatch[j];
+              const fixResult = results[j];
+
+              if (fixResult && fixResult.body) {
+                try {
+                  const body = JSON.parse(fixResult.body);
+                  if ((fixResult.code === 200 || body.id) && !body.error) {
+                    console.log(`     ✅ ORPHAN FIX SUCCESS: Created ad ${body.id} for orphan ad set ${orphanFix.adSetId} (pair ${orphanFix.pairNumber})`);
+                    successfulPairs.push({ adSetId: orphanFix.adSetId, adId: body.id, pairNumber: orphanFix.pairNumber });
+                    // Remove from failed pairs
+                    const failedIdx = failedPairs.findIndex(f => f.pairNumber === orphanFix.pairNumber);
+                    if (failedIdx !== -1) failedPairs.splice(failedIdx, 1);
+                    // Remove from potential orphans
+                    const potIdx = potentialOrphans.findIndex(p => p.pairNumber === orphanFix.pairNumber);
+                    if (potIdx !== -1) potentialOrphans.splice(potIdx, 1);
+                  } else {
+                    console.log(`     ❌ ORPHAN FIX FAILED for pair ${orphanFix.pairNumber}: ${body.error?.message || 'Unknown error'}`);
+                  }
+                } catch (e) {
+                  console.error(`     ❌ Failed to parse orphan fix result: ${e.message}`);
+                }
+              } else {
+                console.log(`     ❌ ORPHAN FIX: No result for pair ${orphanFix.pairNumber}`);
+              }
+            }
+
+            resultOffset = orphanFixesInThisBatch.length;
+          }
+
+          // Then process normal pair results (adset-0, ad-0, adset-1, ad-1, ...)
           for (let i = 0; i < pairsInThisBatch; i++) {
-            const adSetResultIndex = i * 2;
-            const adResultIndex = i * 2 + 1;
+            const adSetResultIndex = resultOffset + (i * 2);
+            const adResultIndex = resultOffset + (i * 2) + 1;
             const pairNumber = batchStartIndex + i + 1;
 
             const adSetResult = results[adSetResultIndex];
@@ -2717,92 +2789,57 @@ class BatchDuplicationService {
             failedPairs.filter(f => f.pairNumber > batchStartIndex && f.pairNumber <= batchEndIndex && f.reason === 'ad_set_creation_failed').length;
           console.log(`     ✅ Batch ${batchNum + 1} complete: ${batchSuccessCount}/${pairsInThisBatch} pairs succeeded`);
 
-          // MID-BATCH ORPHAN CHECK: After batch 5, check for and fix any orphans so far
-          // This catches orphans early while we still have API quota
-          if (batchNum === 4 && potentialOrphans.length > 0) {
-            console.log(`\n   🔍 MID-BATCH CHECK: Found ${potentialOrphans.length} potential orphan(s) after batch 5`);
-            console.log(`   ⏳ Checking and fixing orphans now (before API rate limits)...`);
+          // BATCH 1 ORPHAN DETECTION: After batch 1, detect orphans and queue them for batch 2
+          // Batch 1 is where transient errors happen most often - check immediately after
+          // This uses ONE API call to find orphans, then queues ad creations for the next batch
+          if (batchNum === 0 && potentialOrphans.length > 0) {
+            console.log(`\n   🔍 BATCH 1 ORPHAN DETECTION: Found ${potentialOrphans.length} potential orphan(s)`);
+            console.log(`   ⏳ Looking up orphan ad set IDs to queue fixes for batch 2...`);
 
             try {
-              // Get all ad sets created so far
-              const midCheckResponse = await axios.get(
+              // Single API call to get ad sets created in batch 1
+              const batch1AdSetsResponse = await axios.get(
                 `${this.baseURL}/${campaignId}/adsets`,
                 {
-                  params: { fields: 'id,name', limit: 100, access_token: this.accessToken },
-                  timeout: 30000
+                  params: {
+                    fields: 'id,name',
+                    limit: 10, // Only need first few for batch 1
+                    access_token: this.accessToken
+                  },
+                  timeout: 15000
                 }
               );
 
-              const existingAdSets = midCheckResponse.data?.data || [];
-              console.log(`   📊 Found ${existingAdSets.length} ad sets in campaign so far`);
+              const batch1AdSets = batch1AdSetsResponse.data?.data || [];
+              console.log(`   📊 Found ${batch1AdSets.length} ad sets in campaign (including original)`);
 
-              // Get all ads created so far
-              const midAdsResponse = await axios.get(
-                `${this.baseURL}/${campaignId}/ads`,
-                {
-                  params: { fields: 'id,adset_id', limit: 100, access_token: this.accessToken },
-                  timeout: 30000
+              // For each potential orphan, find its ad set ID
+              for (const potential of potentialOrphans) {
+                const matchingAdSet = batch1AdSets.find(adSet =>
+                  adSet.name.includes(`Copy ${potential.pairNumber}`)
+                );
+
+                if (matchingAdSet) {
+                  console.log(`   ✅ Found orphan ad set: ${matchingAdSet.id} (Copy ${potential.pairNumber})`);
+                  console.log(`   📋 Queuing ad creation for batch 2 (NO extra API call needed)`);
+
+                  // Queue this for the NEXT batch - will create AD only, not ad set
+                  pendingOrphanFixes.push({
+                    adSetId: matchingAdSet.id,
+                    pairNumber: potential.pairNumber,
+                    adSetName: matchingAdSet.name
+                  });
+                } else {
+                  console.log(`   ⚠️ Could not find ad set for Copy ${potential.pairNumber} - may have truly failed`);
                 }
-              );
-
-              const existingAds = midAdsResponse.data?.data || [];
-              const adSetIdsWithAds = new Set(existingAds.map(ad => ad.adset_id));
-
-              // Find orphans (ad sets without ads, excluding original)
-              const midOrphans = existingAdSets.filter(adSet =>
-                !adSetIdsWithAds.has(adSet.id) &&
-                adSet.id !== originalAdSetId &&
-                adSet.name.includes('Copy')
-              );
-
-              console.log(`   🔍 Found ${midOrphans.length} orphan ad set(s) without ads`);
-
-              // Fix each orphan by creating an ad for it
-              for (const orphan of midOrphans) {
-                // Extract pair number from name
-                const copyMatch = orphan.name.match(/Copy (\d+)/);
-                const pairNum = copyMatch ? parseInt(copyMatch[1]) : 0;
-
-                console.log(`   🔄 Creating ad for mid-batch orphan: ${orphan.id} (${orphan.name})`);
-
-                try {
-                  const adBody = this.prepareAdBodyForDuplicate(
-                    formData.campaignName || 'Campaign',
-                    postId,
-                    pairNum,
-                    orphan.id,
-                    formData.mediaHashes,
-                    formData.dynamicCreativeEnabled || formData.dynamicTextEnabled,
-                    textVariations,
-                    formData
-                  );
-
-                  const adResponse = await axios.post(
-                    `${this.baseURL}/act_${accountId}/ads`,
-                    new URLSearchParams({ ...this.decodeBody(adBody), access_token: this.accessToken }),
-                    { timeout: 60000 }
-                  );
-
-                  if (adResponse.data?.id) {
-                    console.log(`   ✅ MID-BATCH FIX: Created ad ${adResponse.data.id} for orphan ${orphan.id}`);
-                    successfulPairs.push({ adSetId: orphan.id, adId: adResponse.data.id, pairNumber: pairNum });
-                    // Remove from failed/potential orphans
-                    const failedIdx = failedPairs.findIndex(f => f.pairNumber === pairNum);
-                    if (failedIdx !== -1) failedPairs.splice(failedIdx, 1);
-                    const potIdx = potentialOrphans.findIndex(p => p.pairNumber === pairNum);
-                    if (potIdx !== -1) potentialOrphans.splice(potIdx, 1);
-                  }
-                } catch (adErr) {
-                  console.error(`   ❌ Failed to create ad for mid-batch orphan: ${adErr.message}`);
-                }
-
-                await this.delay(300);
               }
 
-              console.log(`   ✅ MID-BATCH CHECK complete\n`);
-            } catch (midCheckError) {
-              console.error(`   ❌ Mid-batch check failed: ${midCheckError.message}`);
-              // Continue with remaining batches
+              if (pendingOrphanFixes.length > 0) {
+                console.log(`   ✅ Queued ${pendingOrphanFixes.length} orphan fix(es) for batch 2\n`);
+              }
+            } catch (lookupError) {
+              console.error(`   ❌ Orphan lookup failed: ${lookupError.message}`);
+              console.log(`   ℹ️ Will try to fix orphans in post-batch check`);
             }
           }
 
