@@ -308,6 +308,7 @@ class BatchDuplicationService {
     console.log(`📊 Fetching complete campaign data in ONE call...`);
 
     // SIMPLIFIED field expansion - only get essential data and creative IDs
+    // CRITICAL: Use correct field names for spending limits (daily_min_spend_target, daily_spend_cap)
     const fields = 'id,name,status,objective,special_ad_categories,' +
       'special_ad_category_country,daily_budget,lifetime_budget,' +
       'bid_strategy,budget_remaining,account_id,' +
@@ -316,7 +317,7 @@ class BatchDuplicationService {
         'optimization_goal,billing_event,bid_amount,bid_strategy,' +
         'promoted_object,attribution_spec,conversion_specs,' +
         'start_time,end_time,schedule,frequency_control_specs,' +
-        'optimization_sub_event,min_spending_target,max_spending_target,' +
+        'optimization_sub_event,daily_min_spend_target,daily_spend_cap,' +
         'pacing_type,instagram_actor_id,destination_type,' +
         'ads.limit(100){' +
           'id,name,status,tracking_specs,conversion_specs,url_tags,' +
@@ -461,6 +462,32 @@ class BatchDuplicationService {
     }
     if (adSet.schedule) {
       body.schedule = JSON.stringify(adSet.schedule);
+    }
+
+    // CRITICAL: Copy spending limits (ad set level spend caps)
+    if (adSet.daily_min_spend_target !== undefined && adSet.daily_min_spend_target !== null) {
+      body.daily_min_spend_target = adSet.daily_min_spend_target;
+    }
+    if (adSet.daily_spend_cap !== undefined && adSet.daily_spend_cap !== null) {
+      body.daily_spend_cap = adSet.daily_spend_cap;
+    }
+
+    // Copy start/end time if present
+    if (adSet.start_time) {
+      body.start_time = adSet.start_time;
+    }
+    if (adSet.end_time) {
+      body.end_time = adSet.end_time;
+    }
+
+    // Copy pacing type
+    if (adSet.pacing_type) {
+      body.pacing_type = JSON.stringify(adSet.pacing_type);
+    }
+
+    // Copy destination type
+    if (adSet.destination_type) {
+      body.destination_type = adSet.destination_type;
     }
 
     return this.encodeBody(body);
