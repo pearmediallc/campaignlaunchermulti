@@ -18,13 +18,33 @@ const { decryptToken } = require('./facebookSDKAuth');
 
 /**
  * Middleware: Admin only access
+ * Checks if user has 'admin' or 'super_admin' role
  */
 const adminOnly = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.userId;
-    const user = await db.User.findByPk(userId);
+    const user = await db.User.findByPk(userId, {
+      include: [{
+        model: db.Role,
+        as: 'roles',
+        attributes: ['name']
+      }]
+    });
 
-    if (!user || user.role !== 'admin') {
+    if (!user) {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin access required',
+        message: 'User not found'
+      });
+    }
+
+    // Check if user has admin or super_admin role
+    const isAdmin = user.roles?.some(role =>
+      ['admin', 'super_admin'].includes(role.name?.toLowerCase())
+    );
+
+    if (!isAdmin) {
       return res.status(403).json({
         success: false,
         error: 'Admin access required',
@@ -34,6 +54,7 @@ const adminOnly = async (req, res, next) => {
 
     next();
   } catch (error) {
+    console.error('Admin check error:', error);
     res.status(500).json({
       success: false,
       error: 'Authorization check failed',

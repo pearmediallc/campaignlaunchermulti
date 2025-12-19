@@ -369,11 +369,10 @@ const Navigation: React.FC = () => {
               )}
 
               {/* Admin Test Dashboard - Only visible to admins */}
-              {user?.roles?.some((role: any) =>
-                typeof role === 'string'
-                  ? role.toLowerCase() === 'admin'
-                  : role.name?.toLowerCase() === 'admin'
-              ) && (
+              {user?.roles?.some((role: any) => {
+                const roleName = typeof role === 'string' ? role : role.name;
+                return ['admin', 'super_admin'].includes(roleName?.toLowerCase());
+              }) && (
                 <MenuItem onClick={() => handleNavigate('/admin/test-dashboard')}>
                   <Science sx={{ mr: 1, fontSize: 20, color: '#9c27b0' }} />
                   Test Dashboard
