@@ -370,7 +370,9 @@ const Navigation: React.FC = () => {
 
               {/* Admin Test Dashboard - Only visible to admins */}
               {user?.roles?.some((role: any) =>
-                typeof role === 'string' ? role === 'admin' : role.name === 'admin'
+                typeof role === 'string'
+                  ? role.toLowerCase() === 'admin'
+                  : role.name?.toLowerCase() === 'admin'
               ) && (
                 <MenuItem onClick={() => handleNavigate('/admin/test-dashboard')}>
                   <Science sx={{ mr: 1, fontSize: 20, color: '#9c27b0' }} />

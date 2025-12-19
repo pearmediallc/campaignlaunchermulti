@@ -166,9 +166,11 @@ export const AdminTestDashboard: React.FC = () => {
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState<string[]>([]);
 
-  // Check if user is admin
+  // Check if user is admin (case-insensitive)
   const isAdmin = user?.roles?.some((role: any) =>
-    typeof role === 'string' ? role === 'admin' : role.name === 'admin'
+    typeof role === 'string'
+      ? role.toLowerCase() === 'admin'
+      : role.name?.toLowerCase() === 'admin'
   );
 
   // Fetch test status
