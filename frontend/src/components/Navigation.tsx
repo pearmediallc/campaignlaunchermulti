@@ -21,7 +21,7 @@ import {
   DialogContentText,
   DialogActions
 } from '@mui/material';
-import { AccountCircle, Dashboard, People, History, Person, Campaign, BarChart, AutoAwesome, Facebook, LinkOff } from '@mui/icons-material';
+import { AccountCircle, Dashboard, People, History, Person, Campaign, BarChart, AutoAwesome, Facebook, LinkOff, Science } from '@mui/icons-material';
 import ResourceSwitcher from './ResourceSwitcher';
 import { facebookAuthApi } from '../services/api';
 import { toast } from 'react-toastify';
@@ -367,7 +367,17 @@ const Navigation: React.FC = () => {
                   Audit Logs
                 </MenuItem>
               )}
-              
+
+              {/* Admin Test Dashboard - Only visible to admins */}
+              {user?.roles?.some((role: any) =>
+                typeof role === 'string' ? role === 'admin' : role.name === 'admin'
+              ) && (
+                <MenuItem onClick={() => handleNavigate('/admin/test-dashboard')}>
+                  <Science sx={{ mr: 1, fontSize: 20, color: '#9c27b0' }} />
+                  Test Dashboard
+                </MenuItem>
+              )}
+
               <MenuItem onClick={() => handleNavigate('/profile')}>
                 <Person sx={{ mr: 1, fontSize: 20 }} />
                 My Profile

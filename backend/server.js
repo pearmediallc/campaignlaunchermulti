@@ -125,6 +125,9 @@ app.use('/api/audit', require('./routes/audit'));
 // App Rotation Admin Routes (for monitoring backup apps)
 app.use('/api/admin/app-rotation', require('./routes/appRotationAdmin'));
 
+// Admin Test Dashboard Routes (isolated test runner for campaign creation)
+app.use('/api/admin/test', require('./routes/adminTest'));
+
 // IMPORTANT: Specific routes must come BEFORE general routes to avoid pattern matching conflicts
 // Strategy 1-50-1 routes (must be before general campaigns route)
 app.use('/api/campaigns/strategy-150', require('./routes/strategy150'));

@@ -25,6 +25,7 @@ import Strategy150Container from './components/Strategy150/Strategy150Container'
 import StrategyForAllContainer from './components/StrategyForAll/StrategyForAllContainer';
 import StrategyForAdsContainer from './components/StrategyForAds/StrategyForAdsContainer';
 import CampaignManagement from './components/CampaignManagement/CampaignManagement';
+import AdminTestDashboard from './pages/AdminTestDashboard';
 
 // Configure axios defaults for production
 if (process.env.NODE_ENV === 'production') {
@@ -230,6 +231,17 @@ function App() {
                     <Container maxWidth="lg" sx={{ py: 4 }}>
                       <CampaignManagement />
                     </Container>
+                  </>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/test-dashboard"
+              element={
+                <ProtectedRoute>
+                  <>
+                    <Navigation />
+                    <AdminTestDashboard />
                   </>
                 </ProtectedRoute>
               }
