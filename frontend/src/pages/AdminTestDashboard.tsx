@@ -165,6 +165,10 @@ export const AdminTestDashboard: React.FC = () => {
   const [campaignsToCleanup, setCampaignsToCleanup] = useState<string[]>([]);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
+  const [deletingMedia, setDeletingMedia] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Check if user is admin or super_admin (case-insensitive)
   const isAdmin = user?.roles?.some((role: any) => {
@@ -337,6 +341,78 @@ export const AdminTestDashboard: React.FC = () => {
     setLogDialogOpen(true);
   };
 
+  // Handle media upload
+  const handleMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    const formData = new FormData();
+
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    try {
+      const response = await api.post('/admin/test/media/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (response.data.success) {
+        toast.success(`Uploaded ${response.data.data.uploadedFiles.length} file(s)`);
+        fetchStatus(); // Refresh to get updated media counts
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast.error(error.response?.data?.error || 'Failed to upload files');
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle delete single media file
+  const handleDeleteMedia = async (filename: string) => {
+    setDeletingMedia(filename);
+    try {
+      const response = await api.delete(`/admin/test/media/${encodeURIComponent(filename)}`);
+      if (response.data.success) {
+        toast.success(`Deleted ${filename}`);
+        fetchStatus(); // Refresh to get updated media counts
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete file');
+    } finally {
+      setDeletingMedia(null);
+    }
+  };
+
+  // Handle delete all media files
+  const handleDeleteAllMedia = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL media files? This cannot be undone.')) {
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const response = await api.delete('/admin/test/media');
+      if (response.data.success) {
+        toast.success(response.data.message);
+        fetchStatus();
+        setMediaDialogOpen(false);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete files');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Open cleanup dialog with campaign IDs from results
   const openCleanupDialog = () => {
     const campaignIds = testResults
@@ -476,11 +552,21 @@ export const AdminTestDashboard: React.FC = () => {
           {/* Media Card */}
           <Card sx={{ flex: '1 1 300px', minWidth: 280 }}>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <CloudUpload sx={{ mr: 1 }} />
-                <Typography variant="h6">Available Media</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <CloudUpload sx={{ mr: 1 }} />
+                  <Typography variant="h6">Available Media</Typography>
+                </Box>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setMediaDialogOpen(true)}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  Manage
+                </Button>
               </Box>
-              <Box sx={{ display: 'flex', gap: 3 }}>
+              <Box sx={{ display: 'flex', gap: 3, mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Image sx={{ mr: 1 }} color="primary" />
                   <Typography variant="h4">{statusData.media.images}</Typography>
@@ -492,9 +578,31 @@ export const AdminTestDashboard: React.FC = () => {
                   <Typography variant="body2" sx={{ ml: 1 }}>videos</Typography>
                 </Box>
               </Box>
+              {/* Upload Button */}
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/x-msvideo"
+                  onChange={handleMediaUpload}
+                  style={{ display: 'none' }}
+                  id="media-upload-input"
+                />
+                <Button
+                  variant="contained"
+                  startIcon={uploading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  size="small"
+                  fullWidth
+                >
+                  {uploading ? 'Uploading...' : 'Upload Media'}
+                </Button>
+              </Box>
               {(statusData.media.images === 0 && statusData.media.videos === 0) && (
                 <Alert severity="warning" sx={{ mt: 2 }}>
-                  No media files found in backend/uploads. Some tests may fail.
+                  No media files. Upload images/videos to run tests.
                 </Alert>
               )}
             </CardContent>
@@ -890,6 +998,140 @@ export const AdminTestDashboard: React.FC = () => {
           >
             Delete {campaignsToCleanup.length} Campaigns
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Media Management Dialog */}
+      <Dialog open={mediaDialogOpen} onClose={() => setMediaDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <CloudUpload sx={{ mr: 1 }} />
+              Manage Test Media
+            </Box>
+            <Button
+              size="small"
+              color="error"
+              variant="outlined"
+              startIcon={<Delete />}
+              onClick={handleDeleteAllMedia}
+              disabled={uploading || (statusData?.media.images === 0 && statusData?.media.videos === 0)}
+            >
+              Delete All
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Upload images (.jpg, .png, .webp) and videos (.mp4, .mov) for testing.
+            Tests will automatically use the appropriate media type.
+          </Alert>
+
+          {/* Upload Section */}
+          <Box sx={{ mb: 3, p: 2, border: '2px dashed', borderColor: 'divider', borderRadius: 1, textAlign: 'center' }}>
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/x-msvideo"
+              onChange={handleMediaUpload}
+              style={{ display: 'none' }}
+              id="media-dialog-upload-input"
+            />
+            <label htmlFor="media-dialog-upload-input">
+              <Button
+                variant="contained"
+                component="span"
+                startIcon={uploading ? <CircularProgress size={16} color="inherit" /> : <CloudUpload />}
+                disabled={uploading}
+                size="large"
+              >
+                {uploading ? 'Uploading...' : 'Select Files to Upload'}
+              </Button>
+            </label>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Max 200MB per file. Multiple files supported.
+            </Typography>
+          </Box>
+
+          {/* Images Section */}
+          {statusData && statusData.media.imageFiles && statusData.media.imageFiles.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <Image sx={{ mr: 1 }} color="primary" />
+                Images ({statusData.media.imageFiles.length})
+              </Typography>
+              <List dense sx={{ maxHeight: 200, overflow: 'auto', bgcolor: 'grey.50', borderRadius: 1 }}>
+                {statusData.media.imageFiles.map((filename: string) => (
+                  <ListItem
+                    key={filename}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => handleDeleteMedia(filename)}
+                        disabled={deletingMedia === filename}
+                      >
+                        {deletingMedia === filename ? <CircularProgress size={16} /> : <Delete fontSize="small" />}
+                      </IconButton>
+                    }
+                  >
+                    <ListItemIcon>
+                      <Image fontSize="small" color="primary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={filename}
+                      primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          )}
+
+          {/* Videos Section */}
+          {statusData && statusData.media.videoFiles && statusData.media.videoFiles.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <VideoLibrary sx={{ mr: 1 }} color="secondary" />
+                Videos ({statusData.media.videoFiles.length})
+              </Typography>
+              <List dense sx={{ maxHeight: 200, overflow: 'auto', bgcolor: 'grey.50', borderRadius: 1 }}>
+                {statusData.media.videoFiles.map((filename: string) => (
+                  <ListItem
+                    key={filename}
+                    secondaryAction={
+                      <IconButton
+                        edge="end"
+                        size="small"
+                        onClick={() => handleDeleteMedia(filename)}
+                        disabled={deletingMedia === filename}
+                      >
+                        {deletingMedia === filename ? <CircularProgress size={16} /> : <Delete fontSize="small" />}
+                      </IconButton>
+                    }
+                  >
+                    <ListItemIcon>
+                      <VideoLibrary fontSize="small" color="secondary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={filename}
+                      primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          )}
+
+          {/* No Media Message */}
+          {statusData && statusData.media.images === 0 && statusData.media.videos === 0 && (
+            <Alert severity="warning">
+              No media files uploaded yet. Upload images and videos to run test scenarios.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMediaDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

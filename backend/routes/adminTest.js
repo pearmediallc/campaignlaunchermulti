@@ -9,12 +9,53 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
 const TestRunnerService = require('../services/TestRunnerService');
 const FacebookAPI = require('../services/facebookApi');
 const ResourceHelper = require('../services/ResourceHelper');
 const db = require('../models');
 const { decryptToken } = require('./facebookSDKAuth');
+
+// Configure multer for test media uploads
+const uploadsPath = path.join(__dirname, '..', 'uploads');
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsPath);
+  },
+  filename: (req, file, cb) => {
+    // Use original filename with timestamp prefix to avoid conflicts
+    const timestamp = Date.now();
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    cb(null, `test_${timestamp}_${safeName}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 200 * 1024 * 1024, // 200MB max
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedImageTypes = ['.jpg', '.jpeg', '.png', '.webp'];
+    const allowedVideoTypes = ['.mp4', '.mov', '.avi', '.mkv'];
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    if ([...allowedImageTypes, ...allowedVideoTypes].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type: ${ext}. Allowed: images (jpg, png, webp) and videos (mp4, mov)`));
+    }
+  }
+});
 
 /**
  * Middleware: Admin only access
@@ -532,6 +573,139 @@ router.get('/media', authenticate, adminOnly, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get media',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/admin/test/media/upload
+ * Upload test media files (images and videos)
+ */
+router.post('/media/upload', authenticate, adminOnly, upload.array('files', 10), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No files uploaded'
+      });
+    }
+
+    const uploadedFiles = req.files.map(file => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const isImage = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+
+      return {
+        name: file.filename,
+        originalName: file.originalname,
+        type: isImage ? 'image' : 'video',
+        size: file.size,
+        path: file.path
+      };
+    });
+
+    // Get updated media counts
+    const media = TestRunnerService.getAvailableMedia();
+
+    res.json({
+      success: true,
+      message: `Uploaded ${uploadedFiles.length} file(s)`,
+      data: {
+        uploadedFiles,
+        totalImages: media.images.length,
+        totalVideos: media.videos.length
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading test media:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to upload media',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/test/media/:filename
+ * Delete a test media file
+ */
+router.delete('/media/:filename', authenticate, adminOnly, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(uploadsPath, filename);
+
+    // Security check - ensure file is in uploads directory
+    if (!filePath.startsWith(uploadsPath)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file path'
+      });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        error: 'File not found'
+      });
+    }
+
+    fs.unlinkSync(filePath);
+
+    // Get updated media counts
+    const media = TestRunnerService.getAvailableMedia();
+
+    res.json({
+      success: true,
+      message: `Deleted ${filename}`,
+      data: {
+        totalImages: media.images.length,
+        totalVideos: media.videos.length
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting test media:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete media',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/admin/test/media
+ * Delete all test media files
+ */
+router.delete('/media', authenticate, adminOnly, async (req, res) => {
+  try {
+    const files = fs.readdirSync(uploadsPath);
+    let deletedCount = 0;
+
+    files.forEach(file => {
+      const filePath = path.join(uploadsPath, file);
+      const ext = path.extname(file).toLowerCase();
+
+      // Only delete image and video files
+      if (['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.avi', '.mkv'].includes(ext)) {
+        fs.unlinkSync(filePath);
+        deletedCount++;
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Deleted ${deletedCount} media file(s)`,
+      data: {
+        totalImages: 0,
+        totalVideos: 0
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting all test media:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete media',
       message: error.message
     });
   }
