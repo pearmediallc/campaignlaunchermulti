@@ -604,24 +604,37 @@ export const AdminTestDashboard: React.FC = () => {
             </Box>
           </Box>
 
-          {/* Multi-account selection */}
-          {statusData.allAdAccounts.length > 1 && (
-            <Box sx={{ mb: 2 }}>
+          {/* Multi-account selection - Show if there are any ad accounts */}
+          {statusData.allAdAccounts && statusData.allAdAccounts.length > 0 && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Run on Additional Accounts (optional)
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Select accounts to run tests on multiple ad accounts. Leave empty to use only the active account.
+              </Typography>
               <FormControl fullWidth size="small">
-                <InputLabel>Run on Additional Accounts (optional)</InputLabel>
+                <InputLabel>Select Ad Accounts</InputLabel>
                 <Select
                   multiple
                   value={selectedAccounts}
                   onChange={(e) => setSelectedAccounts(e.target.value as string[])}
-                  label="Run on Additional Accounts (optional)"
+                  label="Select Ad Accounts"
+                  renderValue={(selected) => `${selected.length} account(s) selected`}
                 >
-                  {statusData.allAdAccounts.map(account => (
-                    <MenuItem key={account.account_id} value={account.account_id}>
-                      {account.name} ({account.account_id})
+                  {statusData.allAdAccounts.map((account: AdAccount) => (
+                    <MenuItem key={account.account_id || account.id} value={account.account_id || account.id}>
+                      <Checkbox checked={selectedAccounts.includes(account.account_id || account.id)} />
+                      {account.name} ({account.account_id || account.id})
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
+              {selectedAccounts.length > 0 && (
+                <Alert severity="info" sx={{ mt: 1 }}>
+                  Tests will run on {selectedAccounts.length} additional account(s) using the active Page and Pixel.
+                </Alert>
+              )}
             </Box>
           )}
 

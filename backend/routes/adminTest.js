@@ -98,11 +98,11 @@ router.get('/status', authenticate, adminOnly, async (req, res) => {
         tokenValid: facebookAuth ? new Date(facebookAuth.tokenExpiresAt) > new Date() : false,
         resources: {
           adAccountId: activeResources.selectedAdAccountId,
-          adAccountName: activeResources.selectedAdAccountName || activeResources.selectedAdAccountId,
+          adAccountName: activeResources.selectedAdAccount?.name || activeResources.selectedAdAccountId,
           pageId: activeResources.selectedPageId,
-          pageName: activeResources.selectedPageName || 'Unknown Page',
+          pageName: activeResources.selectedPage?.name || 'Unknown Page',
           pixelId: activeResources.selectedPixelId,
-          pixelName: activeResources.selectedPixelName || 'Unknown Pixel'
+          pixelName: activeResources.selectedPixel?.name || 'Unknown Pixel'
         },
         allAdAccounts: facebookAuth?.adAccounts || [],
         allPages: facebookAuth?.pages || [],
