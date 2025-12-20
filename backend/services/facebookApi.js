@@ -2329,14 +2329,24 @@ class FacebookAPI {
   }
 
   /**
-   * Retry mechanism for Facebook API calls with exponential backoff
+   * Retry mechanism for Facebook API calls with proper exponential backoff and jitter
    * @param {Function} apiFunction - The API function to call
    * @param {Object} params - Parameters to pass to the function
-   * @param {Number} maxRetries - Maximum number of retry attempts (default 3)
+   * @param {Number} maxRetries - Maximum number of retry attempts (default 5)
+   * @param {Number} baseDelayMs - Base delay in milliseconds (default 3000)
    * @returns {Promise} - Result of the API call
+   *
+   * Backoff formula: delay = min(baseDelay * 2^(attempt-1) + jitter, maxDelay)
+   * Example with baseDelay=3000ms, maxDelay=60000ms:
+   *   Attempt 1: 3s + jitter
+   *   Attempt 2: 6s + jitter
+   *   Attempt 3: 12s + jitter
+   *   Attempt 4: 24s + jitter
+   *   Attempt 5: 48s + jitter
    */
-  async retryWithBackoff(apiFunction, params, maxRetries = 3) {
+  async retryWithBackoff(apiFunction, params, maxRetries = 5, baseDelayMs = 3000) {
     let lastError;
+    const maxDelayMs = 60000; // Max 60 seconds
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -2351,21 +2361,33 @@ class FacebookAPI {
         lastError = error;
 
         // Check if error is retryable
-        const isRetryable = error.fbError?.is_transient ||
-                           error.fbError?.code === 2 || // Transient error
-                           error.fbError?.code === 17 || // Rate limit
-                           error.fbError?.code === 368 || // Temporary issue
-                           error.fbError?.code === 80004; // Temporary network issue
+        const errorCode = error.fbError?.code || error.response?.data?.error?.code;
+        const isTransient = error.fbError?.is_transient || error.response?.data?.error?.is_transient;
+
+        const isRetryable = isTransient ||
+                           errorCode === 2 || // Transient error (Facebook internal)
+                           errorCode === 17 || // Rate limit
+                           errorCode === 368 || // Temporary issue
+                           errorCode === 80004 || // Temporary network issue
+                           errorCode === 1 || // Unknown error (often transient)
+                           (error.response?.status >= 500 && error.response?.status <= 599); // Server errors
 
         if (isRetryable && attempt < maxRetries) {
-          const delay = Math.min(attempt * 2000, 10000); // 2s, 4s, 6s... max 10s
-          console.log(`⏳ Retryable error (code ${error.fbError?.code}). Waiting ${delay}ms before retry...`);
+          // Exponential backoff: baseDelay * 2^(attempt-1) + random jitter
+          const exponentialDelay = baseDelayMs * Math.pow(2, attempt - 1);
+          const jitter = Math.random() * 1000; // 0-1s random jitter
+          const delay = Math.min(exponentialDelay + jitter, maxDelayMs);
+
+          console.log(`⏳ Retryable error (code ${errorCode}, is_transient: ${isTransient}). Waiting ${Math.round(delay)}ms before retry ${attempt + 1}...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
 
         // Non-retryable error or max retries reached
         console.error(`❌ Failed after ${attempt} attempts. Error: ${error.message}`);
+        if (errorCode) {
+          console.error(`   Facebook error code: ${errorCode}, is_transient: ${isTransient}`);
+        }
         break;
       }
     }

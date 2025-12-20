@@ -255,12 +255,15 @@ router.post('/run', authenticate, adminOnly, async (req, res) => {
       });
     }
 
-    // Initialize Facebook API
+    // Initialize Facebook API with pixelId included
     const facebookApi = new FacebookAPI({
       accessToken: decryptedToken,
       adAccountId: resources.adAccountId.replace('act_', ''),
-      pageId: resources.pageId
+      pageId: resources.pageId,
+      pixelId: resources.pixelId // Include pixel ID for tracking
     });
+
+    console.log(`[AdminTest] FacebookAPI initialized with pixelId: ${resources.pixelId || 'not set'}`);
 
     // Run test (async - returns immediately with testId)
     const testId = `${scenarioId}-${Date.now()}`;
@@ -344,8 +347,11 @@ router.post('/run-multiple', authenticate, adminOnly, async (req, res) => {
         const facebookApi = new FacebookAPI({
           accessToken: decryptedToken,
           adAccountId: resources.adAccountId.replace('act_', ''),
-          pageId: resources.pageId
+          pageId: resources.pageId,
+          pixelId: resources.pixelId // Include pixel ID for tracking
         });
+
+        console.log(`[AdminTest] Multi-account run with pixelId: ${resources.pixelId || 'not set'}`);
 
         for (const scenarioId of scenarioIds) {
           const testId = `${scenarioId}-${config.adAccountId}-${Date.now()}`;
@@ -372,8 +378,11 @@ router.post('/run-multiple', authenticate, adminOnly, async (req, res) => {
       const facebookApi = new FacebookAPI({
         accessToken: decryptedToken,
         adAccountId: resources.adAccountId.replace('act_', ''),
-        pageId: resources.pageId
+        pageId: resources.pageId,
+        pixelId: resources.pixelId // Include pixel ID for tracking
       });
+
+      console.log(`[AdminTest] Default account run with pixelId: ${resources.pixelId || 'not set'}`);
 
       for (const scenarioId of scenarioIds) {
         const testId = `${scenarioId}-${Date.now()}`;

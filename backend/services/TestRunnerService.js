@@ -257,9 +257,9 @@ class TestRunnerService {
       // CRITICAL: All test campaigns are PAUSED
       status: 'PAUSED',
 
-      // Budget - using campaign level (CBO) with minimal budget
+      // Budget - using campaign level (CBO) with $50 budget
       budgetLevel: scenario.budgetLevel || 'campaign',
-      dailyBudget: 500, // $5.00 in cents (minimum)
+      dailyBudget: 5000, // $50.00 in cents
 
       // Ad Set settings
       adSetCount: scenario.adSetCount || 1,
@@ -303,14 +303,29 @@ class TestRunnerService {
       selectedPageId: resources.pageId,
       selectedAdAccountId: resources.adAccountId,
       selectedPixelId: resources.pixelId,
+      pixelId: resources.pixelId, // Also set pixelId directly for compatibility
 
       // Duplication settings
       duplicationSettings: {
         adSetCount: scenario.adSetCount || 1
+      },
+
+      // Default spending limits for ALL test scenarios - $1 max to minimize risk
+      spendingLimits: {
+        enabled: true,
+        dailyMin: 100,  // $1.00 minimum
+        dailyMax: 100   // $1.00 maximum - safety limit
+      },
+      adSetBudget: {
+        spendingLimits: {
+          enabled: true,
+          dailyMin: 100,
+          dailyMax: 100
+        }
       }
     };
 
-    // Handle spending limits
+    // Override with scenario-specific spending limits if provided
     if (scenario.spendingLimits) {
       campaignData.spendingLimits = {
         enabled: true,
@@ -340,24 +355,28 @@ class TestRunnerService {
       }
     } else if (scenario.mediaType === 'dynamic') {
       campaignData.dynamicCreativeEnabled = true;
-      const config = scenario.dynamicConfig || { images: 2, videos: 0 };
 
-      // Get media paths for dynamic creative
+      // Use ALL available media for Dynamic Creative (like a real user would)
+      // Facebook allows up to 10 images or 10 videos in a single DC ad
       const dynamicMediaPaths = [];
 
-      // Add images
-      const imagesToUse = Math.min(config.images, media.images.length);
-      for (let i = 0; i < imagesToUse; i++) {
+      // Add ALL available images (up to 10)
+      const maxImages = Math.min(media.images.length, 10);
+      for (let i = 0; i < maxImages; i++) {
         dynamicMediaPaths.push(media.images[i].path);
       }
 
-      // Add videos
-      const videosToUse = Math.min(config.videos, media.videos.length);
-      for (let i = 0; i < videosToUse; i++) {
+      // Add ALL available videos (up to 10 total media)
+      const remainingSlots = 10 - dynamicMediaPaths.length;
+      const maxVideos = Math.min(media.videos.length, remainingSlots);
+      for (let i = 0; i < maxVideos; i++) {
         dynamicMediaPaths.push(media.videos[i].path);
       }
 
       campaignData.dynamicCreativeMediaPaths = dynamicMediaPaths;
+
+      // Log what we're using
+      console.log(`[TestRunner] Dynamic Creative will use ${maxImages} images and ${maxVideos} videos (total: ${dynamicMediaPaths.length} media files)`);
     }
 
     // Handle multiple campaigns for strategyForAll

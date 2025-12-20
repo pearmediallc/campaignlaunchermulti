@@ -80,6 +80,11 @@ interface TestScenario {
   mediaType?: string;
 }
 
+interface LogEntry {
+  time: string;
+  message: string;
+}
+
 interface TestResult {
   testId: string;
   scenarioId: string;
@@ -88,6 +93,7 @@ interface TestResult {
   startTime: string;
   endTime?: string;
   duration?: number;
+  durationFormatted?: string;
   error?: string;
   createdCampaign?: {
     campaignId: string;
@@ -102,8 +108,12 @@ interface TestResult {
     actualAds: number;
     adSetsMatch: boolean;
     adsMatch: boolean;
+    passed?: boolean;
+    issues?: Array<{ type: string; entity?: string; expected?: number; actual?: number; message?: string }>;
   };
-  logs?: string[];
+  logs?: LogEntry[] | string[];
+  expected?: { campaigns: number; adSets: number; ads: number };
+  actual?: { campaigns: number; adSets: number; ads: number };
 }
 
 interface ActiveTest {
@@ -689,6 +699,140 @@ export const AdminTestDashboard: React.FC = () => {
                 </Box>
               </Paper>
             ))}
+          </Box>
+        )}
+
+        {/* Real-Time Error Display - Shows errors from failed/error tests */}
+        {testResults.filter(r => r.status === 'failed' || r.status === 'error').length > 0 && (
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', color: 'error.main' }}>
+              <Error sx={{ mr: 1 }} />
+              Errors & Failures ({testResults.filter(r => r.status === 'failed' || r.status === 'error').length})
+            </Typography>
+            <Paper sx={{ maxHeight: 400, overflow: 'auto', bgcolor: '#fff5f5', border: '1px solid', borderColor: 'error.light' }}>
+              {testResults.filter(r => r.status === 'failed' || r.status === 'error').slice().reverse().map((result, index) => (
+                <Box
+                  key={result.testId || index}
+                  sx={{
+                    p: 2,
+                    borderBottom: '1px solid',
+                    borderColor: 'error.light',
+                    '&:last-child': { borderBottom: 'none' }
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Chip
+                      icon={result.status === 'error' ? <Warning /> : <Error />}
+                      label={result.status.toUpperCase()}
+                      color={result.status === 'error' ? 'warning' : 'error'}
+                      size="small"
+                    />
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      {result.scenarioName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      ({result.durationFormatted || `${(result.duration ? result.duration / 1000 : 0).toFixed(1)}s`})
+                    </Typography>
+                  </Box>
+
+                  {/* Show main error */}
+                  {result.error && (
+                    <Alert severity="error" sx={{ mb: 1, py: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                        {result.error}
+                      </Typography>
+                    </Alert>
+                  )}
+
+                  {/* Show verification issues */}
+                  {result.verification?.issues && result.verification.issues.length > 0 && (
+                    <Box sx={{ mb: 1 }}>
+                      {result.verification.issues.map((issue, i) => (
+                        <Alert key={i} severity="warning" sx={{ mb: 0.5, py: 0.5 }}>
+                          <Typography variant="body2" sx={{ fontSize: '12px' }}>
+                            {issue.type === 'count_mismatch' && (
+                              <>
+                                <strong>{issue.entity}:</strong> Expected {issue.expected}, got {issue.actual}
+                              </>
+                            )}
+                            {issue.type === 'verification_error' && issue.message}
+                          </Typography>
+                        </Alert>
+                      ))}
+                    </Box>
+                  )}
+
+                  {/* Show expected vs actual if available */}
+                  {result.expected && result.actual && (
+                    <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontSize: '12px' }}>
+                        <strong>Expected:</strong> {result.expected.campaigns} camp, {result.expected.adSets} adsets, {result.expected.ads} ads
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontSize: '12px' }}>
+                        <strong>Actual:</strong> {result.actual.campaigns} camp, {result.actual.adSets} adsets, {result.actual.ads} ads
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Show error logs (filter for errors/warnings) */}
+                  {result.logs && result.logs.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>
+                        Relevant Logs:
+                      </Typography>
+                      <Box sx={{
+                        bgcolor: '#1c1e21',
+                        color: '#fff',
+                        p: 1,
+                        borderRadius: 1,
+                        mt: 0.5,
+                        maxHeight: 150,
+                        overflow: 'auto',
+                        fontFamily: 'monospace',
+                        fontSize: '11px'
+                      }}>
+                        {result.logs
+                          .filter((log: LogEntry | string) => {
+                            const message = typeof log === 'string' ? log : log.message;
+                            return message.toLowerCase().includes('error') ||
+                                   message.toLowerCase().includes('fail') ||
+                                   message.toLowerCase().includes('warning') ||
+                                   message.toLowerCase().includes('exception');
+                          })
+                          .slice(-10) // Show last 10 error-related logs
+                          .map((log: LogEntry | string, i: number) => (
+                            <Box key={i} sx={{ mb: 0.5 }}>
+                              {typeof log === 'string' ? log : (
+                                <>
+                                  <span style={{ color: '#888' }}>{new Date(log.time).toLocaleTimeString()}</span>
+                                  {' '}{log.message}
+                                </>
+                              )}
+                            </Box>
+                          ))}
+                        {result.logs.filter((log: LogEntry | string) => {
+                          const message = typeof log === 'string' ? log : log.message;
+                          return message.toLowerCase().includes('error') ||
+                                 message.toLowerCase().includes('fail') ||
+                                 message.toLowerCase().includes('warning');
+                        }).length === 0 && (
+                          <Typography variant="caption" color="grey.500">
+                            No error-specific logs. Click "View Logs" below for full log.
+                          </Typography>
+                        )}
+                      </Box>
+                      <Button
+                        size="small"
+                        sx={{ mt: 0.5 }}
+                        onClick={() => showLogs(result.logs!.map((l: LogEntry | string) => typeof l === 'string' ? l : `${l.time}: ${l.message}`))}
+                      >
+                        View Full Logs
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              ))}
+            </Paper>
           </Box>
         )}
 
