@@ -471,20 +471,30 @@ class TestRunnerService {
 
           this.updateTestProgress(testId, 40, `Duplicating ${adSetsToCreate} ad sets...`);
 
-          // CRITICAL: Ensure we have postId before duplication
-          // If postId wasn't captured during creation, fetch it from the ad
+          // CRITICAL: Ensure we have postId before duplication (for non-dynamic-creative scenarios)
+          // For dynamic creative, we use asset_feed_spec instead of postId
+          const isDynamicCreative = campaignData.dynamicCreativeEnabled || campaignData.dynamicTextEnabled;
           let postId = result.postId;
-          if (!postId && result.ads?.[0]?.id) {
-            addLog('Fetching post ID from created ad...');
-            try {
-              postId = await facebookApi.getPostIdFromAd(result.ads[0].id);
-              if (postId) {
-                addLog(`Post ID fetched: ${postId}`);
-              } else {
-                addLog('Warning: Could not fetch post ID - duplication may fail');
+
+          if (isDynamicCreative) {
+            addLog(`Creative Strategy: Dynamic Creative (using asset_feed_spec)`);
+            addLog(`Media hashes available: ${result.mediaHashes ? 'Yes' : 'No'}`);
+          } else {
+            addLog(`Creative Strategy: PostId (using object_story_id for 100% root effect)`);
+            if (!postId && result.ads?.[0]?.id) {
+              addLog('Fetching post ID from created ad...');
+              try {
+                postId = await facebookApi.getPostIdFromAd(result.ads[0].id);
+                if (postId) {
+                  addLog(`Post ID fetched: ${postId}`);
+                } else {
+                  addLog('WARNING: Could not fetch post ID - all duplicated ads may fail!');
+                }
+              } catch (err) {
+                addLog(`WARNING: Error fetching post ID: ${err.message}`);
               }
-            } catch (err) {
-              addLog(`Warning: Error fetching post ID: ${err.message}`);
+            } else if (postId) {
+              addLog(`Post ID already available: ${postId}`);
             }
           }
 
@@ -548,14 +558,29 @@ class TestRunnerService {
           // Duplicate ad sets if needed
           if (scenario.adSetCount > 1) {
             const adSetsToCreate = scenario.adSetCount - 1;
+            addLog(`Duplicating ${adSetsToCreate} ad sets for campaign ${i + 1}...`);
 
-            // CRITICAL: Ensure we have postId before duplication
+            // CRITICAL: Ensure we have postId before duplication (for non-dynamic-creative scenarios)
+            const isDynamicCreative = campaignDataCopy.dynamicCreativeEnabled || campaignDataCopy.dynamicTextEnabled;
             let postId = campResult.postId;
-            if (!postId && campResult.ads?.[0]?.id) {
-              try {
-                postId = await facebookApi.getPostIdFromAd(campResult.ads[0].id);
-              } catch (err) {
-                addLog(`Warning: Error fetching post ID for campaign ${i + 1}: ${err.message}`);
+
+            if (isDynamicCreative) {
+              addLog(`Creative Strategy: Dynamic Creative (using asset_feed_spec)`);
+            } else {
+              addLog(`Creative Strategy: PostId (using object_story_id for 100% root effect)`);
+              if (!postId && campResult.ads?.[0]?.id) {
+                try {
+                  postId = await facebookApi.getPostIdFromAd(campResult.ads[0].id);
+                  if (postId) {
+                    addLog(`Post ID fetched: ${postId}`);
+                  } else {
+                    addLog(`WARNING: Could not fetch post ID for campaign ${i + 1}`);
+                  }
+                } catch (err) {
+                  addLog(`WARNING: Error fetching post ID for campaign ${i + 1}: ${err.message}`);
+                }
+              } else if (postId) {
+                addLog(`Post ID already available: ${postId}`);
               }
             }
 
@@ -574,7 +599,18 @@ class TestRunnerService {
               adSetsToCreate,
               {
                 ...campaignDataCopy,
-                mediaHashes: campResult.mediaHashes
+                mediaHashes: campResult.mediaHashes,
+                // CRITICAL: Pass all fields needed for both postId and dynamic creative scenarios
+                dynamicCreativeEnabled: campaignDataCopy.dynamicCreativeEnabled,
+                dynamicTextEnabled: campaignDataCopy.dynamicTextEnabled,
+                primaryTextVariations: campaignDataCopy.primaryTextVariations,
+                headlineVariations: campaignDataCopy.headlineVariations,
+                primaryText: campaignDataCopy.primaryText,
+                headline: campaignDataCopy.headline,
+                description: campaignDataCopy.description,
+                url: campaignDataCopy.url,
+                displayLink: campaignDataCopy.displayLink,
+                callToAction: campaignDataCopy.callToAction
               }
             );
 
