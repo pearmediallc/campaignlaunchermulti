@@ -471,6 +471,23 @@ class TestRunnerService {
 
           this.updateTestProgress(testId, 40, `Duplicating ${adSetsToCreate} ad sets...`);
 
+          // CRITICAL: Ensure we have postId before duplication
+          // If postId wasn't captured during creation, fetch it from the ad
+          let postId = result.postId;
+          if (!postId && result.ads?.[0]?.id) {
+            addLog('Fetching post ID from created ad...');
+            try {
+              postId = await facebookApi.getPostIdFromAd(result.ads[0].id);
+              if (postId) {
+                addLog(`Post ID fetched: ${postId}`);
+              } else {
+                addLog('Warning: Could not fetch post ID - duplication may fail');
+              }
+            } catch (err) {
+              addLog(`Warning: Error fetching post ID: ${err.message}`);
+            }
+          }
+
           // Use batch duplication service
           const BatchDuplicationService = require('./batchDuplication');
           const batchService = new BatchDuplicationService(
@@ -483,7 +500,7 @@ class TestRunnerService {
           const batchResult = await batchService.duplicateAdSetsBatch(
             result.adSet.id,
             result.campaign.id,
-            result.postId || null,
+            postId || null,
             adSetsToCreate,
             {
               ...campaignData,
@@ -532,6 +549,16 @@ class TestRunnerService {
           if (scenario.adSetCount > 1) {
             const adSetsToCreate = scenario.adSetCount - 1;
 
+            // CRITICAL: Ensure we have postId before duplication
+            let postId = campResult.postId;
+            if (!postId && campResult.ads?.[0]?.id) {
+              try {
+                postId = await facebookApi.getPostIdFromAd(campResult.ads[0].id);
+              } catch (err) {
+                addLog(`Warning: Error fetching post ID for campaign ${i + 1}: ${err.message}`);
+              }
+            }
+
             const BatchDuplicationService = require('./batchDuplication');
             const batchService = new BatchDuplicationService(
               facebookApi.accessToken,
@@ -543,7 +570,7 @@ class TestRunnerService {
             const batchResult = await batchService.duplicateAdSetsBatch(
               campResult.adSet.id,
               campResult.campaign.id,
-              campResult.postId || null,
+              postId || null,
               adSetsToCreate,
               {
                 ...campaignDataCopy,
