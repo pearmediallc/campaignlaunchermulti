@@ -1064,7 +1064,12 @@ export const AdminTestDashboard: React.FC = () => {
                       <TableCell>
                         {result.logs && result.logs.length > 0 && (
                           <Tooltip title="View Logs">
-                            <IconButton size="small" onClick={() => showLogs(result.logs!)}>
+                            <IconButton size="small" onClick={() => {
+                              const normalized = (result.logs as (LogEntry | string)[]).map(log =>
+                                typeof log === 'string' ? log : `${log.time}: ${log.message}`
+                              );
+                              showLogs(normalized);
+                            }}>
                               <Info />
                             </IconButton>
                           </Tooltip>
