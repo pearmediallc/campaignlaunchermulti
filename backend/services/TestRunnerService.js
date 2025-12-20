@@ -313,15 +313,14 @@ class TestRunnerService {
 
       // Default spending limits for ALL test scenarios - $1 max to minimize risk
       // NOTE: Values are in dollars, will be converted to cents by createAdSet
+      // Only set maximum, not minimum (Facebook may reject min spend on some accounts)
       spendingLimits: {
         enabled: true,
-        dailyMin: 1,  // $1.00 minimum
         dailyMax: 1   // $1.00 maximum - safety limit
       },
       adSetBudget: {
         spendingLimits: {
           enabled: true,
-          dailyMin: 1,
           dailyMax: 1
         }
       }
