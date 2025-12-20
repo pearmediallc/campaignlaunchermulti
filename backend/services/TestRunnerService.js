@@ -258,8 +258,9 @@ class TestRunnerService {
       status: 'PAUSED',
 
       // Budget - using campaign level (CBO) with $50 budget
+      // NOTE: createCampaign multiplies by 100 to convert dollars to cents
       budgetLevel: scenario.budgetLevel || 'campaign',
-      dailyBudget: 5000, // $50.00 in cents
+      dailyBudget: 50, // $50.00 in dollars (will be converted to cents by createCampaign)
 
       // Ad Set settings
       adSetCount: scenario.adSetCount || 1,
@@ -311,16 +312,17 @@ class TestRunnerService {
       },
 
       // Default spending limits for ALL test scenarios - $1 max to minimize risk
+      // NOTE: Values are in dollars, will be converted to cents by createAdSet
       spendingLimits: {
         enabled: true,
-        dailyMin: 100,  // $1.00 minimum
-        dailyMax: 100   // $1.00 maximum - safety limit
+        dailyMin: 1,  // $1.00 minimum
+        dailyMax: 1   // $1.00 maximum - safety limit
       },
       adSetBudget: {
         spendingLimits: {
           enabled: true,
-          dailyMin: 100,
-          dailyMax: 100
+          dailyMin: 1,
+          dailyMax: 1
         }
       }
     };
