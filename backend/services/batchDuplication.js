@@ -196,7 +196,8 @@ class BatchDuplicationService {
         console.log(`   ✅ Deleted ${deleted} extra ad sets`);
       } else if (results.actualAdSets < expectedAdSets) {
         const shortfall = expectedAdSets - results.actualAdSets;
-        console.log(`   ⚠️ ${shortfall} ad sets short of expected - some batches truly failed`);
+        console.log(`   ⚠️ ${shortfall} ad sets short of expected - will retry in main function`);
+        results.shortfall = shortfall;
         results.corrections.push({
           action: 'shortfall_detected',
           missing: shortfall,
@@ -3500,6 +3501,143 @@ class BatchDuplicationService {
         });
       }
 
+      // =========================================================================
+      // RETRY LOGIC: If shortfall detected, create missing pairs one at a time
+      // This ensures 100% accuracy by retrying failed ad sets individually
+      // =========================================================================
+      if (verificationResult.shortfall && verificationResult.shortfall > 0) {
+        console.log(`\n🔄 Step 6: RETRY - Creating ${verificationResult.shortfall} missing pairs...`);
+
+        // Find which copy numbers are missing by checking existing ad set names
+        const existingCopyNumbers = new Set();
+        try {
+          const adSetsCheckResponse = await axios.get(
+            `${this.baseURL}/${campaignId}/adsets`,
+            {
+              params: {
+                fields: 'id,name',
+                limit: 200,
+                access_token: this.accessToken
+              },
+              timeout: 30000
+            }
+          );
+
+          (adSetsCheckResponse.data?.data || []).forEach(adSet => {
+            const match = adSet.name.match(/- Copy (\d+)$/);
+            if (match) {
+              existingCopyNumbers.add(parseInt(match[1]));
+            }
+            // Also check for "Main" which is copy 0
+            if (adSet.name.includes('Main') || adSet.id === originalAdSetId) {
+              existingCopyNumbers.add(0);
+            }
+          });
+        } catch (err) {
+          console.log(`   ⚠️ Could not fetch existing copy numbers: ${err.message}`);
+        }
+
+        // Find missing copy numbers (1 to count)
+        const missingCopyNumbers = [];
+        for (let i = 1; i <= count; i++) {
+          if (!existingCopyNumbers.has(i)) {
+            missingCopyNumbers.push(i);
+          }
+        }
+
+        console.log(`   📊 Missing copy numbers: ${missingCopyNumbers.slice(0, 10).join(', ')}${missingCopyNumbers.length > 10 ? '...' : ''}`);
+
+        let retriedSuccessCount = 0;
+        const maxRetries = Math.min(verificationResult.shortfall, 10); // Limit retries to avoid infinite loops
+
+        for (let i = 0; i < Math.min(missingCopyNumbers.length, maxRetries); i++) {
+          const copyNumber = missingCopyNumbers[i];
+          console.log(`   🔄 Retry ${i + 1}/${maxRetries}: Creating pair for copy ${copyNumber}...`);
+
+          try {
+            // Wait before each retry to avoid rate limits
+            await this.delay(2000);
+
+            // Create single ad set + ad pair
+            const singleBatchRequest = [];
+
+            // Ad set request
+            const adSetBody = this.prepareAdSetBodyFromOriginal(originalAdSet, campaignId, copyNumber, formData);
+            singleBatchRequest.push({
+              method: 'POST',
+              relative_url: `act_${this.adAccountId}/adsets`,
+              body: adSetBody
+            });
+
+            // Ad request (using reference to the ad set)
+            const adBody = this.prepareAdBodyForDuplicate(
+              campaign.name,
+              postId,
+              copyNumber,
+              `{result=0:$.id}`,
+              mediaHashes,
+              isDynamicCreative,
+              textVariations,
+              formData
+            );
+            singleBatchRequest.push({
+              method: 'POST',
+              relative_url: `act_${this.adAccountId}/ads`,
+              body: adBody
+            });
+
+            // Execute single batch
+            const retryResponse = await axios.post(
+              `${this.baseURL}`,
+              null,
+              {
+                params: {
+                  access_token: this.accessToken,
+                  batch: JSON.stringify(singleBatchRequest)
+                },
+                timeout: 60000
+              }
+            );
+
+            const retryResults = retryResponse.data;
+            if (Array.isArray(retryResults) && retryResults.length === 2) {
+              const adSetRetryResult = retryResults[0];
+              const adRetryResult = retryResults[1];
+
+              const adSetRetryBody = adSetRetryResult?.body ? JSON.parse(adSetRetryResult.body) : null;
+              const adRetryBody = adRetryResult?.body ? JSON.parse(adRetryResult.body) : null;
+
+              if (adSetRetryResult?.code === 200 && adRetryResult?.code === 200 && adSetRetryBody?.id && adRetryBody?.id) {
+                retriedSuccessCount++;
+                successfulPairs.push({
+                  pairNumber: copyNumber,
+                  adSetId: adSetRetryBody.id,
+                  adId: adRetryBody.id
+                });
+                console.log(`   ✅ Retry ${i + 1} SUCCESS: AdSet ${adSetRetryBody.id}, Ad ${adRetryBody.id}`);
+              } else if (adRetryResult?.code === 200 && adRetryBody?.id) {
+                // Ad created, ad set may have succeeded but returned null (Facebook quirk)
+                retriedSuccessCount++;
+                console.log(`   ✅ Retry ${i + 1} SUCCESS (inferred): Ad ${adRetryBody.id}`);
+              } else {
+                const adSetRetryError = adSetRetryBody?.error?.message || 'unknown';
+                const adRetryError = adRetryBody?.error?.message || 'unknown';
+                console.log(`   ❌ Retry ${i + 1} FAILED: AdSet error: ${adSetRetryError}, Ad error: ${adRetryError}`);
+              }
+            }
+          } catch (retryErr) {
+            console.log(`   ❌ Retry ${i + 1} FAILED: ${retryErr.message}`);
+          }
+        }
+
+        console.log(`   📊 Retry results: ${retriedSuccessCount}/${maxRetries} succeeded`);
+
+        // Update verification result with retry counts
+        verificationResult.actualAdSets += retriedSuccessCount;
+        verificationResult.actualAds += retriedSuccessCount;
+        verificationResult.retriedSuccess = retriedSuccessCount;
+      }
+
       const totalCleanup = preCleanupOrphansDeleted + smartVerifyCleanup;
 
       // Final stats
@@ -3799,9 +3937,8 @@ class BatchDuplicationService {
     else if ((mediaHashes || textVariations) && isDynamicCreative) {
       // Build asset_feed_spec from media hashes AND text variations
       // All ads share the same assets = 100% root effect for dynamic creatives
-      const assetFeedSpec = {
-        page_id: this.pageId
-      };
+      // NOTE: page_id goes at creative level, NOT inside asset_feed_spec
+      const assetFeedSpec = {};
 
       // Add text variations (primary texts and headlines)
       if (textVariations) {
@@ -3866,7 +4003,12 @@ class BatchDuplicationService {
         assetFeedSpec.ad_formats = ['SINGLE_IMAGE'];
       }
 
+      // For Dynamic Creative, page_id goes in object_story_spec at creative level
+      // NOT inside asset_feed_spec (causes "Unexpected key page_id" error)
       body.creative = JSON.stringify({
+        object_story_spec: {
+          page_id: this.pageId
+        },
         asset_feed_spec: assetFeedSpec
       });
     }
@@ -4906,9 +5048,9 @@ class BatchDuplicationService {
 
     if (templateData.dynamicCreativeEnabled || templateData.dynamicTextEnabled) {
       // Dynamic creative with asset_feed_spec
-      const assetFeedSpec = {
-        page_id: this.pageId
-      };
+      // IMPORTANT: page_id goes in object_story_spec, NOT inside asset_feed_spec
+      // Putting page_id inside asset_feed_spec causes: "(#100) Unexpected key page_id on param asset_feed_spec"
+      const assetFeedSpec = {};
 
       // Add text variations (DEDUPLICATED to avoid Facebook error)
       // Facebook rejects: "Duplicate of ad asset values are not allowed"
@@ -4967,7 +5109,11 @@ class BatchDuplicationService {
         assetFeedSpec.ad_formats = ['SINGLE_IMAGE'];
       }
 
-      creative = { asset_feed_spec: assetFeedSpec };
+      // page_id must be in object_story_spec at creative level, NOT in asset_feed_spec
+      creative = {
+        object_story_spec: { page_id: this.pageId },
+        asset_feed_spec: assetFeedSpec
+      };
 
     } else {
       // Regular creative with object_story_spec

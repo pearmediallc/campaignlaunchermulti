@@ -682,27 +682,53 @@ class TestRunnerService {
       this.updateTestProgress(testId, 90, 'Verifying results...');
 
       // Verify the results
-      const verification = await this.verifyTestResults(result, scenario, facebookApi, addLog);
+      const verificationResult = await this.verifyTestResults(result, scenario, facebookApi, addLog);
 
       // Calculate final results
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
 
+      // Extract campaign info for UI
+      const campaignIds = this.extractCampaignIds(result);
+      const expectedAdSets = scenario.adSetCount || 1;
+      const expectedAds = scenario.adSetCount || 1;
+      const actualAdSets = verificationResult.actual.adSets;
+      const actualAds = verificationResult.actual.ads;
+
       const finalResult = {
         testId,
         scenarioId,
         scenarioName: scenario.name,
-        status: verification.passed ? 'passed' : 'failed',
-        duration,
+        status: verificationResult.passed ? 'passed' : 'failed',
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(endTime).toISOString(),
+        duration: duration * 1000, // Frontend expects milliseconds
         durationFormatted: `${duration.toFixed(1)}s`,
         expected: {
           campaigns: scenario.campaigns || 1,
-          adSets: scenario.adSetCount || 1,
-          ads: scenario.adSetCount || 1
+          adSets: expectedAdSets,
+          ads: expectedAds
         },
-        actual: verification.actual,
-        verification,
-        campaignIds: this.extractCampaignIds(result),
+        actual: verificationResult.actual,
+        // Frontend-compatible verification format
+        verification: {
+          expectedAdSets,
+          actualAdSets,
+          expectedAds,
+          actualAds,
+          adSetsMatch: actualAdSets === expectedAdSets,
+          adsMatch: actualAds === expectedAds,
+          passed: verificationResult.passed,
+          issues: verificationResult.issues
+        },
+        // Frontend expects createdCampaign object
+        createdCampaign: campaignIds.length > 0 ? {
+          campaignId: campaignIds[0],
+          campaignName: result.campaign?.name || result.campaigns?.[0]?.name || `Campaign ${campaignIds[0]}`,
+          adSetCount: actualAdSets,
+          adCount: actualAds
+        } : null,
+        campaignIds,
         result,
         logs: this.activeTests.get(testId)?.logs || []
       };
@@ -711,7 +737,7 @@ class TestRunnerService {
       this.testResults.set(testId, finalResult);
       this.activeTests.delete(testId);
 
-      addLog(`Test ${verification.passed ? 'PASSED' : 'FAILED'}: ${verification.actual.adSets}/${scenario.adSetCount} ad sets, ${verification.actual.ads}/${scenario.adSetCount} ads`);
+      addLog(`Test ${verificationResult.passed ? 'PASSED' : 'FAILED'}: ${actualAdSets}/${scenario.adSetCount} ad sets, ${actualAds}/${scenario.adSetCount} ads`);
 
       return finalResult;
 
@@ -726,9 +752,13 @@ class TestRunnerService {
         scenarioId,
         scenarioName: scenario.name,
         status: 'error',
-        duration,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date(endTime).toISOString(),
+        duration: duration * 1000, // Frontend expects milliseconds
         durationFormatted: `${duration.toFixed(1)}s`,
         error: error.message,
+        verification: null,
+        createdCampaign: null,
         logs: this.activeTests.get(testId)?.logs || []
       };
 
