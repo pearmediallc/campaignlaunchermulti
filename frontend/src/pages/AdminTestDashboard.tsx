@@ -775,61 +775,56 @@ export const AdminTestDashboard: React.FC = () => {
                   )}
 
                   {/* Show error logs (filter for errors/warnings) */}
-                  {result.logs && result.logs.length > 0 && (
-                    <Box sx={{ mt: 1 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>
-                        Relevant Logs:
-                      </Typography>
-                      <Box sx={{
-                        bgcolor: '#1c1e21',
-                        color: '#fff',
-                        p: 1,
-                        borderRadius: 1,
-                        mt: 0.5,
-                        maxHeight: 150,
-                        overflow: 'auto',
-                        fontFamily: 'monospace',
-                        fontSize: '11px'
-                      }}>
-                        {result.logs
-                          .filter((log: LogEntry | string) => {
-                            const message = typeof log === 'string' ? log : log.message;
-                            return message.toLowerCase().includes('error') ||
-                                   message.toLowerCase().includes('fail') ||
-                                   message.toLowerCase().includes('warning') ||
-                                   message.toLowerCase().includes('exception');
-                          })
-                          .slice(-10) // Show last 10 error-related logs
-                          .map((log: LogEntry | string, i: number) => (
-                            <Box key={i} sx={{ mb: 0.5 }}>
-                              {typeof log === 'string' ? log : (
-                                <>
-                                  <span style={{ color: '#888' }}>{new Date(log.time).toLocaleTimeString()}</span>
-                                  {' '}{log.message}
-                                </>
-                              )}
-                            </Box>
-                          ))}
-                        {result.logs.filter((log: LogEntry | string) => {
-                          const message = typeof log === 'string' ? log : log.message;
-                          return message.toLowerCase().includes('error') ||
-                                 message.toLowerCase().includes('fail') ||
-                                 message.toLowerCase().includes('warning');
-                        }).length === 0 && (
-                          <Typography variant="caption" color="grey.500">
-                            No error-specific logs. Click "View Logs" below for full log.
-                          </Typography>
-                        )}
+                  {result.logs && result.logs.length > 0 && (() => {
+                    // Normalize logs to array of strings for easier processing
+                    const normalizedLogs = (result.logs as (LogEntry | string)[]).map(log =>
+                      typeof log === 'string' ? log : `${log.time}: ${log.message}`
+                    );
+                    const errorLogs = normalizedLogs.filter(msg =>
+                      msg.toLowerCase().includes('error') ||
+                      msg.toLowerCase().includes('fail') ||
+                      msg.toLowerCase().includes('warning') ||
+                      msg.toLowerCase().includes('exception')
+                    );
+
+                    return (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>
+                          Relevant Logs:
+                        </Typography>
+                        <Box sx={{
+                          bgcolor: '#1c1e21',
+                          color: '#fff',
+                          p: 1,
+                          borderRadius: 1,
+                          mt: 0.5,
+                          maxHeight: 150,
+                          overflow: 'auto',
+                          fontFamily: 'monospace',
+                          fontSize: '11px'
+                        }}>
+                          {errorLogs.length > 0 ? (
+                            errorLogs.slice(-10).map((logMsg, i) => (
+                              <Box key={i} sx={{ mb: 0.5 }}>
+                                {logMsg}
+                              </Box>
+                            ))
+                          ) : (
+                            <Typography variant="caption" color="grey.500">
+                              No error-specific logs. Click "View Logs" below for full log.
+                            </Typography>
+                          )}
+                        </Box>
+                        <Button
+                          size="small"
+                          sx={{ mt: 0.5 }}
+                          onClick={() => showLogs(normalizedLogs)}
+                        >
+                          View Full Logs
+                        </Button>
                       </Box>
-                      <Button
-                        size="small"
-                        sx={{ mt: 0.5 }}
-                        onClick={() => showLogs(result.logs!.map((l: LogEntry | string) => typeof l === 'string' ? l : `${l.time}: ${l.message}`))}
-                      >
-                        View Full Logs
-                      </Button>
-                    </Box>
-                  )}
+                    );
+                  })()}
                 </Box>
               ))}
             </Paper>
