@@ -44,6 +44,10 @@ import {
   ListItemIcon,
   ListItemText,
   Badge,
+  TextField,
+  Slider,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   ExpandMore,
@@ -63,6 +67,8 @@ import {
   Clear,
   Settings,
   AccountTree,
+  Build,
+  Tune,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
@@ -180,6 +186,25 @@ export const AdminTestDashboard: React.FC = () => {
   const [deletingMedia, setDeletingMedia] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Custom scenario overrides - allows editing ad set count, ad count, and campaign copies per scenario
+  const [scenarioOverrides, setScenarioOverrides] = useState<Record<string, { adSetCount?: number; adCount?: number; campaignCopies?: number }>>({});
+
+  // Helper to get effective value for a scenario (override or default)
+  const getScenarioValue = (scenarioId: string, field: 'adSetCount' | 'adCount' | 'campaignCopies', defaultValue: number) => {
+    return scenarioOverrides[scenarioId]?.[field] ?? defaultValue;
+  };
+
+  // Update scenario override
+  const updateScenarioOverride = (scenarioId: string, field: 'adSetCount' | 'adCount' | 'campaignCopies', value: number) => {
+    setScenarioOverrides(prev => ({
+      ...prev,
+      [scenarioId]: {
+        ...prev[scenarioId],
+        [field]: value
+      }
+    }));
+  };
+
   // Check if user is admin or super_admin (case-insensitive)
   const isAdmin = user?.roles?.some((role: any) => {
     const roleName = typeof role === 'string' ? role : role.name;
@@ -234,9 +259,20 @@ export const AdminTestDashboard: React.FC = () => {
   // Run single test
   const runTest = async (scenarioId: string) => {
     try {
-      const response = await api.post('/admin/test/run', { scenarioId });
+      // Get custom overrides for this scenario
+      const overrides = scenarioOverrides[scenarioId];
+
+      const response = await api.post('/admin/test/run', {
+        scenarioId,
+        // Pass custom overrides if they exist
+        customAdSetCount: overrides?.adSetCount,
+        customAdCount: overrides?.adCount,
+        customCampaignCopies: overrides?.campaignCopies
+      });
       if (response.data.success) {
-        toast.success(`Test started: ${scenarioId}`);
+        const adSets = overrides?.adSetCount || 'default';
+        const copies = overrides?.campaignCopies || 1;
+        toast.success(`Test started: ${scenarioId} (${adSets} ad sets, ${copies} campaign${copies > 1 ? 's' : ''})`);
         // Add to running tests with initial state
         setRunningTests(prev => {
           const next = new Map(prev);
@@ -922,8 +958,9 @@ export const AdminTestDashboard: React.FC = () => {
                         <TableCell>Scenario</TableCell>
                         <TableCell>Description</TableCell>
                         <TableCell>Media Type</TableCell>
-                        <TableCell>Ad Sets</TableCell>
-                        <TableCell>Ads</TableCell>
+                        <TableCell sx={{ minWidth: 80 }}>Ad Sets</TableCell>
+                        <TableCell sx={{ minWidth: 80 }}>Ads</TableCell>
+                        <TableCell sx={{ minWidth: 80 }}>Copies</TableCell>
                         <TableCell>Action</TableCell>
                       </TableRow>
                     </TableHead>
@@ -952,8 +989,39 @@ export const AdminTestDashboard: React.FC = () => {
                               variant="outlined"
                             />
                           </TableCell>
-                          <TableCell>{scenario.adSetCount || 1}</TableCell>
-                          <TableCell>{scenario.adCount || scenario.adSetCount || 1}</TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={getScenarioValue(scenario.id, 'adSetCount', scenario.adSetCount || 1)}
+                              onChange={(e) => updateScenarioOverride(scenario.id, 'adSetCount', parseInt(e.target.value) || 1)}
+                              inputProps={{ min: 1, max: 100, style: { width: 50, textAlign: 'center' } }}
+                              variant="outlined"
+                              sx={{ '& .MuiOutlinedInput-root': { bgcolor: scenarioOverrides[scenario.id]?.adSetCount ? 'primary.50' : 'transparent' } }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={getScenarioValue(scenario.id, 'adCount', scenario.adCount || scenario.adSetCount || 1)}
+                              onChange={(e) => updateScenarioOverride(scenario.id, 'adCount', parseInt(e.target.value) || 1)}
+                              inputProps={{ min: 1, max: 100, style: { width: 50, textAlign: 'center' } }}
+                              variant="outlined"
+                              sx={{ '& .MuiOutlinedInput-root': { bgcolor: scenarioOverrides[scenario.id]?.adCount ? 'primary.50' : 'transparent' } }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={getScenarioValue(scenario.id, 'campaignCopies', 1)}
+                              onChange={(e) => updateScenarioOverride(scenario.id, 'campaignCopies', parseInt(e.target.value) || 1)}
+                              inputProps={{ min: 1, max: 10, style: { width: 50, textAlign: 'center' } }}
+                              variant="outlined"
+                              sx={{ '& .MuiOutlinedInput-root': { bgcolor: scenarioOverrides[scenario.id]?.campaignCopies ? 'primary.50' : 'transparent' } }}
+                            />
+                          </TableCell>
                           <TableCell>
                             <Tooltip title="Run this test">
                               <IconButton

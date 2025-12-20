@@ -201,7 +201,7 @@ router.get('/scenarios', authenticate, adminOnly, async (req, res) => {
 router.post('/run', authenticate, adminOnly, async (req, res) => {
   try {
     const userId = req.user?.id || req.userId;
-    const { scenarioId, resources: customResources } = req.body;
+    const { scenarioId, resources: customResources, customAdSetCount, customAdCount, customCampaignCopies } = req.body;
 
     if (!scenarioId) {
       return res.status(400).json({
@@ -265,11 +265,19 @@ router.post('/run', authenticate, adminOnly, async (req, res) => {
 
     console.log(`[AdminTest] FacebookAPI initialized with pixelId: ${resources.pixelId || 'not set'}`);
 
+    // Build custom overrides object if any custom values were provided
+    const customOverrides = {};
+    if (customAdSetCount) customOverrides.adSetCount = parseInt(customAdSetCount);
+    if (customAdCount) customOverrides.adCount = parseInt(customAdCount);
+    if (customCampaignCopies) customOverrides.campaignCopies = parseInt(customCampaignCopies);
+
+    console.log(`[AdminTest] Custom overrides:`, Object.keys(customOverrides).length > 0 ? customOverrides : 'none');
+
     // Run test (async - returns immediately with testId)
     const testId = `${scenarioId}-${Date.now()}`;
 
-    // Start test in background
-    TestRunnerService.runTest(scenarioId, resources, facebookApi, userId)
+    // Start test in background with custom overrides
+    TestRunnerService.runTest(scenarioId, resources, facebookApi, userId, customOverrides)
       .then(result => {
         console.log(`Test ${testId} completed:`, result.status);
       })
@@ -282,7 +290,8 @@ router.post('/run', authenticate, adminOnly, async (req, res) => {
       success: true,
       message: 'Test started',
       testId,
-      scenarioId
+      scenarioId,
+      customOverrides: Object.keys(customOverrides).length > 0 ? customOverrides : undefined
     });
 
   } catch (error) {

@@ -390,11 +390,28 @@ class TestRunnerService {
 
   /**
    * Run a single test scenario
+   * @param {string} scenarioId - The scenario ID to run
+   * @param {object} resources - Facebook resources (adAccountId, pageId, pixelId)
+   * @param {object} facebookApi - Initialized FacebookAPI instance
+   * @param {string} userId - User ID
+   * @param {object} customOverrides - Optional custom overrides { adSetCount, adCount, campaignCopies }
    */
-  async runTest(scenarioId, resources, facebookApi, userId) {
-    const scenario = TEST_SCENARIOS.find(s => s.id === scenarioId);
+  async runTest(scenarioId, resources, facebookApi, userId, customOverrides = {}) {
+    let scenario = TEST_SCENARIOS.find(s => s.id === scenarioId);
     if (!scenario) {
       throw new Error(`Scenario not found: ${scenarioId}`);
+    }
+
+    // Apply custom overrides to scenario (create a copy to avoid mutating original)
+    if (Object.keys(customOverrides).length > 0) {
+      scenario = {
+        ...scenario,
+        adSetCount: customOverrides.adSetCount || scenario.adSetCount,
+        adCount: customOverrides.adCount || scenario.adCount || scenario.adSetCount,
+        campaigns: customOverrides.campaignCopies || scenario.campaigns || 1
+      };
+      console.log(`[TestRunner] Applied custom overrides:`, customOverrides);
+      console.log(`[TestRunner] Effective scenario: ${scenario.adSetCount} ad sets, ${scenario.adCount} ads, ${scenario.campaigns} campaign(s)`);
     }
 
     const testId = `${scenarioId}-${Date.now()}`;
@@ -420,6 +437,9 @@ class TestRunnerService {
 
     try {
       addLog(`Starting test: ${scenario.name}`);
+      if (Object.keys(customOverrides).length > 0) {
+        addLog(`Custom overrides: ${scenario.adSetCount} ad sets, ${scenario.campaigns || 1} campaign(s)`);
+      }
 
       // Get available media
       const media = this.getAvailableMedia();
@@ -563,6 +583,44 @@ class TestRunnerService {
           result.batchSummary = batchResult.summary;
         }
 
+        // Handle campaign copies (duplicate entire campaign structure)
+        // This uses the same duplicateCampaignBatch method as campaign-management
+        if (scenario.campaigns && scenario.campaigns > 1) {
+          const copiesToCreate = scenario.campaigns - 1; // Already have 1 campaign
+          addLog(`\n🔄 CAMPAIGN COPIES: Creating ${copiesToCreate} additional campaign copies...`);
+          this.updateTestProgress(testId, 60, `Duplicating ${copiesToCreate} campaign copies...`);
+
+          const BatchDuplicationService = require('./batchDuplication');
+          const batchService = new BatchDuplicationService(
+            facebookApi.accessToken,
+            resources.adAccountId.replace('act_', ''),
+            resources.pageId,
+            resources.pixelId
+          );
+
+          // Use the same duplicateCampaignBatch method as campaign-management
+          const copyResults = await batchService.duplicateCampaignBatch(
+            result.campaign.id,
+            campaignData.campaignName,
+            copiesToCreate
+          );
+
+          addLog(`Campaign duplication complete: ${copyResults.filter(r => r.success || r.partialSuccess).length}/${copiesToCreate} copies created`);
+
+          // Store copy results
+          result.campaignCopies = copyResults;
+          result.totalCampaigns = 1 + copyResults.filter(r => r.success || r.partialSuccess).length;
+
+          // Log details for each copy
+          copyResults.forEach((copy, idx) => {
+            if (copy.success || copy.partialSuccess) {
+              addLog(`  Copy ${idx + 1}: ${copy.id} - ${copy.adSetsCreated} ad sets, ${copy.adsCreated} ads`);
+            } else {
+              addLog(`  Copy ${idx + 1}: FAILED - ${copy.error}`);
+            }
+          });
+        }
+
       } else if (scenario.strategy === 'strategyForAll') {
         // Multiple campaigns
         addLog(`Creating ${scenario.campaigns} campaigns...`);
@@ -690,8 +748,10 @@ class TestRunnerService {
 
       // Extract campaign info for UI
       const campaignIds = this.extractCampaignIds(result);
-      const expectedAdSets = scenario.adSetCount || 1;
-      const expectedAds = scenario.adSetCount || 1;
+      const numCampaigns = scenario.campaigns || 1;
+      // Expected ad sets/ads = (ad sets per campaign) * (number of campaigns)
+      const expectedAdSets = (scenario.adSetCount || 1) * numCampaigns;
+      const expectedAds = (scenario.adSetCount || 1) * numCampaigns;
       const actualAdSets = verificationResult.actual.adSets;
       const actualAds = verificationResult.actual.ads;
 
@@ -737,7 +797,7 @@ class TestRunnerService {
       this.testResults.set(testId, finalResult);
       this.activeTests.delete(testId);
 
-      addLog(`Test ${verificationResult.passed ? 'PASSED' : 'FAILED'}: ${actualAdSets}/${scenario.adSetCount} ad sets, ${actualAds}/${scenario.adSetCount} ads`);
+      addLog(`Test ${verificationResult.passed ? 'PASSED' : 'FAILED'}: ${campaignIds.length}/${numCampaigns} campaigns, ${actualAdSets}/${expectedAdSets} ad sets, ${actualAds}/${expectedAds} ads`);
 
       return finalResult;
 
@@ -856,6 +916,14 @@ class TestRunnerService {
       ids.push(result.campaign.id);
     }
 
+    // Handle campaign copies (from duplicateCampaignBatch)
+    if (result.campaignCopies) {
+      result.campaignCopies.forEach(copy => {
+        if (copy.id) ids.push(copy.id);
+      });
+    }
+
+    // Handle strategyForAll campaigns
     if (result.campaigns) {
       result.campaigns.forEach(c => {
         if (c.campaign?.id) ids.push(c.campaign.id);
