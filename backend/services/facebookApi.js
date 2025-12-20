@@ -453,7 +453,7 @@ class FacebookAPI {
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
         bid_strategy: adSetData.bidStrategy,  // Must be provided by user
-        status: 'ACTIVE',
+        status: adSetData.status || 'ACTIVE', // Respect status (PAUSED for test campaigns)
         access_token: this.accessToken
       };
 
@@ -1522,7 +1522,7 @@ class FacebookAPI {
         name: adName,
         adset_id: adData.adsetId,
         creative: JSON.stringify(creative),
-        status: 'ACTIVE',
+        status: adData.status || 'ACTIVE', // Respect status (PAUSED for test campaigns)
         access_token: this.accessToken
       };
 
@@ -2423,6 +2423,7 @@ class FacebookAPI {
         objective: campaignData.objective, // Pass objective (OUTCOME_SALES, OUTCOME_LEADS, etc.)
         bidStrategy: campaignData.bidStrategy, // Pass bid strategy
         specialAdCategories: campaignData.specialAdCategories, // Pass special ad categories
+        status: campaignData.status, // Pass status (PAUSED for test campaigns, ACTIVE for real campaigns)
         daily_budget: isCBO ? (campaignData.campaignBudget?.dailyBudget || campaignData.dailyBudget) : undefined, // Only for CBO
         lifetime_budget: isCBO ? (campaignData.campaignBudget?.lifetimeBudget || campaignData.lifetimeBudget) : undefined // Only for CBO
       });
@@ -2432,6 +2433,7 @@ class FacebookAPI {
       const adSet = await this.createAdSet({
         campaignName: campaignData.campaignName,
         campaignId: campaign.id,
+        status: campaignData.status, // Pass status (PAUSED for test campaigns)
         budgetType: campaignData.budgetType || 'daily',
         dailyBudget: isCBO ? undefined : campaignData.dailyBudget, // Skip budget for CBO
         lifetimeBudget: isCBO ? undefined : campaignData.lifetimeBudget, // Skip budget for CBO
@@ -2804,6 +2806,7 @@ class FacebookAPI {
             name: adName,
             campaignName: campaignData.campaignName,
             adsetId: adSet.id,
+            status: campaignData.status, // Pass status (PAUSED for test campaigns)
             url: variation.url || campaignData.url,
             primaryText: variation.primaryText || campaignData.primaryText,
             headline: variation.headline || campaignData.headline,
@@ -2835,6 +2838,7 @@ class FacebookAPI {
           name: `[Launcher] ${campaignData.campaignName} - Ad Main`, // Explicitly set "Main" suffix for initial ad
           campaignName: campaignData.campaignName,
           adsetId: adSet.id,
+          status: campaignData.status, // Pass status (PAUSED for test campaigns)
           url: campaignData.url,
           primaryText: campaignData.primaryText,
           headline: campaignData.headline,
@@ -3111,6 +3115,7 @@ class FacebookAPI {
         campaignName: campaignData.campaignName,
         name: `[Launcher] ${campaignData.campaignName} - Ad Main`, // Explicitly set "Main" suffix for initial ad
         adsetId: adSet.id,
+        status: campaignData.status, // Pass status (PAUSED for test campaigns)
         url: campaignData.url,
         primaryText: campaignData.primaryText,
         headline: campaignData.headline,

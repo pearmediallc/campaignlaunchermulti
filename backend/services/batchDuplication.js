@@ -2739,7 +2739,8 @@ class BatchDuplicationService {
             const adSetBody = this.prepareAdSetBodyFromOriginal(
               originalAdSet,
               campaignId,
-              pairNumber
+              pairNumber,
+              formData // Pass formData to respect status (PAUSED for test campaigns)
             );
 
             batchOperations.push({
@@ -3391,7 +3392,7 @@ class BatchDuplicationService {
 
             try {
               // Create atomic batch for this single pair
-              const adSetBody = this.prepareAdSetBodyFromOriginal(originalAdSet, campaignId, pairNumber);
+              const adSetBody = this.prepareAdSetBodyFromOriginal(originalAdSet, campaignId, pairNumber, formData);
               const adBody = this.prepareAdBodyForDuplicate(
                 formData.campaignName || 'Campaign',
                 postId,
@@ -3603,7 +3604,8 @@ class BatchDuplicationService {
         const adSetBody = this.prepareAdSetBodyFromOriginal(
           originalAdSet,
           campaignId,
-          pairNumber
+          pairNumber,
+          formData // Pass formData to respect status (PAUSED for test campaigns)
         );
 
         pairBatch.push({
@@ -3695,11 +3697,13 @@ class BatchDuplicationService {
   /**
    * Prepare ad set body from original ad set data (for Strategy 150 duplication)
    */
-  prepareAdSetBodyFromOriginal(originalAdSet, campaignId, copyNumber) {
+  prepareAdSetBodyFromOriginal(originalAdSet, campaignId, copyNumber, formData = null) {
+    // Get status from formData if provided, default to ACTIVE
+    const adSetStatus = formData?.status || 'ACTIVE';
     const body = {
       name: `${originalAdSet.name} - Copy ${copyNumber}`,
       campaign_id: campaignId,
-      status: 'ACTIVE',
+      status: adSetStatus, // Respect passed status (PAUSED for test campaigns)
       targeting: JSON.stringify(originalAdSet.targeting),
       optimization_goal: originalAdSet.optimization_goal,
       billing_event: originalAdSet.billing_event || 'IMPRESSIONS'
@@ -3776,10 +3780,12 @@ class BatchDuplicationService {
    * Supports BOTH regular ads (post ID) and dynamic creatives (asset_feed_spec)
    */
   prepareAdBodyForDuplicate(campaignName, postId, copyNumber, adSetIdRef, mediaHashes = null, isDynamicCreative = false, textVariations = null, campaignData = null) {
+    // Get status from campaignData if provided, default to ACTIVE
+    const adStatus = campaignData?.status || 'ACTIVE';
     const body = {
       name: `${campaignName} - Ad Copy ${copyNumber}`,
       adset_id: adSetIdRef,
-      status: 'ACTIVE'
+      status: adStatus // Respect passed status (PAUSED for test campaigns)
     };
 
     // APPROACH 1: Regular ad with post ID (100% root effect via shared post)
