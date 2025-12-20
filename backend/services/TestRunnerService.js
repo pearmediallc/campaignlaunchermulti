@@ -481,20 +481,47 @@ class TestRunnerService {
             addLog(`Media hashes available: ${result.mediaHashes ? 'Yes' : 'No'}`);
           } else {
             addLog(`Creative Strategy: PostId (using object_story_id for 100% root effect)`);
+
+            // Try to get postId with retries if not already available
             if (!postId && result.ads?.[0]?.id) {
-              addLog('Fetching post ID from created ad...');
-              try {
-                postId = await facebookApi.getPostIdFromAd(result.ads[0].id);
-                if (postId) {
-                  addLog(`Post ID fetched: ${postId}`);
-                } else {
-                  addLog('WARNING: Could not fetch post ID - all duplicated ads may fail!');
+              addLog('Fetching post ID from created ad (with retries)...');
+              const maxRetries = 5;
+              const retryDelays = [2000, 3000, 5000, 8000, 12000]; // Progressive delays
+
+              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                  postId = await facebookApi.getPostIdFromAd(result.ads[0].id);
+                  if (postId) {
+                    addLog(`Post ID fetched on attempt ${attempt}: ${postId}`);
+                    break;
+                  }
+
+                  if (attempt < maxRetries) {
+                    const delay = retryDelays[attempt - 1];
+                    addLog(`Attempt ${attempt}/${maxRetries} returned null, waiting ${delay/1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                  }
+                } catch (err) {
+                  if (attempt < maxRetries) {
+                    const delay = retryDelays[attempt - 1];
+                    addLog(`Attempt ${attempt}/${maxRetries} error: ${err.message}, waiting ${delay/1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                  } else {
+                    addLog(`CRITICAL ERROR: All ${maxRetries} attempts to fetch postId failed: ${err.message}`);
+                  }
                 }
-              } catch (err) {
-                addLog(`WARNING: Error fetching post ID: ${err.message}`);
+              }
+
+              // FAIL EARLY: If we still don't have postId for non-DC scenario, throw error
+              // This prevents creating 49 orphan ad sets with no ads
+              if (!postId) {
+                throw new Error('CRITICAL: Cannot proceed with duplication - postId not available for non-dynamic-creative scenario. All duplicated ads would fail with "creative is required" error.');
               }
             } else if (postId) {
               addLog(`Post ID already available: ${postId}`);
+            } else {
+              // No ads were created and no postId - this shouldn't happen
+              throw new Error('CRITICAL: No ads created and no postId available. Cannot proceed with duplication.');
             }
           }
 
@@ -568,19 +595,45 @@ class TestRunnerService {
               addLog(`Creative Strategy: Dynamic Creative (using asset_feed_spec)`);
             } else {
               addLog(`Creative Strategy: PostId (using object_story_id for 100% root effect)`);
+
+              // Try to get postId with retries if not already available
               if (!postId && campResult.ads?.[0]?.id) {
-                try {
-                  postId = await facebookApi.getPostIdFromAd(campResult.ads[0].id);
-                  if (postId) {
-                    addLog(`Post ID fetched: ${postId}`);
-                  } else {
-                    addLog(`WARNING: Could not fetch post ID for campaign ${i + 1}`);
+                addLog('Fetching post ID from created ad (with retries)...');
+                const maxRetries = 5;
+                const retryDelays = [2000, 3000, 5000, 8000, 12000];
+
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                  try {
+                    postId = await facebookApi.getPostIdFromAd(campResult.ads[0].id);
+                    if (postId) {
+                      addLog(`Post ID fetched on attempt ${attempt}: ${postId}`);
+                      break;
+                    }
+
+                    if (attempt < maxRetries) {
+                      const delay = retryDelays[attempt - 1];
+                      addLog(`Attempt ${attempt}/${maxRetries} returned null, waiting ${delay/1000}s...`);
+                      await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                  } catch (err) {
+                    if (attempt < maxRetries) {
+                      const delay = retryDelays[attempt - 1];
+                      addLog(`Attempt ${attempt}/${maxRetries} error: ${err.message}, waiting ${delay/1000}s...`);
+                      await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                      addLog(`CRITICAL ERROR: All ${maxRetries} attempts to fetch postId failed: ${err.message}`);
+                    }
                   }
-                } catch (err) {
-                  addLog(`WARNING: Error fetching post ID for campaign ${i + 1}: ${err.message}`);
+                }
+
+                // FAIL EARLY: If we still don't have postId for non-DC scenario, throw error
+                if (!postId) {
+                  throw new Error(`CRITICAL: Cannot proceed with duplication for campaign ${i + 1} - postId not available.`);
                 }
               } else if (postId) {
                 addLog(`Post ID already available: ${postId}`);
+              } else {
+                throw new Error(`CRITICAL: No ads created for campaign ${i + 1} and no postId available.`);
               }
             }
 
