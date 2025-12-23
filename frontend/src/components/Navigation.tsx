@@ -21,7 +21,7 @@ import {
   DialogContentText,
   DialogActions
 } from '@mui/material';
-import { AccountCircle, Dashboard, People, History, Person, Campaign, BarChart, AutoAwesome, Facebook, LinkOff, Science } from '@mui/icons-material';
+import { AccountCircle, Dashboard, People, History, Person, Campaign, BarChart, AutoAwesome, Facebook, LinkOff, Science, Psychology } from '@mui/icons-material';
 import ResourceSwitcher from './ResourceSwitcher';
 import { facebookAuthApi } from '../services/api';
 import { toast } from 'react-toastify';
@@ -236,6 +236,26 @@ const Navigation: React.FC = () => {
               Manage Campaigns
             </Button>
 
+            {/* Intelligence Dashboard Button */}
+            <Button
+              variant="contained"
+              startIcon={<Psychology />}
+              onClick={() => navigate('/intelligence')}
+              sx={{
+                backgroundColor: '#9c27b0',
+                color: '#fff',
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '14px',
+                px: 2,
+                '&:hover': {
+                  backgroundColor: '#7b1fa2'
+                }
+              }}
+            >
+              Intelligence
+            </Button>
+
             {/* Temporary Analytics Button - Commented out per user request
             <Button
               variant="contained"
@@ -367,6 +387,12 @@ const Navigation: React.FC = () => {
                   Audit Logs
                 </MenuItem>
               )}
+
+              {/* Intelligence Dashboard */}
+              <MenuItem onClick={() => handleNavigate('/intelligence')}>
+                <Psychology sx={{ mr: 1, fontSize: 20, color: '#9c27b0' }} />
+                Intelligence Dashboard
+              </MenuItem>
 
               {/* Admin Test Dashboard - Only visible to admins */}
               {user?.roles?.some((role: any) => {

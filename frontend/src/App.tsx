@@ -26,6 +26,7 @@ import StrategyForAllContainer from './components/StrategyForAll/StrategyForAllC
 import StrategyForAdsContainer from './components/StrategyForAds/StrategyForAdsContainer';
 import CampaignManagement from './components/CampaignManagement/CampaignManagement';
 import AdminTestDashboard from './pages/AdminTestDashboard';
+import IntelligenceDashboard from './pages/IntelligenceDashboard';
 
 // Configure axios defaults for production
 if (process.env.NODE_ENV === 'production') {
@@ -242,6 +243,17 @@ function App() {
                   <>
                     <Navigation />
                     <AdminTestDashboard />
+                  </>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/intelligence"
+              element={
+                <ProtectedRoute>
+                  <>
+                    <Navigation />
+                    <IntelligenceDashboard />
                   </>
                 </ProtectedRoute>
               }

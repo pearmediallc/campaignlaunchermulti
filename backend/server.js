@@ -183,6 +183,17 @@ app.use('/api/migrations', require('./routes/migrationRunner'));
 // Rate limit management routes (System Users, Queue monitoring)
 app.use('/api/rate-limit', require('./routes/rateLimitManagement'));
 
+// Campaign Intelligence Engine routes (isolated module)
+// This module is completely separate from campaign management
+// Set ENABLE_INTELLIGENCE=true to enable
+const intelligence = require('./intelligence');
+if (intelligence.enabled && intelligence.routes) {
+  // Apply authentication middleware to intelligence routes
+  const { authenticateToken } = require('./middleware/auth');
+  app.use('/api/intelligence', authenticateToken, intelligence.routes);
+  console.log('🧠 Intelligence API routes mounted at /api/intelligence');
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Facebook Campaign Launcher API is running' });
 });
@@ -313,6 +324,21 @@ async function startServer() {
     } catch (queueError) {
       console.error('Failed to start queue processor:', queueError.message);
       // Don't fail server startup if queue processor fails
+    }
+
+    // Initialize Campaign Intelligence Engine (if enabled)
+    // This module is completely isolated from campaign management
+    try {
+      if (intelligence.enabled) {
+        const initialized = await intelligence.initialize();
+        if (initialized) {
+          intelligence.start();
+          console.log('🧠 Campaign Intelligence Engine started successfully.');
+        }
+      }
+    } catch (intelError) {
+      console.error('Failed to start intelligence engine:', intelError.message);
+      // Don't fail server startup if intelligence fails
     }
 
     app.listen(PORT, () => {

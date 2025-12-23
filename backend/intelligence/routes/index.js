@@ -1,0 +1,971 @@
+'use strict';
+
+/**
+ * Intelligence API Routes
+ *
+ * All routes prefixed with /api/intelligence/
+ * Requires authentication for all endpoints.
+ *
+ * ISOLATION PRINCIPLE:
+ * These routes are completely separate from campaign management routes.
+ * They only interact with intel_* tables and intelligence services.
+ */
+
+const express = require('express');
+const router = express.Router();
+
+// Import services
+const {
+  InsightsCollectorService,
+  PixelHealthService,
+  AutomationRulesEngine,
+  AccountScoreService,
+  PatternLearningService,
+  NotificationService,
+  IntelligenceScheduler,
+  ActionExecutor
+} = require('../services');
+
+const ExpertRulesService = require('../services/ExpertRulesService');
+
+// Import models
+const intelModels = require('../models');
+
+// Middleware to check if intelligence is enabled
+const checkEnabled = (req, res, next) => {
+  if (process.env.ENABLE_INTELLIGENCE !== 'true') {
+    return res.status(503).json({
+      success: false,
+      error: 'Intelligence module is disabled'
+    });
+  }
+  next();
+};
+
+// Apply to all routes
+router.use(checkEnabled);
+
+// ============================================
+// Health & Status Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/health
+ * Health check for intelligence module
+ */
+router.get('/health', async (req, res) => {
+  try {
+    const health = await IntelligenceScheduler.healthCheck();
+    res.json({ success: true, ...health });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/status
+ * Get scheduler status
+ */
+router.get('/status', async (req, res) => {
+  try {
+    const status = IntelligenceScheduler.getStatus();
+    res.json({ success: true, ...status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Dashboard Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/dashboard
+ * Get dashboard data for the current user
+ */
+router.get('/dashboard', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [scores, notifications, pendingActions, patterns] = await Promise.all([
+      AccountScoreService.getDashboardData(userId),
+      NotificationService.getSummary(userId),
+      ActionExecutor.getPendingActions(userId),
+      PatternLearningService.getPatternInsights(userId)
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        account_scores: scores,
+        notifications,
+        pending_actions: pendingActions,
+        patterns
+      }
+    });
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Account Scores Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/scores
+ * Get account scores for user
+ */
+router.get('/scores', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const data = await AccountScoreService.getDashboardData(userId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/scores/:adAccountId
+ * Get detailed score for specific account
+ */
+router.get('/scores/:adAccountId', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountId } = req.params;
+    const data = await AccountScoreService.getAccountDetail(userId, adAccountId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Automation Rules Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/rules
+ * Get all rules for user
+ */
+router.get('/rules', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { active_only, rule_type } = req.query;
+
+    const rules = await AutomationRulesEngine.getRulesForUser(userId, {
+      active_only: active_only === 'true',
+      rule_type
+    });
+
+    res.json({ success: true, rules });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/rules/templates
+ * Get default rule templates
+ */
+router.get('/rules/templates', (req, res) => {
+  const templates = AutomationRulesEngine.getDefaultRuleTemplates();
+  res.json({ success: true, templates });
+});
+
+/**
+ * POST /api/intelligence/rules
+ * Create a new rule
+ */
+router.post('/rules', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const rule = await AutomationRulesEngine.createRule(userId, req.body);
+    res.json({ success: true, rule });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/intelligence/rules/:ruleId
+ * Update a rule
+ */
+router.put('/rules/:ruleId', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { ruleId } = req.params;
+
+    const rule = await intelModels.IntelAutomationRule.findOne({
+      where: { id: ruleId, user_id: userId }
+    });
+
+    if (!rule) {
+      return res.status(404).json({ success: false, error: 'Rule not found' });
+    }
+
+    await rule.update(req.body);
+    res.json({ success: true, rule });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/intelligence/rules/:ruleId
+ * Delete a rule
+ */
+router.delete('/rules/:ruleId', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { ruleId } = req.params;
+
+    const rule = await intelModels.IntelAutomationRule.findOne({
+      where: { id: ruleId, user_id: userId }
+    });
+
+    if (!rule) {
+      return res.status(404).json({ success: false, error: 'Rule not found' });
+    }
+
+    await rule.destroy();
+    res.json({ success: true, message: 'Rule deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/rules/stats
+ * Get rule statistics
+ */
+router.get('/rules/stats', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const stats = await AutomationRulesEngine.getRuleStats(userId);
+    res.json({ success: true, stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Actions Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/actions/pending
+ * Get pending actions for user
+ */
+router.get('/actions/pending', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const actions = await ActionExecutor.getPendingActions(userId);
+    res.json({ success: true, actions });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/actions/history
+ * Get action history for user
+ */
+router.get('/actions/history', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { limit, status } = req.query;
+
+    const actions = await ActionExecutor.getActionHistory(userId, {
+      limit: parseInt(limit) || 50,
+      status
+    });
+
+    res.json({ success: true, actions });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/actions/:actionId/approve
+ * Approve an action
+ */
+router.post('/actions/:actionId/approve', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { actionId } = req.params;
+
+    const action = await ActionExecutor.approveAction(actionId, userId);
+    res.json({ success: true, action, message: 'Action approved' });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/actions/:actionId/reject
+ * Reject an action
+ */
+router.post('/actions/:actionId/reject', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { actionId } = req.params;
+    const { reason } = req.body;
+
+    const action = await ActionExecutor.rejectAction(actionId, userId, reason);
+    res.json({ success: true, action, message: 'Action rejected' });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/actions/stats
+ * Get action statistics
+ */
+router.get('/actions/stats', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days } = req.query;
+
+    const stats = await ActionExecutor.getStats(userId, parseInt(days) || 30);
+    res.json({ success: true, stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Notifications Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/notifications
+ * Get notifications for user
+ */
+router.get('/notifications', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page, limit, include_read } = req.query;
+
+    const result = await NotificationService.getAll(userId, {
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 20,
+      includeRead: include_read !== 'false'
+    });
+
+    res.json({
+      success: true,
+      notifications: result.rows,
+      total: result.count,
+      page: parseInt(page) || 1
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/notifications/unread
+ * Get unread notifications
+ */
+router.get('/notifications/unread', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const notifications = await NotificationService.getUnread(userId);
+    const count = await NotificationService.getUnreadCount(userId);
+
+    res.json({ success: true, notifications, count });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/notifications/:id/read
+ * Mark notification as read
+ */
+router.post('/notifications/:id/read', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    await NotificationService.markRead(id, userId);
+    res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/notifications/read-all
+ * Mark all notifications as read
+ */
+router.post('/notifications/read-all', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    await NotificationService.markAllRead(userId);
+    res.json({ success: true, message: 'All notifications marked as read' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/notifications/:id/action
+ * Handle notification action button
+ */
+router.post('/notifications/:id/action', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { action } = req.body;
+
+    const result = await NotificationService.handleAction(id, userId, action);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Pixel Health Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/pixels
+ * Get pixel health summary for user
+ */
+router.get('/pixels', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const data = await PixelHealthService.getHealthSummary(userId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/pixels/:pixelId/trends
+ * Get pixel health trends
+ */
+router.get('/pixels/:pixelId/trends', async (req, res) => {
+  try {
+    const { pixelId } = req.params;
+    const { days } = req.query;
+
+    const data = await PixelHealthService.getPixelTrends(pixelId, parseInt(days) || 30);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Patterns & Insights Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/patterns
+ * Get learned patterns
+ */
+router.get('/patterns', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const data = await PatternLearningService.getPatternInsights(userId);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/performance/:entityType/:entityId
+ * Get performance data and predictions for an entity
+ */
+router.get('/performance/:entityType/:entityId', async (req, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { days } = req.query;
+
+    const [trend, latestSnapshot] = await Promise.all([
+      InsightsCollectorService.getPerformanceTrend(entityType, entityId, parseInt(days) || 7),
+      intelModels.IntelPerformanceSnapshot.getLatestSnapshot(entityType, entityId)
+    ]);
+
+    let predictions = null;
+    if (latestSnapshot) {
+      predictions = await PatternLearningService.predictPerformance(
+        entityType,
+        entityId,
+        {
+          cpm: latestSnapshot.cpm,
+          ctr: latestSnapshot.ctr,
+          cpc: latestSnapshot.cpc,
+          cpa: latestSnapshot.cpa,
+          roas: latestSnapshot.roas,
+          frequency: latestSnapshot.frequency,
+          hour: new Date().getHours()
+        }
+      );
+    }
+
+    res.json({
+      success: true,
+      trend,
+      latest: latestSnapshot,
+      predictions
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Admin/Manual Job Endpoints
+// ============================================
+
+/**
+ * POST /api/intelligence/jobs/:jobName/run
+ * Manually run a job (admin only)
+ */
+router.post('/jobs/:jobName/run', async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user.roles?.includes('superadmin')) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    const { jobName } = req.params;
+    const result = await IntelligenceScheduler.runJob(jobName);
+
+    res.json({ success: true, job: jobName, result });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Expert Rules Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/expert-rules
+ * Get all expert rules
+ */
+router.get('/expert-rules', async (req, res) => {
+  try {
+    const { vertical, rule_type } = req.query;
+
+    let rules;
+    if (vertical) {
+      rules = await intelModels.IntelExpertRule.getByVertical(vertical);
+    } else if (rule_type) {
+      rules = await intelModels.IntelExpertRule.findAll({
+        where: { rule_type, is_active: true },
+        order: [['confidence_score', 'DESC']]
+      });
+    } else {
+      rules = await ExpertRulesService.getAllRules();
+    }
+
+    res.json({ success: true, rules });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/expert-rules/summary
+ * Get expert rules summary for dashboard
+ */
+router.get('/expert-rules/summary', async (req, res) => {
+  try {
+    const summary = await ExpertRulesService.getRulesSummary();
+    res.json({ success: true, ...summary });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/expert-rules/benchmarks
+ * Get benchmark thresholds
+ */
+router.get('/expert-rules/benchmarks', async (req, res) => {
+  try {
+    const { vertical } = req.query;
+    const benchmarks = await ExpertRulesService.getBenchmarks(vertical || 'all');
+    res.json({ success: true, benchmarks });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/expert-rules/:ruleId
+ * Get specific expert rule details
+ */
+router.get('/expert-rules/:ruleId', async (req, res) => {
+  try {
+    const { ruleId } = req.params;
+    const rule = await intelModels.IntelExpertRule.findByPk(ruleId);
+
+    if (!rule) {
+      return res.status(404).json({ success: false, error: 'Rule not found' });
+    }
+
+    res.json({ success: true, rule });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/intelligence/expert-rules/:ruleId
+ * Update an expert rule (admin only)
+ */
+router.put('/expert-rules/:ruleId', async (req, res) => {
+  try {
+    if (!req.user.roles?.includes('superadmin')) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    const { ruleId } = req.params;
+    const rule = await intelModels.IntelExpertRule.findByPk(ruleId);
+
+    if (!rule) {
+      return res.status(404).json({ success: false, error: 'Rule not found' });
+    }
+
+    await rule.update(req.body);
+    res.json({ success: true, rule });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/expert-rules/seed
+ * Seed expert rules from form data (admin only)
+ */
+router.post('/expert-rules/seed', async (req, res) => {
+  try {
+    if (!req.user.roles?.includes('superadmin')) {
+      return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+
+    const { formSubmissions } = req.body;
+
+    if (!formSubmissions || !Array.isArray(formSubmissions)) {
+      return res.status(400).json({ success: false, error: 'formSubmissions array required' });
+    }
+
+    const results = await ExpertRulesService.parseAndSeedRules(formSubmissions);
+    res.json({ success: true, results });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Backfill Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/backfill/status
+ * Get backfill status for user's accounts
+ */
+router.get('/backfill/status', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const status = await intelModels.IntelBackfillProgress.getUserStatus(userId);
+    res.json({ success: true, ...status });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/backfill/start
+ * Start backfill for an account
+ */
+router.post('/backfill/start', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountId, days = 90, type = 'all' } = req.body;
+
+    if (!adAccountId) {
+      return res.status(400).json({ success: false, error: 'adAccountId required' });
+    }
+
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    // Create or get progress record
+    const { record, created } = await intelModels.IntelBackfillProgress.getOrCreate(
+      userId,
+      adAccountId,
+      {
+        type,
+        startDate,
+        endDate,
+        totalDays: days
+      }
+    );
+
+    if (!created && record.status === 'in_progress') {
+      return res.status(400).json({
+        success: false,
+        error: 'Backfill already in progress for this account'
+      });
+    }
+
+    // Reset if restarting
+    if (!created) {
+      await record.update({
+        status: 'pending',
+        days_completed: 0,
+        error_message: null,
+        start_date: startDate,
+        end_date: endDate,
+        total_days: days
+      });
+    }
+
+    // Start backfill in background
+    setImmediate(async () => {
+      try {
+        await record.update({ status: 'in_progress', started_at: new Date() });
+
+        if (type === 'all' || type === 'insights') {
+          await InsightsCollectorService.backfillAccount(userId, adAccountId, {
+            startDate,
+            endDate,
+            progressCallback: async (day, current) => {
+              await record.updateProgress(day, current);
+            }
+          });
+        }
+
+        if (type === 'all' || type === 'pixel') {
+          await PixelHealthService.backfillAccount(userId, adAccountId, {
+            startDate,
+            endDate
+          });
+        }
+
+        await record.update({
+          status: 'completed',
+          completed_at: new Date(),
+          days_completed: days
+        });
+      } catch (error) {
+        await record.markFailed(error.message);
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Backfill started',
+      backfill: {
+        ad_account_id: adAccountId,
+        type,
+        days,
+        status: 'in_progress'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/backfill/pause
+ * Pause backfill for an account
+ */
+router.post('/backfill/pause', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountId } = req.body;
+
+    const record = await intelModels.IntelBackfillProgress.findOne({
+      where: { user_id: userId, ad_account_id: adAccountId }
+    });
+
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Backfill not found' });
+    }
+
+    await record.update({ status: 'paused' });
+    res.json({ success: true, message: 'Backfill paused' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/intelligence/backfill/:adAccountId
+ * Cancel and delete backfill progress
+ */
+router.delete('/backfill/:adAccountId', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountId } = req.params;
+
+    const record = await intelModels.IntelBackfillProgress.findOne({
+      where: { user_id: userId, ad_account_id: adAccountId }
+    });
+
+    if (record) {
+      await record.destroy();
+    }
+
+    res.json({ success: true, message: 'Backfill cancelled' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Training Analytics Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/training/status
+ * Get overall training status and progress
+ */
+router.get('/training/status', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get pattern counts and history
+    const patterns = await intelModels.IntelLearnedPattern.findAll({
+      where: { is_active: true },
+      attributes: ['pattern_type', 'confidence_score', 'sample_size', 'created_at', 'last_validated']
+    });
+
+    // Get snapshot counts
+    const snapshotCounts = await intelModels.IntelPerformanceSnapshot.count({
+      where: { user_id: userId }
+    });
+
+    // Get expert rules count
+    const expertRuleCount = await intelModels.IntelExpertRule.count({
+      where: { is_active: true }
+    });
+
+    // Get backfill status
+    const backfillStatus = await intelModels.IntelBackfillProgress.getUserStatus(userId);
+
+    // Calculate training readiness
+    const minSnapshots = 100;
+    const dataReadiness = Math.min(100, Math.round((snapshotCounts / minSnapshots) * 100));
+
+    res.json({
+      success: true,
+      training: {
+        data_points: snapshotCounts,
+        data_readiness: dataReadiness,
+        min_required: minSnapshots,
+        patterns_learned: patterns.length,
+        expert_rules: expertRuleCount,
+        pattern_breakdown: patterns.reduce((acc, p) => {
+          acc[p.pattern_type] = (acc[p.pattern_type] || 0) + 1;
+          return acc;
+        }, {}),
+        average_confidence: patterns.length > 0
+          ? (patterns.reduce((sum, p) => sum + p.confidence_score, 0) / patterns.length * 100).toFixed(1)
+          : 0,
+        backfill: backfillStatus.summary
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/training/history
+ * Get learning history over time
+ */
+router.get('/training/history', async (req, res) => {
+  try {
+    const { days = 30 } = req.query;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+
+    // Get snapshot counts by date
+    const snapshots = await intelModels.IntelPerformanceSnapshot.findAll({
+      attributes: [
+        [intelModels.sequelize.fn('DATE', intelModels.sequelize.col('snapshot_date')), 'date'],
+        [intelModels.sequelize.fn('COUNT', '*'), 'count']
+      ],
+      where: {
+        snapshot_date: {
+          [intelModels.Sequelize.Op.gte]: startDate.toISOString().split('T')[0]
+        }
+      },
+      group: [intelModels.sequelize.fn('DATE', intelModels.sequelize.col('snapshot_date'))],
+      order: [[intelModels.sequelize.fn('DATE', intelModels.sequelize.col('snapshot_date')), 'ASC']],
+      raw: true
+    });
+
+    // Calculate cumulative data points
+    let cumulative = 0;
+    const history = snapshots.map(s => {
+      cumulative += parseInt(s.count);
+      return {
+        date: s.date,
+        daily_points: parseInt(s.count),
+        total_points: cumulative
+      };
+    });
+
+    res.json({ success: true, history });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/training/clusters
+ * Get cluster data for visualization
+ */
+router.get('/training/clusters', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get cluster pattern
+    const clusterPattern = await intelModels.IntelLearnedPattern.findOne({
+      where: {
+        pattern_type: 'cluster',
+        is_active: true
+      },
+      order: [['created_at', 'DESC']]
+    });
+
+    if (!clusterPattern) {
+      return res.json({
+        success: true,
+        clusters: null,
+        message: 'No cluster data available yet'
+      });
+    }
+
+    res.json({
+      success: true,
+      clusters: clusterPattern.pattern_data
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+module.exports = router;
