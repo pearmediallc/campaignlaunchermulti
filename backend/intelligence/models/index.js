@@ -25,6 +25,7 @@ const sequelize = mainDb.sequelize;
 const intelModels = {};
 
 // Load all intelligence models from this directory
+console.log('🧠 Loading intelligence model files...');
 fs.readdirSync(__dirname)
   .filter(file => {
     return (
@@ -34,9 +35,19 @@ fs.readdirSync(__dirname)
     );
   })
   .forEach(file => {
-    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
-    intelModels[model.name] = model;
+    try {
+      const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
+      if (model && model.name) {
+        intelModels[model.name] = model;
+        console.log(`   ✓ Loaded model: ${model.name}`);
+      } else {
+        console.warn(`   ⚠ Model file ${file} did not return a valid model`);
+      }
+    } catch (modelError) {
+      console.error(`   ❌ Failed to load model ${file}:`, modelError.message);
+    }
   });
+console.log(`🧠 Loaded ${Object.keys(intelModels).length} intelligence models`);
 
 // Set up associations between intelligence models
 Object.keys(intelModels).forEach(modelName => {
