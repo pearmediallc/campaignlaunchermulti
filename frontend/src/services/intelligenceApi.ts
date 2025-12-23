@@ -164,11 +164,19 @@ export interface ExpertRule {
   rule_type: 'kill' | 'scale' | 'benchmark' | 'targeting' | 'structure';
   name: string;
   description: string;
-  conditions: Record<string, any>;
+  conditions: Array<{ metric: string; operator: string; value: any }> | Record<string, any>;
+  actions?: Array<{ action: string; params?: any }>;
   confidence_score: number;
   expert_count: number;
   is_active: boolean;
   created_at: string;
+  campaign_structure?: string | Record<string, any>;
+  winning_states?: {
+    winning?: Array<{ state: string; count: number }>;
+    excluded?: Array<{ state: string }>;
+  };
+  times_validated?: number;
+  validation_accuracy?: number | null;
 }
 
 export interface BackfillProgress {
@@ -183,11 +191,29 @@ export interface BackfillProgress {
   error_message: string | null;
   started_at: string | null;
   completed_at: string | null;
+  backfill_type?: string;
+  progress?: number;
+  last_fetch_at?: string | null;
+}
+
+export interface BackfillStatus {
+  success: boolean;
+  accounts: BackfillProgress[];
+  summary?: {
+    total: number;
+    pending: number;
+    in_progress: number;
+    completed: number;
+    failed: number;
+    paused: number;
+    total_accounts?: number;
+    overall_progress?: number;
+  };
 }
 
 export interface TrainingStatus {
   data_points: number;
-  patterns_learned: number;
+  patterns_learned?: number;
   pixel_data_points: number;
   expert_rules_loaded: number;
   readiness: {
@@ -198,6 +224,18 @@ export interface TrainingStatus {
   };
   status: 'collecting' | 'learning' | 'ready' | 'error';
   last_learning_run: string | null;
+  data_readiness?: number;
+  min_required?: number;
+  expert_rules?: number;  // Number of expert rules
+  average_confidence?: number;
+  pattern_breakdown?: Record<string, number>;
+  backfill?: {
+    status: string;
+    progress: number;
+    completed?: number;
+    total_accounts?: number;
+    overall_progress?: number;
+  };
 }
 
 export interface TrainingHistory {
@@ -399,10 +437,11 @@ export const intelligenceApi = {
     return response.data;
   },
 
-  startBackfill: async (adAccountId: string, options?: { days?: number }): Promise<{ success: boolean; progress: BackfillProgress }> => {
+  startBackfill: async (adAccountId: string, days?: number, backfillType?: string): Promise<{ success: boolean; progress: BackfillProgress }> => {
     const response = await api.post('/intelligence/backfill/start', {
       ad_account_id: adAccountId,
-      days: options?.days || 90
+      days: days || 90,
+      backfill_type: backfillType || 'all'
     });
     return response.data;
   },
@@ -430,6 +469,12 @@ export const intelligenceApi = {
   },
 
   getClusterVisualization: async (): Promise<{ success: boolean; clusters: ClusterVisualization }> => {
+    const response = await api.get('/intelligence/training/clusters');
+    return response.data;
+  },
+
+  // Alias for cluster visualization
+  getClusterData: async (): Promise<{ success: boolean; clusters: ClusterVisualization }> => {
     const response = await api.get('/intelligence/training/clusters');
     return response.data;
   },

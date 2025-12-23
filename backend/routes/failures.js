@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const FailureTracker = require('../services/FailureTracker');
 const FacebookAPI = require('../services/facebookApi');
+const VerificationService = require('../services/VerificationService');
 const ResourceHelper = require('../services/ResourceHelper');
 const db = require('../models');
 const { decryptToken } = require('./facebookSDKAuth');
@@ -394,6 +395,179 @@ router.get('/stats', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch statistics',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/failures/verify
+ * Verify created entities against original request data
+ * This is called AFTER strategy completion to check if entities were created correctly
+ */
+router.post('/verify', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.userId;
+    const {
+      originalRequest,    // Original form data from frontend
+      createdEntities,    // { campaignId, adsetIds: [], adIds: [] }
+      autoCorrect = true, // Whether to auto-fix mismatches
+      strategyType = 'unknown'
+    } = req.body;
+
+    // Validate required fields
+    if (!originalRequest || !createdEntities) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: originalRequest and createdEntities'
+      });
+    }
+
+    if (!createdEntities.campaignId && (!createdEntities.adsetIds || createdEntities.adsetIds.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        error: 'No entities to verify. Provide campaignId or adsetIds.'
+      });
+    }
+
+    // Get user's Facebook auth
+    const { FacebookAuth } = db;
+    const facebookAuth = await FacebookAuth.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!facebookAuth) {
+      return res.status(400).json({
+        success: false,
+        error: 'Facebook authentication required for verification'
+      });
+    }
+
+    // Decrypt access token
+    const decryptedToken = decryptToken(facebookAuth.accessToken);
+    if (!decryptedToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'Failed to decrypt Facebook access token'
+      });
+    }
+
+    // Get active resources
+    const activeResources = await ResourceHelper.getActiveResourcesWithFallback(userId);
+
+    // Initialize Facebook API
+    const facebookApi = new FacebookAPI({
+      accessToken: decryptedToken,
+      adAccountId: activeResources.selectedAdAccountId?.replace('act_', ''),
+      pageId: activeResources.selectedPageId,
+      pixelId: activeResources.selectedPixelId
+    });
+
+    // Initialize Verification Service
+    const verificationService = new VerificationService(facebookApi);
+
+    // Run verification
+    console.log(`\n🔍 Starting verification for ${strategyType}...`);
+    const verificationResult = await verificationService.verifyStrategyEntities({
+      originalRequest,
+      createdEntities,
+      autoCorrect
+    });
+
+    // If there are mismatches, track them as verification failures
+    if (verificationResult.totalMismatches > 0) {
+      const displayItems = verificationService.formatForFailureDisplay(verificationResult, strategyType);
+
+      // Track each mismatch as a failure for UI display
+      for (const item of displayItems) {
+        // Only track if not auto-corrected
+        if (item.status !== 'corrected') {
+          await FailureTracker.safeTrackFailedEntity({
+            userId,
+            campaignId: createdEntities.campaignId,
+            campaignName: originalRequest.campaignName || 'Unknown Campaign',
+            entityType: item.entityType,
+            adsetId: item.entityType === 'adset' ? item.entityId : null,
+            adsetName: item.entityType === 'adset' ? item.entityName : null,
+            adId: item.entityType === 'ad' ? item.entityId : null,
+            adName: item.entityType === 'ad' ? item.entityName : null,
+            error: new Error(item.failureReason),
+            strategyType,
+            metadata: {
+              type: 'verification_mismatch',
+              mismatches: item.metadata.mismatches,
+              autoCorrectAttempted: autoCorrect
+            }
+          });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      verification: {
+        passed: verificationResult.totalMismatches === 0 ||
+                (autoCorrect && verificationResult.corrections.failed === 0),
+        totalMismatches: verificationResult.totalMismatches,
+        corrections: verificationResult.corrections,
+        summary: verificationResult.summary
+      }
+    });
+
+  } catch (error) {
+    console.error('Error during verification:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Verification failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/failures/verification/:campaignId
+ * Get verification results for a specific campaign
+ */
+router.get('/verification/:campaignId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.userId;
+    const { campaignId } = req.params;
+
+    // Fetch verification-related failures (type: verification_mismatch)
+    const verificationFailures = await db.FailedEntity.findAll({
+      where: {
+        userId,
+        campaignId,
+        // Look for verification mismatches in metadata
+      },
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Filter to only verification mismatches
+    const mismatches = verificationFailures.filter(f =>
+      f.metadata?.type === 'verification_mismatch'
+    );
+
+    res.json({
+      success: true,
+      campaignId,
+      verificationMismatches: mismatches.map(m => ({
+        id: m.id,
+        entityType: m.entityType,
+        entityId: m.adsetId || m.adId,
+        entityName: m.adsetName || m.adName,
+        reason: m.userFriendlyReason,
+        mismatches: m.metadata?.mismatches || [],
+        status: m.status,
+        createdAt: m.createdAt
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching verification results:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch verification results',
       message: error.message
     });
   }

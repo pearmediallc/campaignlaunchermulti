@@ -60,6 +60,7 @@
     ]
   },
   "devDependencies": {
-    "@types/date-fns": "^2.5.3"
+    "@types/date-fns": "^2.5.3",
+    "@types/recharts": "^1.8.29"
   }
 }

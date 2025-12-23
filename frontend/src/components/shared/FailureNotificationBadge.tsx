@@ -23,7 +23,8 @@ import {
   Minimize as MinimizeIcon,
   Close as CloseIcon,
   Refresh as RefreshIcon,
-  ClearAll as ClearAllIcon
+  ClearAll as ClearAllIcon,
+  CompareArrows as VerifyIcon
 } from '@mui/icons-material';
 import { useFailureTracking } from '../../contexts/FailureTrackingContext';
 import FailureReportModal from './FailureReportModal';
@@ -212,15 +213,20 @@ const FailureNotificationBadge: React.FC = () => {
 
                             {/* Failure Summary */}
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', my: 1 }}>
-                              {group.failures.slice(0, 3).map((failure) => (
-                                <Chip
-                                  key={failure.id}
-                                  label={`${failure.entityType}: ${failure.adsetName || failure.adName || 'Unknown'}`}
-                                  size="small"
-                                  variant="outlined"
-                                  color="error"
-                                />
-                              ))}
+                              {group.failures.slice(0, 3).map((failure) => {
+                                const isVerificationMismatch = failure.metadata?.type === 'verification_mismatch';
+                                return (
+                                  <Chip
+                                    key={failure.id}
+                                    icon={isVerificationMismatch ? <VerifyIcon fontSize="small" /> : undefined}
+                                    label={`${failure.entityType}: ${failure.adsetName || failure.adName || 'Unknown'}`}
+                                    size="small"
+                                    variant="outlined"
+                                    color={isVerificationMismatch ? 'warning' : 'error'}
+                                    title={isVerificationMismatch ? 'Verification mismatch - data differs from what was sent' : 'Creation failure'}
+                                  />
+                                );
+                              })}
                               {group.failures.length > 3 && (
                                 <Chip
                                   label={`+${group.failures.length - 3} more`}

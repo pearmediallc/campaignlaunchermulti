@@ -16,6 +16,16 @@ interface FailedEntity {
   retryCount: number;
   status: 'failed' | 'retrying' | 'recovered' | 'permanent_failure';
   strategyType?: string;
+  metadata?: {
+    type?: string;  // 'verification_mismatch' for verification failures
+    mismatches?: Array<{
+      field: string;
+      expected: any;
+      actual: any;
+    }>;
+    autoCorrectAttempted?: boolean;
+    [key: string]: any;
+  };
   createdAt: string;
   updatedAt: string;
 }

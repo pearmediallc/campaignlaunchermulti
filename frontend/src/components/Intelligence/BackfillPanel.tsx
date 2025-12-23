@@ -103,7 +103,7 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
 
     // Poll for updates every 10 seconds if there are in-progress backfills
     const interval = setInterval(() => {
-      if (backfillStatus?.summary?.in_progress > 0) {
+      if ((backfillStatus?.summary?.in_progress ?? 0) > 0) {
         fetchStatus();
       }
     }, 10000);
@@ -234,7 +234,7 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
               <Card variant="outlined">
                 <CardContent sx={{ py: 1.5, textAlign: 'center' }}>
                   <Typography variant="h5" fontWeight="bold">
-                    {backfillStatus.summary.total_accounts}
+                    {backfillStatus.summary.total_accounts ?? backfillStatus.summary.total ?? 0}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Total Accounts
@@ -270,7 +270,7 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
               <Card variant="outlined">
                 <CardContent sx={{ py: 1.5, textAlign: 'center' }}>
                   <Typography variant="h5" fontWeight="bold">
-                    {backfillStatus.summary.overall_progress}%
+                    {backfillStatus.summary.overall_progress ?? 0}%
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Overall Progress
@@ -320,14 +320,14 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
                           color={getStatusColor(account.status)}
                         />
                         <Chip
-                          label={account.backfill_type}
+                          label={account.backfill_type || 'all'}
                           size="small"
                           variant="outlined"
                         />
                       </Box>
                     </Box>
                     <Typography variant="h4" fontWeight="bold" color="primary.main">
-                      {account.progress}%
+                      {account.progress ?? Math.round((account.days_completed / (account.total_days || 1)) * 100)}%
                     </Typography>
                   </Box>
 
@@ -344,7 +344,7 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
                     </Box>
                     <LinearProgress
                       variant="determinate"
-                      value={account.progress}
+                      value={account.progress ?? Math.round((account.days_completed / (account.total_days || 1)) * 100)}
                       sx={{ height: 8, borderRadius: 4 }}
                       color={account.status === 'failed' ? 'error' : 'primary'}
                     />

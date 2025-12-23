@@ -282,7 +282,7 @@ const ExpertRulesPanel: React.FC<ExpertRulesPanelProps> = ({ onRefresh }) => {
                       />
                       {rule.campaign_structure && (
                         <Chip
-                          label={rule.campaign_structure}
+                          label={typeof rule.campaign_structure === 'string' ? rule.campaign_structure : JSON.stringify(rule.campaign_structure)}
                           size="small"
                           variant="outlined"
                         />
@@ -321,7 +321,7 @@ const ExpertRulesPanel: React.FC<ExpertRulesPanelProps> = ({ onRefresh }) => {
                   </Grid>
 
                   {/* Conditions */}
-                  {rule.conditions && rule.conditions.length > 0 && (
+                  {rule.conditions && Array.isArray(rule.conditions) && rule.conditions.length > 0 && (
                     <Grid size={{ xs: 12, md: 6 }}>
                       <Typography variant="subtitle2" gutterBottom>
                         Conditions
@@ -397,16 +397,16 @@ const ExpertRulesPanel: React.FC<ExpertRulesPanelProps> = ({ onRefresh }) => {
                   )}
 
                   {/* Validation Stats */}
-                  {rule.times_validated > 0 && (
+                  {(rule.times_validated ?? 0) > 0 && (
                     <Grid size={12}>
                       <Divider sx={{ my: 1 }} />
                       <Box display="flex" gap={2}>
                         <Typography variant="caption" color="text.secondary">
                           Validated: {rule.times_validated} times
                         </Typography>
-                        {rule.validation_accuracy !== null && (
+                        {rule.validation_accuracy != null && (
                           <Typography variant="caption" color="text.secondary">
-                            Accuracy: {(rule.validation_accuracy * 100).toFixed(1)}%
+                            Accuracy: {((rule.validation_accuracy ?? 0) * 100).toFixed(1)}%
                           </Typography>
                         )}
                       </Box>

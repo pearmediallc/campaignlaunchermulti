@@ -260,4 +260,75 @@ export const facebookAuthApi = {
   }
 };
 
+// Verification API for checking created entities
+export interface VerificationMismatch {
+  field: string;
+  fbField: string;
+  expected: any;
+  actual: any;
+  type: string;
+}
+
+export interface VerificationSummaryItem {
+  entity: string;
+  entityId: string;
+  entityName: string;
+  mismatches: VerificationMismatch[];
+  corrected: boolean;
+}
+
+export interface VerificationResult {
+  passed: boolean;
+  totalMismatches: number;
+  corrections: {
+    attempted: number;
+    successful: number;
+    failed: number;
+  };
+  summary: VerificationSummaryItem[];
+}
+
+export interface CreatedEntities {
+  campaignId?: string;
+  adsetIds?: string[];
+  adIds?: string[];
+}
+
+export const verificationApi = {
+  // Verify created entities against original request
+  verifyStrategy: async (
+    originalRequest: any,
+    createdEntities: CreatedEntities,
+    strategyType: string,
+    autoCorrect: boolean = true
+  ): Promise<{ success: boolean; verification: VerificationResult }> => {
+    const response = await api.post('/failures/verify', {
+      originalRequest,
+      createdEntities,
+      strategyType,
+      autoCorrect
+    });
+    return response.data;
+  },
+
+  // Get verification results for a campaign
+  getVerificationResults: async (campaignId: string): Promise<{
+    success: boolean;
+    campaignId: string;
+    verificationMismatches: Array<{
+      id: number;
+      entityType: string;
+      entityId: string;
+      entityName: string;
+      reason: string;
+      mismatches: VerificationMismatch[];
+      status: string;
+      createdAt: string;
+    }>;
+  }> => {
+    const response = await api.get(`/failures/verification/${campaignId}`);
+    return response.data;
+  }
+};
+
 export default api;

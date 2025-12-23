@@ -79,10 +79,12 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
       ]);
 
       if (statusRes.success) {
-        setTrainingStatus(statusRes.training);
+        setTrainingStatus(statusRes.status);
       }
       if (historyRes.success) {
-        setTrainingHistory(historyRes.history || []);
+        // Wrap history in array if needed
+        const history = historyRes.history;
+        setTrainingHistory(Array.isArray(history) ? history : [history]);
       }
       if (clusterRes.success) {
         setClusterData(clusterRes.clusters);
@@ -158,12 +160,12 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                   <Box mt={1}>
                     <LinearProgress
                       variant="determinate"
-                      value={trainingStatus.data_readiness}
-                      color={getReadinessColor(trainingStatus.data_readiness)}
+                      value={trainingStatus.data_readiness ?? 0}
+                      color={getReadinessColor(trainingStatus.data_readiness ?? 0)}
                       sx={{ height: 6, borderRadius: 3 }}
                     />
                     <Typography variant="caption" color="text.secondary">
-                      {trainingStatus.data_readiness}% of {trainingStatus.min_required} min
+                      {trainingStatus.data_readiness ?? 0}% of {trainingStatus.min_required ?? 100} min
                     </Typography>
                   </Box>
                 </CardContent>
@@ -175,7 +177,7 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                 <CardContent sx={{ textAlign: 'center' }}>
                   <Psychology sx={{ fontSize: 32, color: 'secondary.main', mb: 1 }} />
                   <Typography variant="h4" fontWeight="bold">
-                    {trainingStatus.patterns_learned}
+                    {trainingStatus.patterns_learned ?? 0}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Patterns Learned
@@ -189,7 +191,7 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                 <CardContent sx={{ textAlign: 'center' }}>
                   <CheckCircle sx={{ fontSize: 32, color: 'success.main', mb: 1 }} />
                   <Typography variant="h4" fontWeight="bold">
-                    {trainingStatus.expert_rules}
+                    {trainingStatus.expert_rules ?? trainingStatus.expert_rules_loaded ?? 0}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Expert Rules
@@ -203,7 +205,7 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                 <CardContent sx={{ textAlign: 'center' }}>
                   <TrendingUp sx={{ fontSize: 32, color: 'info.main', mb: 1 }} />
                   <Typography variant="h4" fontWeight="bold">
-                    {trainingStatus.average_confidence}%
+                    {trainingStatus.average_confidence ?? 0}%
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     Avg Confidence
@@ -237,8 +239,8 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                   />
                   <YAxis tick={{ fontSize: 12 }} />
                   <RechartsTooltip
-                    formatter={(value: number) => [formatNumber(value), 'Data Points']}
-                    labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                    formatter={(value: any) => [formatNumber(Number(value) || 0), 'Data Points']}
+                    labelFormatter={(label: any) => new Date(label).toLocaleDateString()}
                   />
                   <Legend />
                   <Area
@@ -397,18 +399,18 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                   <Typography variant="body2">Data Collection</Typography>
                   <Chip
-                    label={trainingStatus?.data_readiness >= 100 ? 'Ready' : 'Collecting'}
+                    label={(trainingStatus?.data_readiness ?? 0) >= 100 ? 'Ready' : 'Collecting'}
                     size="small"
-                    color={trainingStatus?.data_readiness >= 100 ? 'success' : 'warning'}
+                    color={(trainingStatus?.data_readiness ?? 0) >= 100 ? 'success' : 'warning'}
                   />
                 </Box>
                 <LinearProgress
                   variant="determinate"
-                  value={Math.min(100, trainingStatus?.data_readiness || 0)}
+                  value={Math.min(100, trainingStatus?.data_readiness ?? 0)}
                   sx={{ height: 10, borderRadius: 5 }}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  {trainingStatus?.data_points || 0} / {trainingStatus?.min_required || 100} data points
+                  {trainingStatus?.data_points ?? 0} / {trainingStatus?.min_required ?? 100} data points
                 </Typography>
               </Box>
 
@@ -417,19 +419,19 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                   <Typography variant="body2">Pattern Learning</Typography>
                   <Chip
-                    label={trainingStatus?.patterns_learned > 0 ? 'Active' : 'Pending'}
+                    label={(trainingStatus?.patterns_learned ?? 0) > 0 ? 'Active' : 'Pending'}
                     size="small"
-                    color={trainingStatus?.patterns_learned > 0 ? 'success' : 'default'}
+                    color={(trainingStatus?.patterns_learned ?? 0) > 0 ? 'success' : 'default'}
                   />
                 </Box>
                 <LinearProgress
                   variant="determinate"
-                  value={trainingStatus?.patterns_learned > 0 ? 100 : 0}
+                  value={(trainingStatus?.patterns_learned ?? 0) > 0 ? 100 : 0}
                   sx={{ height: 10, borderRadius: 5 }}
-                  color={trainingStatus?.patterns_learned > 0 ? 'success' : 'inherit'}
+                  color={(trainingStatus?.patterns_learned ?? 0) > 0 ? 'success' : 'inherit'}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  {trainingStatus?.patterns_learned || 0} patterns identified
+                  {trainingStatus?.patterns_learned ?? 0} patterns identified
                 </Typography>
               </Box>
 
@@ -438,19 +440,19 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                   <Typography variant="body2">Expert Rules</Typography>
                   <Chip
-                    label={trainingStatus?.expert_rules > 0 ? 'Loaded' : 'Not Seeded'}
+                    label={(trainingStatus?.expert_rules ?? trainingStatus?.expert_rules_loaded ?? 0) > 0 ? 'Loaded' : 'Not Seeded'}
                     size="small"
-                    color={trainingStatus?.expert_rules > 0 ? 'success' : 'error'}
+                    color={(trainingStatus?.expert_rules ?? trainingStatus?.expert_rules_loaded ?? 0) > 0 ? 'success' : 'error'}
                   />
                 </Box>
                 <LinearProgress
                   variant="determinate"
-                  value={trainingStatus?.expert_rules > 0 ? 100 : 0}
+                  value={(trainingStatus?.expert_rules ?? trainingStatus?.expert_rules_loaded ?? 0) > 0 ? 100 : 0}
                   sx={{ height: 10, borderRadius: 5 }}
-                  color={trainingStatus?.expert_rules > 0 ? 'success' : 'error'}
+                  color={(trainingStatus?.expert_rules ?? trainingStatus?.expert_rules_loaded ?? 0) > 0 ? 'success' : 'error'}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  {trainingStatus?.expert_rules || 0} expert rules available
+                  {trainingStatus?.expert_rules ?? trainingStatus?.expert_rules_loaded ?? 0} expert rules available
                 </Typography>
               </Box>
 
@@ -460,18 +462,18 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                     <Typography variant="body2">Historical Backfill</Typography>
                     <Chip
-                      label={trainingStatus.backfill.completed === trainingStatus.backfill.total_accounts ? 'Complete' : 'In Progress'}
+                      label={(trainingStatus.backfill.completed ?? 0) === (trainingStatus.backfill.total_accounts ?? 0) ? 'Complete' : 'In Progress'}
                       size="small"
-                      color={trainingStatus.backfill.completed === trainingStatus.backfill.total_accounts ? 'success' : 'info'}
+                      color={(trainingStatus.backfill.completed ?? 0) === (trainingStatus.backfill.total_accounts ?? 0) ? 'success' : 'info'}
                     />
                   </Box>
                   <LinearProgress
                     variant="determinate"
-                    value={trainingStatus.backfill.overall_progress}
+                    value={trainingStatus.backfill.overall_progress ?? trainingStatus.backfill.progress ?? 0}
                     sx={{ height: 10, borderRadius: 5 }}
                   />
                   <Typography variant="caption" color="text.secondary">
-                    {trainingStatus.backfill.completed} / {trainingStatus.backfill.total_accounts} accounts
+                    {trainingStatus.backfill.completed ?? 0} / {trainingStatus.backfill.total_accounts ?? 0} accounts
                   </Typography>
                 </Box>
               )}
