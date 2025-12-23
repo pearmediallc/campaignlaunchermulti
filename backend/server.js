@@ -187,11 +187,24 @@ app.use('/api/rate-limit', require('./routes/rateLimitManagement'));
 // This module is completely separate from campaign management
 // Set ENABLE_INTELLIGENCE=true to enable
 const intelligence = require('./intelligence');
+console.log(`🧠 Intelligence module status: enabled=${intelligence.enabled}, ENABLE_INTELLIGENCE=${process.env.ENABLE_INTELLIGENCE}`);
 if (intelligence.enabled && intelligence.routes) {
   // Apply authentication middleware to intelligence routes
   const { authenticateToken } = require('./middleware/auth');
   app.use('/api/intelligence', authenticateToken, intelligence.routes);
   console.log('🧠 Intelligence API routes mounted at /api/intelligence');
+} else {
+  // Add fallback route that explains why intelligence is unavailable
+  app.use('/api/intelligence', (req, res) => {
+    console.warn(`[Intelligence] Request to ${req.path} but module is disabled. ENABLE_INTELLIGENCE=${process.env.ENABLE_INTELLIGENCE}`);
+    res.status(503).json({
+      success: false,
+      error: 'Intelligence module is disabled',
+      message: 'Set ENABLE_INTELLIGENCE=true in environment variables to enable',
+      currentValue: process.env.ENABLE_INTELLIGENCE || 'not set'
+    });
+  });
+  console.log('⚠️ Intelligence API disabled - fallback route mounted at /api/intelligence');
 }
 
 app.get('/api/health', (req, res) => {
