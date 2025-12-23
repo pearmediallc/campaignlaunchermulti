@@ -74,9 +74,34 @@ if (!isEnabled) {
 // ============================================
 console.log('🧠 Campaign Intelligence Engine: ENABLED');
 
-const models = require('./models');
-const services = require('./services');
-const routes = require('./routes');
+let models, services, routes;
+
+try {
+  console.log('🧠 Loading intelligence models...');
+  models = require('./models');
+  console.log('🧠 Models loaded successfully');
+} catch (modelError) {
+  console.error('❌ Failed to load intelligence models:', modelError.message);
+  console.error(modelError.stack);
+}
+
+try {
+  console.log('🧠 Loading intelligence services...');
+  services = require('./services');
+  console.log('🧠 Services loaded successfully');
+} catch (serviceError) {
+  console.error('❌ Failed to load intelligence services:', serviceError.message);
+  console.error(serviceError.stack);
+}
+
+try {
+  console.log('🧠 Loading intelligence routes...');
+  routes = require('./routes');
+  console.log('🧠 Routes loaded successfully, type:', typeof routes);
+} catch (routeError) {
+  console.error('❌ Failed to load intelligence routes:', routeError.message);
+  console.error(routeError.stack);
+}
 
 /**
  * Initialize the intelligence module

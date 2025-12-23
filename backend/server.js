@@ -186,25 +186,37 @@ app.use('/api/rate-limit', require('./routes/rateLimitManagement'));
 // Campaign Intelligence Engine routes (isolated module)
 // This module is completely separate from campaign management
 // Set ENABLE_INTELLIGENCE=true to enable
-const intelligence = require('./intelligence');
-console.log(`🧠 Intelligence module status: enabled=${intelligence.enabled}, ENABLE_INTELLIGENCE=${process.env.ENABLE_INTELLIGENCE}`);
-if (intelligence.enabled && intelligence.routes) {
+let intelligence;
+try {
+  intelligence = require('./intelligence');
+  console.log(`🧠 Intelligence module status: enabled=${intelligence.enabled}, ENABLE_INTELLIGENCE=${process.env.ENABLE_INTELLIGENCE}`);
+  console.log(`🧠 Intelligence routes type: ${typeof intelligence.routes}, is function: ${typeof intelligence.routes === 'function'}`);
+} catch (intelLoadError) {
+  console.error('❌ Failed to load intelligence module:', intelLoadError.message);
+  console.error(intelLoadError.stack);
+  intelligence = { enabled: false, routes: null };
+}
+
+if (intelligence.enabled && intelligence.routes && typeof intelligence.routes === 'function') {
   // Apply authentication middleware to intelligence routes
   const { authenticateToken } = require('./middleware/auth');
   app.use('/api/intelligence', authenticateToken, intelligence.routes);
   console.log('🧠 Intelligence API routes mounted at /api/intelligence');
 } else {
   // Add fallback route that explains why intelligence is unavailable
+  const reason = !intelligence.enabled ? 'disabled' :
+                 !intelligence.routes ? 'routes not loaded' :
+                 'routes invalid type';
   app.use('/api/intelligence', (req, res) => {
-    console.warn(`[Intelligence] Request to ${req.path} but module is disabled. ENABLE_INTELLIGENCE=${process.env.ENABLE_INTELLIGENCE}`);
+    console.warn(`[Intelligence] Request to ${req.path} but module unavailable (${reason}). ENABLE_INTELLIGENCE=${process.env.ENABLE_INTELLIGENCE}`);
     res.status(503).json({
       success: false,
-      error: 'Intelligence module is disabled',
-      message: 'Set ENABLE_INTELLIGENCE=true in environment variables to enable',
+      error: 'Intelligence module is unavailable',
+      message: `Reason: ${reason}. Set ENABLE_INTELLIGENCE=true in environment variables to enable.`,
       currentValue: process.env.ENABLE_INTELLIGENCE || 'not set'
     });
   });
-  console.log('⚠️ Intelligence API disabled - fallback route mounted at /api/intelligence');
+  console.log(`⚠️ Intelligence API unavailable (${reason}) - fallback route mounted at /api/intelligence`);
 }
 
 app.get('/api/health', (req, res) => {
