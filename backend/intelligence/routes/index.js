@@ -58,6 +58,7 @@ router.get('/health', async (req, res) => {
     const health = await IntelligenceScheduler.healthCheck();
     res.json({ success: true, ...health });
   } catch (error) {
+    console.error('[Intelligence] Health check error:', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -71,6 +72,7 @@ router.get('/status', async (req, res) => {
     const status = IntelligenceScheduler.getStatus();
     res.json({ success: true, ...status });
   } catch (error) {
+    console.error('[Intelligence] Status check error:', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -104,7 +106,7 @@ router.get('/dashboard', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Dashboard error:', error);
+    console.error('[Intelligence] Dashboard fetch error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -123,6 +125,7 @@ router.get('/scores', async (req, res) => {
     const data = await AccountScoreService.getDashboardData(userId);
     res.json({ success: true, ...data });
   } catch (error) {
+    console.error('[Intelligence] Scores fetch error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -138,6 +141,7 @@ router.get('/scores/:adAccountId', async (req, res) => {
     const data = await AccountScoreService.getAccountDetail(userId, adAccountId);
     res.json({ success: true, ...data });
   } catch (error) {
+    console.error('[Intelligence] Account score detail error for user', req.user?.id, 'account', req.params?.adAccountId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -162,6 +166,7 @@ router.get('/rules', async (req, res) => {
 
     res.json({ success: true, rules });
   } catch (error) {
+    console.error('[Intelligence] Rules fetch error for user', req.user?.id, 'filters:', { active_only, rule_type: req.query?.rule_type }, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -185,6 +190,7 @@ router.post('/rules', async (req, res) => {
     const rule = await AutomationRulesEngine.createRule(userId, req.body);
     res.json({ success: true, rule });
   } catch (error) {
+    console.error('[Intelligence] Rule creation error for user', req.user?.id, 'rule data:', JSON.stringify(req.body), ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -203,12 +209,14 @@ router.put('/rules/:ruleId', async (req, res) => {
     });
 
     if (!rule) {
+      console.error('[Intelligence] Rule update error: Rule not found for user', userId, 'ruleId', ruleId);
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
 
     await rule.update(req.body);
     res.json({ success: true, rule });
   } catch (error) {
+    console.error('[Intelligence] Rule update error for user', req.user?.id, 'ruleId', req.params?.ruleId, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -227,12 +235,14 @@ router.delete('/rules/:ruleId', async (req, res) => {
     });
 
     if (!rule) {
+      console.error('[Intelligence] Rule delete error: Rule not found for user', userId, 'ruleId', ruleId);
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
 
     await rule.destroy();
     res.json({ success: true, message: 'Rule deleted' });
   } catch (error) {
+    console.error('[Intelligence] Rule delete error for user', req.user?.id, 'ruleId', req.params?.ruleId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -247,6 +257,7 @@ router.get('/rules/stats', async (req, res) => {
     const stats = await AutomationRulesEngine.getRuleStats(userId);
     res.json({ success: true, stats });
   } catch (error) {
+    console.error('[Intelligence] Rule stats error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -265,6 +276,7 @@ router.get('/actions/pending', async (req, res) => {
     const actions = await ActionExecutor.getPendingActions(userId);
     res.json({ success: true, actions });
   } catch (error) {
+    console.error('[Intelligence] Pending actions fetch error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -285,6 +297,7 @@ router.get('/actions/history', async (req, res) => {
 
     res.json({ success: true, actions });
   } catch (error) {
+    console.error('[Intelligence] Action history fetch error for user', req.user?.id, 'filters:', { limit: req.query?.limit, status: req.query?.status }, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -301,6 +314,7 @@ router.post('/actions/:actionId/approve', async (req, res) => {
     const action = await ActionExecutor.approveAction(actionId, userId);
     res.json({ success: true, action, message: 'Action approved' });
   } catch (error) {
+    console.error('[Intelligence] Action approve error for user', req.user?.id, 'actionId', req.params?.actionId, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -318,6 +332,7 @@ router.post('/actions/:actionId/reject', async (req, res) => {
     const action = await ActionExecutor.rejectAction(actionId, userId, reason);
     res.json({ success: true, action, message: 'Action rejected' });
   } catch (error) {
+    console.error('[Intelligence] Action reject error for user', req.user?.id, 'actionId', req.params?.actionId, 'reason:', req.body?.reason, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -334,6 +349,7 @@ router.get('/actions/stats', async (req, res) => {
     const stats = await ActionExecutor.getStats(userId, parseInt(days) || 30);
     res.json({ success: true, stats });
   } catch (error) {
+    console.error('[Intelligence] Action stats error for user', req.user?.id, 'days:', req.query?.days, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -364,6 +380,7 @@ router.get('/notifications', async (req, res) => {
       page: parseInt(page) || 1
     });
   } catch (error) {
+    console.error('[Intelligence] Notifications fetch error for user', req.user?.id, 'params:', { page: req.query?.page, limit: req.query?.limit }, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -380,6 +397,7 @@ router.get('/notifications/unread', async (req, res) => {
 
     res.json({ success: true, notifications, count });
   } catch (error) {
+    console.error('[Intelligence] Unread notifications fetch error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -396,6 +414,7 @@ router.post('/notifications/:id/read', async (req, res) => {
     await NotificationService.markRead(id, userId);
     res.json({ success: true, message: 'Notification marked as read' });
   } catch (error) {
+    console.error('[Intelligence] Mark notification read error for user', req.user?.id, 'notificationId', req.params?.id, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -410,6 +429,7 @@ router.post('/notifications/read-all', async (req, res) => {
     await NotificationService.markAllRead(userId);
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
+    console.error('[Intelligence] Mark all notifications read error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -427,6 +447,7 @@ router.post('/notifications/:id/action', async (req, res) => {
     const result = await NotificationService.handleAction(id, userId, action);
     res.json({ success: true, ...result });
   } catch (error) {
+    console.error('[Intelligence] Notification action error for user', req.user?.id, 'notificationId', req.params?.id, 'action:', req.body?.action, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -445,6 +466,7 @@ router.get('/pixels', async (req, res) => {
     const data = await PixelHealthService.getHealthSummary(userId);
     res.json({ success: true, ...data });
   } catch (error) {
+    console.error('[Intelligence] Pixel health summary error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -461,6 +483,7 @@ router.get('/pixels/:pixelId/trends', async (req, res) => {
     const data = await PixelHealthService.getPixelTrends(pixelId, parseInt(days) || 30);
     res.json({ success: true, ...data });
   } catch (error) {
+    console.error('[Intelligence] Pixel trends error for pixelId', req.params?.pixelId, 'days:', req.query?.days, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -479,6 +502,7 @@ router.get('/patterns', async (req, res) => {
     const data = await PatternLearningService.getPatternInsights(userId);
     res.json({ success: true, ...data });
   } catch (error) {
+    console.error('[Intelligence] Patterns fetch error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -521,6 +545,7 @@ router.get('/performance/:entityType/:entityId', async (req, res) => {
       predictions
     });
   } catch (error) {
+    console.error('[Intelligence] Performance fetch error for', req.params?.entityType, req.params?.entityId, 'days:', req.query?.days, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -537,6 +562,7 @@ router.post('/jobs/:jobName/run', async (req, res) => {
   try {
     // Check if user is admin
     if (!req.user.roles?.includes('superadmin')) {
+      console.error('[Intelligence] Job run unauthorized attempt by user', req.user?.id, 'for job:', req.params?.jobName);
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
@@ -545,6 +571,7 @@ router.post('/jobs/:jobName/run', async (req, res) => {
 
     res.json({ success: true, job: jobName, result });
   } catch (error) {
+    console.error('[Intelligence] Job run error for job', req.params?.jobName, 'user:', req.user?.id, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -575,6 +602,7 @@ router.get('/expert-rules', async (req, res) => {
 
     res.json({ success: true, rules });
   } catch (error) {
+    console.error('[Intelligence] Expert rules fetch error, filters:', { vertical: req.query?.vertical, rule_type: req.query?.rule_type }, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -588,6 +616,7 @@ router.get('/expert-rules/summary', async (req, res) => {
     const summary = await ExpertRulesService.getRulesSummary();
     res.json({ success: true, ...summary });
   } catch (error) {
+    console.error('[Intelligence] Expert rules summary error:', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -602,6 +631,7 @@ router.get('/expert-rules/benchmarks', async (req, res) => {
     const benchmarks = await ExpertRulesService.getBenchmarks(vertical || 'all');
     res.json({ success: true, benchmarks });
   } catch (error) {
+    console.error('[Intelligence] Benchmarks fetch error for vertical:', req.query?.vertical, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -616,11 +646,13 @@ router.get('/expert-rules/:ruleId', async (req, res) => {
     const rule = await intelModels.IntelExpertRule.findByPk(ruleId);
 
     if (!rule) {
+      console.error('[Intelligence] Expert rule not found, ruleId:', ruleId);
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
 
     res.json({ success: true, rule });
   } catch (error) {
+    console.error('[Intelligence] Expert rule detail error for ruleId:', req.params?.ruleId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -632,6 +664,7 @@ router.get('/expert-rules/:ruleId', async (req, res) => {
 router.put('/expert-rules/:ruleId', async (req, res) => {
   try {
     if (!req.user.roles?.includes('superadmin')) {
+      console.error('[Intelligence] Expert rule update unauthorized attempt by user', req.user?.id, 'for ruleId:', req.params?.ruleId);
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
@@ -639,12 +672,14 @@ router.put('/expert-rules/:ruleId', async (req, res) => {
     const rule = await intelModels.IntelExpertRule.findByPk(ruleId);
 
     if (!rule) {
+      console.error('[Intelligence] Expert rule update error: Rule not found, ruleId:', ruleId);
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
 
     await rule.update(req.body);
     res.json({ success: true, rule });
   } catch (error) {
+    console.error('[Intelligence] Expert rule update error for ruleId:', req.params?.ruleId, ':', error.message, error.stack);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -656,18 +691,21 @@ router.put('/expert-rules/:ruleId', async (req, res) => {
 router.post('/expert-rules/seed', async (req, res) => {
   try {
     if (!req.user.roles?.includes('superadmin')) {
+      console.error('[Intelligence] Expert rules seed unauthorized attempt by user', req.user?.id);
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
 
     const { formSubmissions } = req.body;
 
     if (!formSubmissions || !Array.isArray(formSubmissions)) {
+      console.error('[Intelligence] Expert rules seed error: Invalid formSubmissions, received:', typeof req.body?.formSubmissions);
       return res.status(400).json({ success: false, error: 'formSubmissions array required' });
     }
 
     const results = await ExpertRulesService.parseAndSeedRules(formSubmissions);
     res.json({ success: true, results });
   } catch (error) {
+    console.error('[Intelligence] Expert rules seed error:', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -686,6 +724,7 @@ router.get('/backfill/status', async (req, res) => {
     const status = await intelModels.IntelBackfillProgress.getUserStatus(userId);
     res.json({ success: true, ...status });
   } catch (error) {
+    console.error('[Intelligence] Backfill status error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -699,7 +738,10 @@ router.post('/backfill/start', async (req, res) => {
     const userId = req.user.id;
     const { adAccountId, days = 90, type = 'all' } = req.body;
 
+    console.log('[Intelligence] Backfill start requested for user', userId, 'adAccountId:', adAccountId, 'days:', days, 'type:', type);
+
     if (!adAccountId) {
+      console.error('[Intelligence] Backfill start error: Missing adAccountId for user', userId);
       return res.status(400).json({ success: false, error: 'adAccountId required' });
     }
 
@@ -721,6 +763,7 @@ router.post('/backfill/start', async (req, res) => {
     );
 
     if (!created && record.status === 'in_progress') {
+      console.log('[Intelligence] Backfill already in progress for user', userId, 'adAccountId:', adAccountId);
       return res.status(400).json({
         success: false,
         error: 'Backfill already in progress for this account'
@@ -767,6 +810,7 @@ router.post('/backfill/start', async (req, res) => {
           days_completed: days
         });
       } catch (error) {
+        console.error('[Intelligence] Backfill background task error for user', userId, 'adAccountId:', adAccountId, ':', error.message, error.stack);
         await record.markFailed(error.message);
       }
     });
@@ -782,6 +826,7 @@ router.post('/backfill/start', async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[Intelligence] Backfill start error for user', req.user?.id, 'adAccountId:', req.body?.adAccountId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -800,12 +845,15 @@ router.post('/backfill/pause', async (req, res) => {
     });
 
     if (!record) {
+      console.error('[Intelligence] Backfill pause error: Not found for user', userId, 'adAccountId:', adAccountId);
       return res.status(404).json({ success: false, error: 'Backfill not found' });
     }
 
     await record.update({ status: 'paused' });
+    console.log('[Intelligence] Backfill paused for user', userId, 'adAccountId:', adAccountId);
     res.json({ success: true, message: 'Backfill paused' });
   } catch (error) {
+    console.error('[Intelligence] Backfill pause error for user', req.user?.id, 'adAccountId:', req.body?.adAccountId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -825,10 +873,12 @@ router.delete('/backfill/:adAccountId', async (req, res) => {
 
     if (record) {
       await record.destroy();
+      console.log('[Intelligence] Backfill cancelled for user', userId, 'adAccountId:', adAccountId);
     }
 
     res.json({ success: true, message: 'Backfill cancelled' });
   } catch (error) {
+    console.error('[Intelligence] Backfill cancel error for user', req.user?.id, 'adAccountId:', req.params?.adAccountId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -887,6 +937,7 @@ router.get('/training/status', async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[Intelligence] Training status error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -930,6 +981,7 @@ router.get('/training/history', async (req, res) => {
 
     res.json({ success: true, history });
   } catch (error) {
+    console.error('[Intelligence] Training history error for days:', req.query?.days, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -964,6 +1016,7 @@ router.get('/training/clusters', async (req, res) => {
       clusters: clusterPattern.pattern_data
     });
   } catch (error) {
+    console.error('[Intelligence] Training clusters error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });

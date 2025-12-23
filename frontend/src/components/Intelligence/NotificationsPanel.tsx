@@ -24,6 +24,7 @@ import {
   Badge,
   Tooltip,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   Notifications,
@@ -49,6 +50,7 @@ interface NotificationsPanelProps {
 const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false, onRefresh }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -61,6 +63,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false
   const fetchNotifications = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [notifResponse, unreadResponse] = await Promise.all([
         intelligenceApi.getNotifications({ include_read: true, limit: compact ? 5 : 50 }),
         intelligenceApi.getUnreadNotifications()
@@ -74,8 +77,10 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false
 
       setNotifications(notifs);
       setUnreadCount(unreadResponse.count || 0);
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to fetch notifications';
+      setError(errorMsg);
+      console.error('[NotificationsPanel] fetchNotifications error:', errorMsg, err);
     } finally {
       setLoading(false);
     }
@@ -88,8 +93,10 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false
         prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      toast.error('Failed to mark notification as read');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to mark notification as read';
+      console.error('[NotificationsPanel] handleMarkRead error:', errorMsg, err);
+      toast.error(errorMsg);
     }
   };
 
@@ -99,8 +106,10 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
       toast.success('All notifications marked as read');
-    } catch (error) {
-      toast.error('Failed to mark all as read');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to mark all as read';
+      console.error('[NotificationsPanel] handleMarkAllRead error:', errorMsg, err);
+      toast.error(errorMsg);
     }
   };
 
@@ -110,8 +119,10 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false
       toast.success('Action completed');
       fetchNotifications();
       onRefresh?.();
-    } catch (error) {
-      toast.error('Action failed');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Action failed';
+      console.error('[NotificationsPanel] handleAction error:', errorMsg, err);
+      toast.error(errorMsg);
     }
   };
 
@@ -166,6 +177,21 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ compact = false
       <Box display="flex" justifyContent="center" p={4}>
         <CircularProgress />
       </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert
+        severity="error"
+        action={
+          <IconButton color="inherit" size="small" onClick={fetchNotifications}>
+            <Refresh />
+          </IconButton>
+        }
+      >
+        {error}
+      </Alert>
     );
   }
 

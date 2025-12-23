@@ -20,10 +20,14 @@ import CompletionSummary from './CompletionSummary/CompletionSummary';
 import CampaignManagementContainer from './CampaignManagement/CampaignManagementContainer';
 import MultiplyContainer from './MultiplySection/MultiplyContainer';
 import { CreativeLibraryProvider } from '../../contexts/CreativeLibraryContext';
+import { useStrategyVerification } from '../../hooks/useStrategyVerification';
 
 const StrategyForAllContainer: React.FC = () => {
   // Tab management
   const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create');
+
+  // Verification hook for post-creation validation
+  const { verify, isVerifying, verificationResult } = useStrategyVerification();
 
   // Get URL location for import detection
   const location = useLocation();
@@ -917,7 +921,7 @@ const StrategyForAllContainer: React.FC = () => {
     }
   };
 
-  const handleDuplicationCompleted = (duplicatedAdSets: Array<{ id: string; name: string }>) => {
+  const handleDuplicationCompleted = async (duplicatedAdSets: Array<{ id: string; name: string }>) => {
     // Update campaignResult with duplicated ad sets data
     setCampaignResult(prev => {
       if (!prev || !prev.data) return prev;
@@ -932,6 +936,50 @@ const StrategyForAllContainer: React.FC = () => {
     });
     setPhase('completed');
     setActiveStep(3);
+
+    // === VERIFICATION: Check created entities against original request ===
+    // Run verification after strategy completes to ensure Facebook received correct data
+    if (campaignResult?.data?.campaign?.id && formData) {
+      console.log('\n🔍 [StrategyForAll] Starting post-creation verification...');
+
+      // Collect all created entity IDs
+      const adsetIds = [
+        campaignResult.data.adSet?.id,
+        ...duplicatedAdSets.map(a => a.id)
+      ].filter(Boolean);
+
+      const adIds = campaignResult.data.ads?.map((ad: any) => ad.id) || [];
+
+      try {
+        const verificationResult = await verify({
+          originalRequest: formData,
+          createdEntities: {
+            campaignId: campaignResult.data.campaign.id,
+            adsetIds,
+            adIds
+          },
+          strategyType: 'strategyForAll',
+          autoCorrect: true // Auto-fix mismatches
+        });
+
+        if (verificationResult) {
+          if (verificationResult.passed) {
+            console.log('✅ [StrategyForAll] Verification passed! All data matches.');
+          } else {
+            console.log(`⚠️ [StrategyForAll] Verification found ${verificationResult.totalMismatches} mismatch(es).`);
+            if (verificationResult.corrections.successful > 0) {
+              console.log(`   Auto-corrected: ${verificationResult.corrections.successful} field(s)`);
+            }
+            if (verificationResult.corrections.failed > 0) {
+              console.log(`   Failed to correct: ${verificationResult.corrections.failed} field(s)`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ [StrategyForAll] Verification error:', error);
+        // Don't fail the strategy - just log the error
+      }
+    }
   };
 
   const handleCreateNew = () => {

@@ -20,6 +20,7 @@ import CompletionSummary from './CompletionSummary/CompletionSummary';
 import CampaignManagementContainer from './CampaignManagement/CampaignManagementContainer';
 import MultiplyContainer from './MultiplySection/MultiplyContainer';
 import { CreativeLibraryProvider } from '../../contexts/CreativeLibraryContext';
+import { useStrategyVerification } from '../../hooks/useStrategyVerification';
 
 const steps = [
   'Campaign Setup (1-1-1)',
@@ -34,6 +35,9 @@ const Strategy150Container: React.FC = () => {
 
   // Get URL location for import detection
   const location = useLocation();
+
+  // Verification hook for Strategy 1-50-1
+  const { verify, isVerifying, verificationResult } = useStrategyVerification();
 
   // Existing state for campaign creation
   const [phase, setPhase] = useState<Strategy150Phase>('setup');
@@ -730,6 +734,57 @@ const Strategy150Container: React.FC = () => {
         console.log('🎉 Batch API created all ad sets! Skipping to completion phase...');
         setPhase('completed');
         setActiveStep(3); // Go directly to step 4 (Completion)
+
+        // === VERIFICATION: Check created entities against original request (batch path) ===
+        if (strategy150Result?.data?.campaign?.id && data) {
+          try {
+            // Collect all ad set IDs from batch result
+            const adsetIds: string[] = [];
+
+            // Add original ad set
+            if (strategy150Result.data.adSet?.id) {
+              adsetIds.push(strategy150Result.data.adSet.id);
+            }
+
+            // Add duplicated ad sets from batch
+            if (strategy150Result.data.duplicatedAdSets && Array.isArray(strategy150Result.data.duplicatedAdSets)) {
+              strategy150Result.data.duplicatedAdSets.forEach((adset: any) => {
+                if (adset?.id) adsetIds.push(adset.id);
+              });
+            }
+
+            // Get ad IDs
+            const adIds = strategy150Result.data.ads?.map((ad: any) => ad.id).filter(Boolean) || [];
+
+            console.log('[Strategy150-Batch] Running verification for campaign:', strategy150Result.data.campaign.id);
+            console.log('[Strategy150-Batch] Ad sets to verify:', adsetIds.length);
+
+            // Run verification asynchronously (don't await to avoid blocking)
+            verify({
+              originalRequest: data,
+              createdEntities: {
+                campaignId: strategy150Result.data.campaign.id,
+                adsetIds: adsetIds,
+                adIds: adIds
+              },
+              strategyType: 'strategy150',
+              autoCorrect: true
+            }).then(verifyResult => {
+              if (verifyResult) {
+                console.log('[Strategy150-Batch] Verification completed:', {
+                  passed: verifyResult.passed,
+                  mismatchCount: verifyResult.totalMismatches || 0,
+                  correctedCount: verifyResult.corrections?.successful || 0
+                });
+              }
+            }).catch(err => {
+              console.error('[Strategy150-Batch] Verification error:', err.message);
+            });
+          } catch (verifyError: any) {
+            console.error('[Strategy150-Batch] Verification setup error:', verifyError.message);
+          }
+        }
+
         return;
       }
 
@@ -879,9 +934,58 @@ const Strategy150Container: React.FC = () => {
     }
   };
 
-  const handleDuplicationCompleted = () => {
+  const handleDuplicationCompleted = async () => {
     setPhase('completed');
     setActiveStep(3);
+
+    // === VERIFICATION: Check created entities against original request ===
+    if (campaignResult?.data?.campaign?.id && formData) {
+      try {
+        // Collect all ad set IDs from the campaign result
+        const adsetIds: string[] = [];
+
+        // Add original ad set
+        if (campaignResult.data.adSet?.id) {
+          adsetIds.push(campaignResult.data.adSet.id);
+        }
+
+        // Add duplicated ad sets if available
+        if (campaignResult.data.duplicatedAdSets && Array.isArray(campaignResult.data.duplicatedAdSets)) {
+          campaignResult.data.duplicatedAdSets.forEach((adset: any) => {
+            if (adset?.id) adsetIds.push(adset.id);
+          });
+        }
+
+        // Get ad IDs
+        const adIds = campaignResult.data.ads?.map((ad: any) => ad.id).filter(Boolean) || [];
+
+        console.log('[Strategy150] Running verification for campaign:', campaignResult.data.campaign.id);
+        console.log('[Strategy150] Ad sets to verify:', adsetIds.length);
+        console.log('[Strategy150] Ads to verify:', adIds.length);
+
+        const verifyResult = await verify({
+          originalRequest: formData,
+          createdEntities: {
+            campaignId: campaignResult.data.campaign.id,
+            adsetIds: adsetIds,
+            adIds: adIds
+          },
+          strategyType: 'strategy150',
+          autoCorrect: true
+        });
+
+        if (verifyResult) {
+          console.log('[Strategy150] Verification completed:', {
+            passed: verifyResult.passed,
+            mismatchCount: verifyResult.totalMismatches || 0,
+            correctedCount: verifyResult.corrections?.successful || 0
+          });
+        }
+      } catch (verifyError: any) {
+        console.error('[Strategy150] Verification error:', verifyError.message);
+        // Don't fail the completion - verification is supplementary
+      }
+    }
   };
 
   const handleCreateNew = () => {

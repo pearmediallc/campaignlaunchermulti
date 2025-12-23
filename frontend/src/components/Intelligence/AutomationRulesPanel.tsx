@@ -46,6 +46,7 @@ import {
   Warning,
   Shield,
   Schedule,
+  Refresh,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { intelligenceApi, AutomationRule, RuleTemplate } from '../../services/intelligenceApi';
@@ -58,6 +59,7 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [templates, setTemplates] = useState<RuleTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<RuleTemplate | null>(null);
   const [newRule, setNewRule] = useState<Partial<AutomationRule>>({
@@ -80,12 +82,19 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
 
   const fetchRules = async () => {
     try {
+      setLoading(true);
+      setError(null);
       const response = await intelligenceApi.getRules();
       if (response.success) {
         setRules(response.rules);
+      } else {
+        setError('Failed to load automation rules');
+        console.error('[AutomationRulesPanel] API error:', response);
       }
-    } catch (error) {
-      console.error('Failed to fetch rules:', error);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to fetch rules';
+      setError(errorMsg);
+      console.error('[AutomationRulesPanel] fetchRules error:', errorMsg, err);
     } finally {
       setLoading(false);
     }
@@ -96,9 +105,11 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
       const response = await intelligenceApi.getRuleTemplates();
       if (response.success) {
         setTemplates(response.templates);
+      } else {
+        console.error('[AutomationRulesPanel] Failed to load templates:', response);
       }
-    } catch (error) {
-      console.error('Failed to fetch templates:', error);
+    } catch (err: any) {
+      console.error('[AutomationRulesPanel] fetchTemplates error:', err.response?.data?.error || err.message, err);
     }
   };
 
@@ -107,8 +118,10 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
       await intelligenceApi.updateRule(rule.id, { is_active: !rule.is_active });
       toast.success(`Rule ${rule.is_active ? 'disabled' : 'enabled'}`);
       fetchRules();
-    } catch (error) {
-      toast.error('Failed to update rule');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to update rule';
+      console.error('[AutomationRulesPanel] handleToggleRule error:', errorMsg, err);
+      toast.error(errorMsg);
     }
   };
 
@@ -119,8 +132,10 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
       await intelligenceApi.deleteRule(ruleId);
       toast.success('Rule deleted');
       fetchRules();
-    } catch (error) {
-      toast.error('Failed to delete rule');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to delete rule';
+      console.error('[AutomationRulesPanel] handleDeleteRule error:', errorMsg, err);
+      toast.error(errorMsg);
     }
   };
 
@@ -140,8 +155,10 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
       setCreateDialogOpen(false);
       fetchRules();
       onRefresh();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create rule');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to create rule';
+      console.error('[AutomationRulesPanel] handleCreateRule error:', errorMsg, err);
+      toast.error(errorMsg);
     }
   };
 
@@ -165,6 +182,22 @@ const AutomationRulesPanel: React.FC<AutomationRulesPanelProps> = ({ onRefresh }
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
+
+  // Error display
+  if (error) {
+    return (
+      <Alert
+        severity="error"
+        action={
+          <IconButton color="inherit" size="small" onClick={fetchRules}>
+            <Refresh />
+          </IconButton>
+        }
+      >
+        {error}
+      </Alert>
+    );
+  }
 
   return (
     <Box>
