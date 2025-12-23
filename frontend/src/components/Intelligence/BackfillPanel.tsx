@@ -52,6 +52,13 @@ interface BackfillPanelProps {
 interface AdAccount {
   id: string;
   name: string;
+  isActive?: boolean;
+}
+
+interface Pixel {
+  id: string;
+  name: string;
+  isActive?: boolean;
 }
 
 const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
@@ -60,10 +67,13 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState('');
+  const [selectedPixel, setSelectedPixel] = useState('');
   const [backfillDays, setBackfillDays] = useState(90);
   const [backfillType, setBackfillType] = useState('all');
   const [startingBackfill, setStartingBackfill] = useState(false);
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
+  const [pixels, setPixels] = useState<Pixel[]>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -80,26 +90,45 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
     }
   }, []);
 
-  const fetchAdAccounts = async () => {
+  const fetchAvailableResources = async () => {
     try {
-      // Fetch ad accounts from the main API
-      const response = await fetch('/api/ad-accounts', {
+      setResourcesLoading(true);
+      // Fetch all available resources from the resource manager API
+      const response = await fetch('/api/resources/available', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       const data = await response.json();
       if (data.success) {
-        setAdAccounts(data.accounts || []);
+        setAdAccounts(data.adAccounts || []);
+        setPixels(data.pixels || []);
+
+        // Auto-select currently active resources
+        const activeAccount = data.adAccounts?.find((acc: AdAccount) => acc.isActive);
+        const activePixel = data.pixels?.find((p: Pixel) => p.isActive);
+
+        if (activeAccount && !selectedAccount) {
+          setSelectedAccount(activeAccount.id);
+        }
+        if (activePixel && !selectedPixel) {
+          setSelectedPixel(activePixel.id);
+        }
+      } else {
+        console.error('Failed to fetch resources:', data.message);
+        toast.error(data.message || 'Failed to fetch available resources');
       }
     } catch (err) {
-      console.error('Failed to fetch ad accounts:', err);
+      console.error('Failed to fetch available resources:', err);
+      toast.error('Failed to fetch available resources. Please ensure Facebook is connected.');
+    } finally {
+      setResourcesLoading(false);
     }
   };
 
   useEffect(() => {
     fetchStatus();
-    fetchAdAccounts();
+    fetchAvailableResources();
 
     // Poll for updates every 10 seconds if there are in-progress backfills
     const interval = setInterval(() => {
@@ -402,55 +431,90 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
             Import historical performance data from Facebook to train the intelligence engine.
           </Typography>
 
-          <Grid container spacing={2}>
-            <Grid size={12}>
-              <FormControl fullWidth>
-                <InputLabel>Ad Account</InputLabel>
-                <Select
-                  value={selectedAccount}
-                  label="Ad Account"
-                  onChange={(e) => setSelectedAccount(e.target.value)}
-                >
-                  {adAccounts.map((account) => (
-                    <MenuItem key={account.id} value={account.id}>
-                      {account.name || account.id}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+          {resourcesLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" py={4}>
+              <CircularProgress size={32} />
+              <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
+                Loading available resources...
+              </Typography>
+            </Box>
+          ) : adAccounts.length === 0 ? (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                No ad accounts found. Please ensure your Facebook account is connected and has access to ad accounts.
+              </Typography>
+            </Alert>
+          ) : (
+            <Grid container spacing={2}>
+              <Grid size={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Ad Account</InputLabel>
+                  <Select
+                    value={selectedAccount}
+                    label="Ad Account"
+                    onChange={(e) => setSelectedAccount(e.target.value)}
+                  >
+                    {adAccounts.map((account) => (
+                      <MenuItem key={account.id} value={account.id}>
+                        {account.name || account.id} {account.isActive ? '(Active)' : ''}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
 
-            <Grid size={6}>
-              <FormControl fullWidth>
-                <InputLabel>Days to Fetch</InputLabel>
-                <Select
-                  value={backfillDays}
-                  label="Days to Fetch"
-                  onChange={(e) => setBackfillDays(e.target.value as number)}
-                >
-                  <MenuItem value={30}>30 Days</MenuItem>
-                  <MenuItem value={60}>60 Days</MenuItem>
-                  <MenuItem value={90}>90 Days (Recommended)</MenuItem>
-                  <MenuItem value={180}>180 Days</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
+              {pixels.length > 0 && (
+                <Grid size={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Pixel (Optional)</InputLabel>
+                    <Select
+                      value={selectedPixel}
+                      label="Pixel (Optional)"
+                      onChange={(e) => setSelectedPixel(e.target.value)}
+                    >
+                      <MenuItem value="">None</MenuItem>
+                      {pixels.map((pixel) => (
+                        <MenuItem key={pixel.id} value={pixel.id}>
+                          {pixel.name || pixel.id} {pixel.isActive ? '(Active)' : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              )}
 
-            <Grid size={6}>
-              <FormControl fullWidth>
-                <InputLabel>Data Type</InputLabel>
-                <Select
-                  value={backfillType}
-                  label="Data Type"
-                  onChange={(e) => setBackfillType(e.target.value)}
-                >
-                  <MenuItem value="all">All Data (Recommended)</MenuItem>
-                  <MenuItem value="insights">Performance Insights Only</MenuItem>
-                  <MenuItem value="pixel">Pixel Data Only</MenuItem>
-                </Select>
-              </FormControl>
+              <Grid size={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Days to Fetch</InputLabel>
+                  <Select
+                    value={backfillDays}
+                    label="Days to Fetch"
+                    onChange={(e) => setBackfillDays(e.target.value as number)}
+                  >
+                    <MenuItem value={30}>30 Days</MenuItem>
+                    <MenuItem value={60}>60 Days</MenuItem>
+                    <MenuItem value={90}>90 Days (Recommended)</MenuItem>
+                    <MenuItem value={180}>180 Days</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid size={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Data Type</InputLabel>
+                  <Select
+                    value={backfillType}
+                    label="Data Type"
+                    onChange={(e) => setBackfillType(e.target.value)}
+                  >
+                    <MenuItem value="all">All Data (Recommended)</MenuItem>
+                    <MenuItem value="insights">Performance Insights Only</MenuItem>
+                    <MenuItem value="pixel">Pixel Data Only</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
             </Grid>
-          </Grid>
+          )}
 
           <Alert severity="info" sx={{ mt: 2 }}>
             <Typography variant="body2">
@@ -464,7 +528,7 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
           <Button
             variant="contained"
             onClick={handleStartBackfill}
-            disabled={!selectedAccount || startingBackfill}
+            disabled={!selectedAccount || startingBackfill || resourcesLoading}
             startIcon={startingBackfill ? <CircularProgress size={20} /> : <PlayArrow />}
           >
             {startingBackfill ? 'Starting...' : 'Start Backfill'}

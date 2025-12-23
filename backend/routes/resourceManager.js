@@ -421,6 +421,86 @@ router.get('/recent', authenticate, async (req, res) => {
 });
 
 /**
+ * Get all available resources (ad accounts, pages, pixels) for the user
+ * This is used by Intelligence dashboard and other components that need to list all resources
+ */
+router.get('/available', authenticate, async (req, res) => {
+  try {
+    const userId = req.userId || req.user.id;
+
+    // Get Facebook auth with all stored resources
+    const facebookAuth = await FacebookAuth.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!facebookAuth) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Facebook authentication found. Please connect your Facebook account.',
+        adAccounts: [],
+        pages: [],
+        pixels: []
+      });
+    }
+
+    // Parse stored resources (they may be stored as JSON strings or objects)
+    const adAccounts = Array.isArray(facebookAuth.adAccounts)
+      ? facebookAuth.adAccounts
+      : (typeof facebookAuth.adAccounts === 'string' ? JSON.parse(facebookAuth.adAccounts || '[]') : []);
+
+    const pages = Array.isArray(facebookAuth.pages)
+      ? facebookAuth.pages
+      : (typeof facebookAuth.pages === 'string' ? JSON.parse(facebookAuth.pages || '[]') : []);
+
+    const pixels = Array.isArray(facebookAuth.pixels)
+      ? facebookAuth.pixels
+      : (typeof facebookAuth.pixels === 'string' ? JSON.parse(facebookAuth.pixels || '[]') : []);
+
+    // Get currently active resources
+    const activeConfig = await UserResourceConfig.getActiveConfig(userId);
+    const activeAdAccountId = activeConfig?.adAccountId || facebookAuth.selectedAdAccount?.id;
+    const activePageId = activeConfig?.pageId || facebookAuth.selectedPage?.id;
+    const activePixelId = activeConfig?.pixelId || facebookAuth.selectedPixel?.id;
+
+    res.json({
+      success: true,
+      adAccounts: adAccounts.map(acc => ({
+        id: acc.id,
+        name: acc.name || acc.id,
+        account_status: acc.account_status,
+        currency: acc.currency,
+        isActive: acc.id === activeAdAccountId
+      })),
+      pages: pages.map(page => ({
+        id: page.id,
+        name: page.name || page.id,
+        isActive: page.id === activePageId
+      })),
+      pixels: pixels.map(pixel => ({
+        id: pixel.id,
+        name: pixel.name || pixel.id,
+        isActive: pixel.id === activePixelId
+      })),
+      activeResources: {
+        adAccountId: activeAdAccountId,
+        pageId: activePageId,
+        pixelId: activePixelId
+      }
+    });
+  } catch (error) {
+    console.error('Get available resources error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get available resources',
+      error: error.message,
+      adAccounts: [],
+      pages: [],
+      pixels: []
+    });
+  }
+});
+
+/**
  * Get resource switch history
  */
 router.get('/history', authenticate, async (req, res) => {
