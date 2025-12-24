@@ -736,6 +736,54 @@ class ExpertRulesService {
   }
 
   /**
+   * Get kill thresholds for a specific vertical
+   * Used by PatternLearningService for expert baseline seeding
+   */
+  async getKillThresholds(vertical) {
+    try {
+      const rules = await intelModels.IntelExpertRule.findAll({
+        where: {
+          rule_type: 'kill',
+          is_active: true,
+          ...(vertical && vertical !== 'all' ? { vertical } : {})
+        }
+      });
+      return rules.map(r => ({
+        name: r.name,
+        conditions: r.conditions,
+        confidence_score: r.confidence_score
+      }));
+    } catch (error) {
+      console.error('Error getting kill thresholds:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get scale thresholds for a specific vertical
+   * Used by PatternLearningService for expert baseline seeding
+   */
+  async getScaleThresholds(vertical) {
+    try {
+      const rules = await intelModels.IntelExpertRule.findAll({
+        where: {
+          rule_type: 'scale',
+          is_active: true,
+          ...(vertical && vertical !== 'all' ? { vertical } : {})
+        }
+      });
+      return rules.map(r => ({
+        name: r.name,
+        conditions: r.conditions,
+        confidence_score: r.confidence_score
+      }));
+    } catch (error) {
+      console.error('Error getting scale thresholds:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Validate a rule against actual performance data
    */
   async validateRule(ruleId, performanceData) {

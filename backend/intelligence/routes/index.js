@@ -937,23 +937,38 @@ router.get('/training/status', async (req, res) => {
     const minSnapshots = 100;
     const dataReadiness = Math.min(100, Math.round((snapshotCounts / minSnapshots) * 100));
 
+    // Return both 'status' (for frontend compatibility) and 'training' (legacy)
+    const statusData = {
+      data_points: snapshotCounts,
+      data_readiness: dataReadiness,
+      min_required: minSnapshots,
+      patterns_learned: patterns.length,
+      expert_rules: expertRuleCount,
+      expert_rules_loaded: expertRuleCount, // Alias for compatibility
+      pattern_breakdown: patterns.reduce((acc, p) => {
+        acc[p.pattern_type] = (acc[p.pattern_type] || 0) + 1;
+        return acc;
+      }, {}),
+      average_confidence: patterns.length > 0
+        ? (patterns.reduce((sum, p) => sum + p.confidence_score, 0) / patterns.length * 100).toFixed(1)
+        : 0,
+      backfill: backfillStatus.summary,
+      // Required by TrainingStatus type
+      pixel_data_points: 0,
+      readiness: {
+        data: dataReadiness,
+        patterns: patterns.length > 0 ? 100 : 0,
+        expert: expertRuleCount > 0 ? 100 : 0,
+        overall: Math.round((dataReadiness * 0.4) + (patterns.length > 0 ? 30 : 0) + (expertRuleCount > 0 ? 30 : 0))
+      },
+      status: dataReadiness >= 100 && patterns.length > 0 ? 'ready' : dataReadiness >= 50 ? 'learning' : 'collecting',
+      last_learning_run: null
+    };
+
     res.json({
       success: true,
-      training: {
-        data_points: snapshotCounts,
-        data_readiness: dataReadiness,
-        min_required: minSnapshots,
-        patterns_learned: patterns.length,
-        expert_rules: expertRuleCount,
-        pattern_breakdown: patterns.reduce((acc, p) => {
-          acc[p.pattern_type] = (acc[p.pattern_type] || 0) + 1;
-          return acc;
-        }, {}),
-        average_confidence: patterns.length > 0
-          ? (patterns.reduce((sum, p) => sum + p.confidence_score, 0) / patterns.length * 100).toFixed(1)
-          : 0,
-        backfill: backfillStatus.summary
-      }
+      status: statusData, // For frontend TrainingAnalyticsPanel
+      training: statusData // Legacy support
     });
   } catch (error) {
     console.error('[Intelligence] Training status error for user', req.user?.id, ':', error.message, error.stack);
