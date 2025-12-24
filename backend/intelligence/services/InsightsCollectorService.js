@@ -428,6 +428,34 @@ class InsightsCollectorService {
           totalInsightsSaved++;
         }
 
+        // 5. Fetch age and gender breakdown (for demographic analysis)
+        const ageGenderData = await this.fetchInsightsWithBreakdown(adAccountId, dateStr, accessToken, ['age', 'gender']);
+        for (const insight of ageGenderData) {
+          await this.storeDemographicSnapshot(userId, adAccountId, insight, dateStr);
+          totalInsightsSaved++;
+        }
+
+        // 6. Fetch device platform breakdown (mobile vs desktop performance)
+        const deviceData = await this.fetchInsightsWithBreakdown(adAccountId, dateStr, accessToken, ['device_platform']);
+        for (const insight of deviceData) {
+          await this.storeDeviceSnapshot(userId, adAccountId, insight, dateStr);
+          totalInsightsSaved++;
+        }
+
+        // 7. Fetch publisher platform breakdown (facebook, instagram, messenger, audience network)
+        const platformData = await this.fetchInsightsWithBreakdown(adAccountId, dateStr, accessToken, ['publisher_platform', 'platform_position']);
+        for (const insight of platformData) {
+          await this.storePlacementSnapshot(userId, adAccountId, insight, dateStr);
+          totalInsightsSaved++;
+        }
+
+        // 8. Fetch ad-level insights for creative performance analysis
+        const adData = await this.fetchAccountLevelInsights(adAccountId, dateStr, accessToken, 'ad');
+        for (const insight of adData) {
+          await this.storeAdSnapshot(userId, adAccountId, insight, dateStr);
+          totalInsightsSaved++;
+        }
+
         daysCompleted++;
 
         // Log progress every 5 days
@@ -441,9 +469,9 @@ class InsightsCollectorService {
           await progressCallback(daysCompleted, dateStr);
         }
 
-        // Rate limiting: ~4 API calls per day, so 50 days/hour is safe
-        // 300ms between days = ~3 calls/second, well under Facebook's limits
-        await this.delay(300);
+        // Rate limiting: ~8 API calls per day now with all breakdowns
+        // 500ms between days = ~2 calls/second, well under Facebook's limits
+        await this.delay(500);
 
       } catch (error) {
         console.error(`  ⚠️ Error on ${dateStr}:`, error.message);
@@ -458,19 +486,25 @@ class InsightsCollectorService {
   }
 
   /**
-   * Fetch account-level insights broken down by campaign or adset
-   * This gets ALL campaigns/adsets in ONE API call per day
+   * Fetch account-level insights broken down by campaign, adset, or ad
+   * This gets ALL campaigns/adsets/ads in ONE API call per day
    */
   async fetchAccountLevelInsights(adAccountId, dateStr, accessToken, level) {
     try {
       const formattedId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
+      // Include ad_id and ad_name for ad-level insights
+      const fields = level === 'ad'
+        ? 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr,frequency,cost_per_action_type'
+        : 'campaign_id,campaign_name,adset_id,adset_name,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr,frequency,cost_per_action_type';
+
       const response = await axios.get(`${this.baseUrl}/${formattedId}/insights`, {
         params: {
           access_token: accessToken,
-          fields: 'campaign_id,campaign_name,adset_id,adset_name,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr,frequency,cost_per_action_type',
+          fields: fields,
           time_range: JSON.stringify({ since: dateStr, until: dateStr }),
           level: level,
-          limit: 500 // Get all campaigns/adsets
+          limit: 500 // Get all campaigns/adsets/ads
         }
       });
 
@@ -574,6 +608,115 @@ class InsightsCollectorService {
       snapshot_date: date,
       snapshot_hour: hour,
       day_of_week: date.getDay(),
+      ...metrics,
+      raw_data: insight
+    });
+  }
+
+  /**
+   * Store demographic (age/gender) performance data
+   */
+  async storeDemographicSnapshot(userId, adAccountId, insight, dateStr) {
+    if (parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+    const age = insight.age || 'unknown';
+    const gender = insight.gender || 'unknown';
+    const entityId = `${age}_${gender}`;
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: 'age_gender',
+      entity_id: entityId,
+      entity_name: `${age} ${gender}`,
+      snapshot_date: date,
+      snapshot_hour: 23,
+      day_of_week: date.getDay(),
+      age_range: age,
+      gender: gender,
+      ...metrics,
+      raw_data: insight
+    });
+  }
+
+  /**
+   * Store device platform performance data
+   */
+  async storeDeviceSnapshot(userId, adAccountId, insight, dateStr) {
+    if (parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+    const device = insight.device_platform || 'unknown';
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: 'device',
+      entity_id: device,
+      entity_name: device.charAt(0).toUpperCase() + device.slice(1),
+      snapshot_date: date,
+      snapshot_hour: 23,
+      day_of_week: date.getDay(),
+      device_platform: device,
+      ...metrics,
+      raw_data: insight
+    });
+  }
+
+  /**
+   * Store placement (publisher platform + position) performance data
+   */
+  async storePlacementSnapshot(userId, adAccountId, insight, dateStr) {
+    if (parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+    const platform = insight.publisher_platform || 'unknown';
+    const position = insight.platform_position || 'unknown';
+    const entityId = `${platform}_${position}`;
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: 'placement',
+      entity_id: entityId,
+      entity_name: `${platform} - ${position}`,
+      snapshot_date: date,
+      snapshot_hour: 23,
+      day_of_week: date.getDay(),
+      publisher_platform: platform,
+      platform_position: position,
+      ...metrics,
+      raw_data: insight
+    });
+  }
+
+  /**
+   * Store ad-level performance snapshot
+   */
+  async storeAdSnapshot(userId, adAccountId, insight, dateStr) {
+    const adId = insight.ad_id;
+    const adName = insight.ad_name;
+
+    if (!adId || parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: 'ad',
+      entity_id: adId,
+      entity_name: adName,
+      snapshot_date: date,
+      snapshot_hour: 23,
+      day_of_week: date.getDay(),
+      campaign_id: insight.campaign_id,
+      adset_id: insight.adset_id,
       ...metrics,
       raw_data: insight
     });

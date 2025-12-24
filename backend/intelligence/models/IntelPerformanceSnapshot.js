@@ -26,7 +26,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     entity_type: {
-      type: DataTypes.ENUM('campaign', 'adset', 'ad'),
+      type: DataTypes.ENUM('campaign', 'adset', 'ad', 'geo', 'hourly', 'age_gender', 'device', 'placement'),
       allowNull: false
     },
     entity_id: {
@@ -154,6 +154,69 @@ module.exports = (sequelize, DataTypes) => {
     raw_insights: {
       type: DataTypes.JSON,
       allowNull: true
+    },
+    raw_data: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
+    // Geographic segmentation
+    region: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'State/region for geo breakdowns'
+    },
+    city: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'City for geo breakdowns'
+    },
+    country: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: 'US'
+    },
+    dma: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Designated Market Area'
+    },
+    // Demographic segmentation
+    age_range: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Age bracket (18-24, 25-34, etc.)'
+    },
+    gender: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'male, female, unknown'
+    },
+    // Device/placement segmentation
+    device_platform: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'mobile, desktop, tablet'
+    },
+    publisher_platform: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'facebook, instagram, audience_network, messenger'
+    },
+    platform_position: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'feed, story, reels, right_column, etc.'
+    },
+    // Campaign reference for breakdowns
+    campaign_id: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Parent campaign for segment data'
+    },
+    adset_id: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Parent adset for segment data'
     }
   }, {
     tableName: 'intel_performance_snapshots',
