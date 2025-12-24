@@ -14,36 +14,35 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
+    // PostgreSQL doesn't allow ALTER TYPE ADD VALUE inside a transaction
+    // So we do ENUM changes first, outside of transaction
+
+    console.log('📊 Starting segmentation columns migration...');
+
+    // 1. Add new ENUM values (must be outside transaction in PostgreSQL)
+    const enumValues = ['geo', 'hourly', 'age_gender', 'device', 'placement'];
+
+    for (const value of enumValues) {
+      try {
+        await queryInterface.sequelize.query(`
+          ALTER TYPE "enum_intel_performance_snapshots_entity_type"
+          ADD VALUE IF NOT EXISTS '${value}';
+        `);
+        console.log(`  ✓ Added ENUM value: ${value}`);
+      } catch (error) {
+        // Value might already exist, that's fine
+        if (!error.message.includes('already exists')) {
+          console.log(`  ⚠️ ENUM ${value}: ${error.message}`);
+        } else {
+          console.log(`  ✓ ENUM value already exists: ${value}`);
+        }
+      }
+    }
+
+    // 2. Now add columns in a transaction
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
-      // 1. First, alter the entity_type enum to add new values
-      await queryInterface.sequelize.query(`
-        ALTER TYPE "enum_intel_performance_snapshots_entity_type"
-        ADD VALUE IF NOT EXISTS 'geo';
-      `, { transaction });
-
-      await queryInterface.sequelize.query(`
-        ALTER TYPE "enum_intel_performance_snapshots_entity_type"
-        ADD VALUE IF NOT EXISTS 'hourly';
-      `, { transaction });
-
-      await queryInterface.sequelize.query(`
-        ALTER TYPE "enum_intel_performance_snapshots_entity_type"
-        ADD VALUE IF NOT EXISTS 'age_gender';
-      `, { transaction });
-
-      await queryInterface.sequelize.query(`
-        ALTER TYPE "enum_intel_performance_snapshots_entity_type"
-        ADD VALUE IF NOT EXISTS 'device';
-      `, { transaction });
-
-      await queryInterface.sequelize.query(`
-        ALTER TYPE "enum_intel_performance_snapshots_entity_type"
-        ADD VALUE IF NOT EXISTS 'placement';
-      `, { transaction });
-
-      // 2. Add new columns
       const columnsToAdd = [
         { name: 'raw_data', type: Sequelize.JSON, allowNull: true },
         { name: 'region', type: Sequelize.STRING, allowNull: true },
@@ -72,9 +71,9 @@ module.exports = {
             allowNull: column.allowNull,
             defaultValue: column.defaultValue
           }, { transaction });
-          console.log(`Added column: ${column.name}`);
+          console.log(`  ✓ Added column: ${column.name}`);
         } else {
-          console.log(`Column already exists: ${column.name}`);
+          console.log(`  ✓ Column already exists: ${column.name}`);
         }
       }
 
@@ -95,10 +94,10 @@ module.exports = {
             name: index.name,
             transaction
           });
-          console.log(`Added index: ${index.name}`);
+          console.log(`  ✓ Added index: ${index.name}`);
         } catch (error) {
           if (error.message.includes('already exists')) {
-            console.log(`Index already exists: ${index.name}`);
+            console.log(`  ✓ Index already exists: ${index.name}`);
           } else {
             throw error;
           }
@@ -109,6 +108,7 @@ module.exports = {
       console.log('✅ Migration complete: Added segmentation columns to intel_performance_snapshots');
     } catch (error) {
       await transaction.rollback();
+      console.error('❌ Migration failed:', error.message);
       throw error;
     }
   },
@@ -131,8 +131,9 @@ module.exports = {
       for (const indexName of indexes) {
         try {
           await queryInterface.removeIndex('intel_performance_snapshots', indexName, { transaction });
+          console.log(`  ✓ Removed index: ${indexName}`);
         } catch (error) {
-          console.log(`Index not found: ${indexName}`);
+          console.log(`  ⚠️ Index not found: ${indexName}`);
         }
       }
 
@@ -147,8 +148,9 @@ module.exports = {
       for (const column of columns) {
         try {
           await queryInterface.removeColumn('intel_performance_snapshots', column, { transaction });
+          console.log(`  ✓ Removed column: ${column}`);
         } catch (error) {
-          console.log(`Column not found: ${column}`);
+          console.log(`  ⚠️ Column not found: ${column}`);
         }
       }
 

@@ -474,6 +474,25 @@ class InsightsCollectorService {
         await this.delay(500);
 
       } catch (error) {
+        // Check if it's a database schema error (migration not run)
+        if (error.message.includes('column') && error.message.includes('does not exist')) {
+          console.error(`  ❌ DATABASE ERROR: ${error.message}`);
+          console.error(`  💡 FIX: Run migrations with 'npx sequelize-cli db:migrate'`);
+          throw error; // Stop the backfill - this won't fix itself
+        }
+        // Check if it's an API rate limit error
+        if (error.response?.status === 429 || error.message.includes('rate limit')) {
+          console.error(`  ⏳ Rate limited on ${dateStr}, waiting 60s...`);
+          await this.delay(60000);
+          // Don't increment date, retry this day
+          continue;
+        }
+        // Check if it's a token error
+        if (error.response?.status === 190 || error.message.includes('access token')) {
+          console.error(`  ❌ TOKEN ERROR on ${dateStr}: ${error.message}`);
+          throw error; // Stop - token issues won't fix themselves
+        }
+        // Other errors - log and continue
         console.error(`  ⚠️ Error on ${dateStr}:`, error.message);
         // Continue - don't stop the whole backfill for one bad day
       }
@@ -481,7 +500,16 @@ class InsightsCollectorService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log(`✅ [Backfill] Complete: ${daysCompleted}/${totalDays} days, ${totalInsightsSaved} insights saved`);
+    // Final summary
+    console.log(`\n╔══════════════════════════════════════════════════════════════╗`);
+    console.log(`║  ✅ BACKFILL COMPLETE                                        ║`);
+    console.log(`╠══════════════════════════════════════════════════════════════╣`);
+    console.log(`║  Account:     ${adAccountId.padEnd(45)}║`);
+    console.log(`║  Days:        ${daysCompleted}/${totalDays} (${Math.round(daysCompleted/totalDays*100)}%)`.padEnd(63) + `║`);
+    console.log(`║  Records:     ${totalInsightsSaved.toLocaleString()} insights saved`.padEnd(63) + `║`);
+    console.log(`║  Date Range:  ${startDate.toISOString().split('T')[0]} → ${endDate.toISOString().split('T')[0]}`.padEnd(63) + `║`);
+    console.log(`╚══════════════════════════════════════════════════════════════╝\n`);
+
     return { daysCompleted, totalDays, totalInsightsSaved };
   }
 
