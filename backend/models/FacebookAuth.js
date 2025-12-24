@@ -122,16 +122,29 @@ module.exports = (sequelize, DataTypes) => {
 
 // Static methods for encryption/decryption
 FacebookAuth.encrypt = function(text) {
+  // Prevent double-encryption: if already encrypted, return as-is
+  if (text && typeof text === 'string') {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.encrypted && parsed.authTag && parsed.iv) {
+        console.log('Encrypt: Value already encrypted, skipping');
+        return text;
+      }
+    } catch (e) {
+      // Not JSON, proceed with encryption
+    }
+  }
+
   const algorithm = 'aes-256-gcm';
   const key = Buffer.from(process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'), 'hex');
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(algorithm, key, iv);
-  
+
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  
+
   const authTag = cipher.getAuthTag();
-  
+
   return JSON.stringify({
     encrypted,
     authTag: authTag.toString('hex'),
@@ -139,21 +152,44 @@ FacebookAuth.encrypt = function(text) {
   });
 };
 
-FacebookAuth.decrypt = function(data) {
+FacebookAuth.decrypt = function(data, depth = 0) {
+  // Prevent infinite recursion
+  if (depth > 5) {
+    console.error('Decryption: Max recursion depth reached');
+    return null;
+  }
+
   try {
-    const { encrypted, authTag, iv } = JSON.parse(data);
+    const parsed = JSON.parse(data);
+
+    // Check if this is our encrypted format
+    if (!parsed.encrypted || !parsed.authTag || !parsed.iv) {
+      // Not our encrypted format, return as-is
+      return data;
+    }
+
     const algorithm = 'aes-256-gcm';
     const key = Buffer.from(process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'), 'hex');
-    const decipher = crypto.createDecipheriv(algorithm, key, Buffer.from(iv, 'hex'));
-    
-    decipher.setAuthTag(Buffer.from(authTag, 'hex'));
-    
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    const decipher = crypto.createDecipheriv(algorithm, key, Buffer.from(parsed.iv, 'hex'));
+
+    decipher.setAuthTag(Buffer.from(parsed.authTag, 'hex'));
+
+    let decrypted = decipher.update(parsed.encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
-    
+
+    // Check if the result is still encrypted (double-encryption case)
+    if (decrypted.startsWith('{"encrypted"')) {
+      console.log('Decryption: Detected double-encryption, decrypting again...');
+      return this.decrypt(decrypted, depth + 1);
+    }
+
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
+    // If JSON parse fails, it might be a plain token
+    if (data && typeof data === 'string' && data.startsWith('EAA')) {
+      return data;
+    }
+    console.error('Decryption error:', error.message);
     return null;
   }
 };
