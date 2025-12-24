@@ -353,11 +353,34 @@ class InsightsCollectorService {
       order: [['updated_at', 'DESC']]
     });
 
-    if (!fbAuth || !fbAuth.accessToken) {
-      throw new Error('No valid access token found for user');
+    console.log(`[Backfill Debug] fbAuth found: ${!!fbAuth}, userId: ${userId}`);
+
+    if (!fbAuth) {
+      throw new Error('No Facebook auth record found for user');
     }
 
-    const accessToken = fbAuth.accessToken;
+    // Debug: Check raw value vs getter value
+    const rawToken = fbAuth.getDataValue('accessToken');
+    const decryptedToken = fbAuth.accessToken;
+
+    console.log(`[Backfill Debug] Raw token type: ${typeof rawToken}, length: ${rawToken?.length || 0}`);
+    console.log(`[Backfill Debug] Raw token starts with: ${rawToken?.substring(0, 50)}...`);
+    console.log(`[Backfill Debug] Decrypted token: ${decryptedToken ? 'exists' : 'null'}, length: ${decryptedToken?.length || 0}`);
+    console.log(`[Backfill Debug] Decrypted token starts with: ${decryptedToken?.substring(0, 10)}...`);
+
+    if (!decryptedToken) {
+      console.error('[Backfill Debug] Token decryption failed! Check ENCRYPTION_KEY env var');
+      throw new Error('Access token decryption failed - check ENCRYPTION_KEY');
+    }
+
+    // Validate token format (Facebook tokens start with EAA)
+    if (!decryptedToken.startsWith('EAA')) {
+      console.error(`[Backfill Debug] Invalid token format - starts with: ${decryptedToken.substring(0, 10)}`);
+      throw new Error('Invalid access token format - does not start with EAA');
+    }
+
+    const accessToken = decryptedToken;
+    console.log(`[Backfill Debug] Using valid token starting with: ${accessToken.substring(0, 10)}...`);
 
     // Get campaigns for this account
     const campaigns = await this.fetchCampaigns(adAccountId, accessToken);
