@@ -382,69 +382,201 @@ class InsightsCollectorService {
     const accessToken = decryptedToken;
     console.log(`[Backfill Debug] Using valid token starting with: ${accessToken.substring(0, 10)}...`);
 
-    // Get campaigns for this account
-    const campaigns = await this.fetchCampaigns(adAccountId, accessToken);
-    console.log(`  Found ${campaigns.length} campaigns`);
-
-    // Get ad sets for this account
-    const adSets = await this.fetchAdSets(adAccountId, accessToken);
-    console.log(`  Found ${adSets.length} ad sets`);
-
     // Calculate days to fetch
     const dayMs = 24 * 60 * 60 * 1000;
     const totalDays = Math.ceil((endDate - startDate) / dayMs);
     let daysCompleted = 0;
+    let totalInsightsSaved = 0;
 
-    // Fetch data day by day
+    console.log(`  📊 Optimized backfill: ${totalDays} days using account-level insights with breakdowns`);
+    console.log(`  📅 Date range: ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
+
+    // OPTIMIZED APPROACH: Use account-level insights with level=campaign and level=adset
+    // This is MUCH more efficient than fetching each entity individually
+    // Instead of thousands of API calls, we make ~3-4 calls per day
+
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
       const dateStr = currentDate.toISOString().split('T')[0];
 
       try {
-        // Fetch campaign insights for this day
-        for (const campaign of campaigns) {
-          await this.fetchAndStoreDayInsights(
-            userId,
-            adAccountId,
-            'campaign',
-            campaign,
-            dateStr,
-            accessToken
-          );
+        // 1. Fetch campaign-level insights (ALL campaigns including paused)
+        const campaignData = await this.fetchAccountLevelInsights(adAccountId, dateStr, accessToken, 'campaign');
+        for (const insight of campaignData) {
+          await this.storePerformanceSnapshot(userId, adAccountId, 'campaign', insight, dateStr);
+          totalInsightsSaved++;
         }
 
-        // Fetch ad set insights for this day
-        for (const adSet of adSets) {
-          await this.fetchAndStoreDayInsights(
-            userId,
-            adAccountId,
-            'adset',
-            adSet,
-            dateStr,
-            accessToken
-          );
+        // 2. Fetch adset-level insights (ALL adsets including paused)
+        const adsetData = await this.fetchAccountLevelInsights(adAccountId, dateStr, accessToken, 'adset');
+        for (const insight of adsetData) {
+          await this.storePerformanceSnapshot(userId, adAccountId, 'adset', insight, dateStr);
+          totalInsightsSaved++;
+        }
+
+        // 3. Fetch geographic breakdown (by region/DMA for location analysis)
+        const geoData = await this.fetchInsightsWithBreakdown(adAccountId, dateStr, accessToken, ['region']);
+        for (const insight of geoData) {
+          await this.storeGeoSnapshot(userId, adAccountId, insight, dateStr);
+          totalInsightsSaved++;
+        }
+
+        // 4. Fetch day-of-week and hourly patterns (for time analysis)
+        const hourlyData = await this.fetchInsightsWithBreakdown(adAccountId, dateStr, accessToken, ['hourly_stats_aggregated_by_advertiser_time_zone']);
+        for (const insight of hourlyData) {
+          await this.storeTimeSnapshot(userId, adAccountId, insight, dateStr);
+          totalInsightsSaved++;
         }
 
         daysCompleted++;
 
-        // Report progress
+        // Log progress every 5 days
+        if (daysCompleted % 5 === 0 || daysCompleted === totalDays) {
+          const pct = Math.round(daysCompleted / totalDays * 100);
+          console.log(`  📈 Progress: ${daysCompleted}/${totalDays} days (${pct}%), ${totalInsightsSaved} records saved`);
+        }
+
+        // Report progress to UI
         if (progressCallback) {
           await progressCallback(daysCompleted, dateStr);
         }
 
-        // Rate limiting delay (Facebook allows ~200 calls per hour per user)
-        await this.delay(500); // 500ms between days
+        // Rate limiting: ~4 API calls per day, so 50 days/hour is safe
+        // 300ms between days = ~3 calls/second, well under Facebook's limits
+        await this.delay(300);
 
       } catch (error) {
-        console.error(`  Error fetching data for ${dateStr}:`, error.message);
-        // Continue to next day on error
+        console.error(`  ⚠️ Error on ${dateStr}:`, error.message);
+        // Continue - don't stop the whole backfill for one bad day
       }
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    console.log(`✅ [Backfill] Complete for account ${adAccountId}: ${daysCompleted} days processed`);
-    return { daysCompleted, totalDays };
+    console.log(`✅ [Backfill] Complete: ${daysCompleted}/${totalDays} days, ${totalInsightsSaved} insights saved`);
+    return { daysCompleted, totalDays, totalInsightsSaved };
+  }
+
+  /**
+   * Fetch account-level insights broken down by campaign or adset
+   * This gets ALL campaigns/adsets in ONE API call per day
+   */
+  async fetchAccountLevelInsights(adAccountId, dateStr, accessToken, level) {
+    try {
+      const formattedId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const response = await axios.get(`${this.baseUrl}/${formattedId}/insights`, {
+        params: {
+          access_token: accessToken,
+          fields: 'campaign_id,campaign_name,adset_id,adset_name,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr,frequency,cost_per_action_type',
+          time_range: JSON.stringify({ since: dateStr, until: dateStr }),
+          level: level,
+          limit: 500 // Get all campaigns/adsets
+        }
+      });
+
+      return response.data.data || [];
+    } catch (error) {
+      if (error.response?.status !== 400) {
+        console.error(`  Error fetching ${level} insights:`, error.message);
+      }
+      return [];
+    }
+  }
+
+  /**
+   * Fetch insights with demographic/geographic breakdown
+   */
+  async fetchInsightsWithBreakdown(adAccountId, dateStr, accessToken, breakdowns) {
+    try {
+      const formattedId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const response = await axios.get(`${this.baseUrl}/${formattedId}/insights`, {
+        params: {
+          access_token: accessToken,
+          fields: 'spend,impressions,clicks,reach,actions,cpm,cpc,ctr',
+          time_range: JSON.stringify({ since: dateStr, until: dateStr }),
+          breakdowns: breakdowns.join(','),
+          limit: 500
+        }
+      });
+
+      return response.data.data || [];
+    } catch (error) {
+      // Geographic breakdowns may not be available for all accounts
+      return [];
+    }
+  }
+
+  /**
+   * Store a performance snapshot
+   */
+  async storePerformanceSnapshot(userId, adAccountId, entityType, insight, dateStr) {
+    const entityId = entityType === 'campaign' ? insight.campaign_id : insight.adset_id;
+    const entityName = entityType === 'campaign' ? insight.campaign_name : insight.adset_name;
+
+    if (!entityId || parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: entityType,
+      entity_id: entityId,
+      entity_name: entityName,
+      snapshot_date: date,
+      snapshot_hour: 23,
+      day_of_week: date.getDay(),
+      ...metrics,
+      raw_data: insight
+    });
+  }
+
+  /**
+   * Store geographic performance data
+   */
+  async storeGeoSnapshot(userId, adAccountId, insight, dateStr) {
+    if (parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: 'geo',
+      entity_id: insight.region || 'unknown',
+      entity_name: insight.region || 'Unknown Region',
+      snapshot_date: date,
+      snapshot_hour: 23,
+      day_of_week: date.getDay(),
+      ...metrics,
+      raw_data: insight
+    });
+  }
+
+  /**
+   * Store time-based performance data
+   */
+  async storeTimeSnapshot(userId, adAccountId, insight, dateStr) {
+    if (parseFloat(insight.spend || 0) === 0) return;
+
+    const metrics = this.parseInsights(insight);
+    const date = new Date(dateStr);
+    const hour = parseInt(insight.hourly_stats_aggregated_by_advertiser_time_zone || 0);
+
+    await intelModels.IntelPerformanceSnapshot.upsert({
+      user_id: userId,
+      ad_account_id: adAccountId,
+      entity_type: 'hourly',
+      entity_id: `hour_${hour}`,
+      entity_name: `Hour ${hour}:00`,
+      snapshot_date: date,
+      snapshot_hour: hour,
+      day_of_week: date.getDay(),
+      ...metrics,
+      raw_data: insight
+    });
   }
 
   /**

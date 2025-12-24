@@ -29,6 +29,7 @@ import {
   DialogContent,
   DialogActions as MuiDialogActions,
   TextField,
+  Autocomplete,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -447,39 +448,60 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
           ) : (
             <Grid container spacing={2}>
               <Grid size={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Ad Account</InputLabel>
-                  <Select
-                    value={selectedAccount}
-                    label="Ad Account"
-                    onChange={(e) => setSelectedAccount(e.target.value)}
-                  >
-                    {adAccounts.map((account) => (
-                      <MenuItem key={account.id} value={account.id}>
-                        {account.name || account.id} {account.isActive ? '(Active)' : ''}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  options={adAccounts}
+                  getOptionLabel={(option) => `${option.name || option.id}${option.isActive ? ' (Active)' : ''}`}
+                  value={adAccounts.find(acc => acc.id === selectedAccount) || null}
+                  onChange={(_, newValue) => setSelectedAccount(newValue?.id || '')}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Ad Account"
+                      placeholder="Search ad accounts..."
+                      helperText={`${adAccounts.length} accounts available`}
+                    />
+                  )}
+                  renderOption={(props, option) => (
+                    <li {...props} key={option.id}>
+                      <Box>
+                        <Typography variant="body2">
+                          {option.name || option.id}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {option.id} {option.isActive ? '• Active' : ''}
+                        </Typography>
+                      </Box>
+                    </li>
+                  )}
+                  filterOptions={(options, { inputValue }) => {
+                    const searchLower = inputValue.toLowerCase();
+                    return options.filter(option =>
+                      (option.name?.toLowerCase().includes(searchLower)) ||
+                      (option.id?.toLowerCase().includes(searchLower))
+                    );
+                  }}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  fullWidth
+                />
               </Grid>
 
               {pixels.length > 0 && (
                 <Grid size={12}>
-                  <FormControl fullWidth>
-                    <InputLabel>Pixel (Optional)</InputLabel>
-                    <Select
-                      value={selectedPixel}
-                      label="Pixel (Optional)"
-                      onChange={(e) => setSelectedPixel(e.target.value)}
-                    >
-                      <MenuItem value="">None</MenuItem>
-                      {pixels.map((pixel) => (
-                        <MenuItem key={pixel.id} value={pixel.id}>
-                          {pixel.name || pixel.id} {pixel.isActive ? '(Active)' : ''}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    options={[{ id: '', name: 'None' }, ...pixels]}
+                    getOptionLabel={(option) => option.id === '' ? 'None' : `${option.name || option.id}${option.isActive ? ' (Active)' : ''}`}
+                    value={pixels.find(p => p.id === selectedPixel) || { id: '', name: 'None' }}
+                    onChange={(_, newValue) => setSelectedPixel(newValue?.id || '')}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Pixel (Optional)"
+                        placeholder="Search pixels..."
+                      />
+                    )}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    fullWidth
+                  />
                 </Grid>
               )}
 
@@ -491,10 +513,13 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
                     label="Days to Fetch"
                     onChange={(e) => setBackfillDays(e.target.value as number)}
                   >
+                    <MenuItem value={7}>7 Days (Quick Test)</MenuItem>
+                    <MenuItem value={14}>14 Days</MenuItem>
                     <MenuItem value={30}>30 Days</MenuItem>
                     <MenuItem value={60}>60 Days</MenuItem>
                     <MenuItem value={90}>90 Days (Recommended)</MenuItem>
                     <MenuItem value={180}>180 Days</MenuItem>
+                    <MenuItem value={365}>365 Days (Full Year)</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
