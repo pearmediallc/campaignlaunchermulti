@@ -19,6 +19,8 @@ import {
   Alert,
   LinearProgress,
   Divider,
+  Button,
+  Snackbar,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -30,6 +32,8 @@ import {
   CheckCircle,
   Warning,
   BubbleChart,
+  PlayArrow,
+  Calculate,
 } from '@mui/icons-material';
 import {
   LineChart,
@@ -62,6 +66,12 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
   const [clusterData, setClusterData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [learningInProgress, setLearningInProgress] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
 
   useEffect(() => {
     fetchData();
@@ -106,6 +116,54 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();
+  };
+
+  const handleRunLearning = async () => {
+    try {
+      setLearningInProgress(true);
+      const result = await intelligenceApi.triggerPatternLearning();
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: `Pattern learning started! Processing ${result.data_points?.toLocaleString() || ''} data points...`,
+          severity: 'success'
+        });
+        // Refresh after a short delay to show updated status
+        setTimeout(fetchData, 3000);
+      }
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || 'Failed to start pattern learning',
+        severity: 'error'
+      });
+    } finally {
+      setLearningInProgress(false);
+    }
+  };
+
+  const handleCalculateScores = async () => {
+    try {
+      setLearningInProgress(true);
+      const result = await intelligenceApi.triggerScoreCalculation();
+      if (result.success) {
+        setSnackbar({
+          open: true,
+          message: 'Account score calculation started!',
+          severity: 'success'
+        });
+        // Refresh after a short delay
+        setTimeout(fetchData, 3000);
+      }
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.error || 'Failed to start score calculation',
+        severity: 'error'
+      });
+    } finally {
+      setLearningInProgress(false);
+    }
   };
 
   if (loading) {
@@ -482,6 +540,68 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
         </Grid>
       </Grid>
 
+      {/* Action Buttons */}
+      {trainingStatus && (trainingStatus.data_points ?? 0) >= 50 && (trainingStatus.patterns_learned ?? 0) === 0 && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              startIcon={learningInProgress ? <CircularProgress size={16} color="inherit" /> : <PlayArrow />}
+              onClick={handleRunLearning}
+              disabled={learningInProgress}
+            >
+              Run Learning Now
+            </Button>
+          }
+        >
+          <Typography variant="body2">
+            <strong>Ready to learn!</strong> You have {(trainingStatus.data_points ?? 0).toLocaleString()} data points collected.
+            Pattern learning runs daily at midnight, or you can trigger it now.
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Manual Actions Section */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Manual Actions
+        </Typography>
+        <Typography variant="body2" color="text.secondary" paragraph>
+          Trigger learning and calculation jobs manually. These normally run automatically on a schedule.
+        </Typography>
+        <Box display="flex" gap={2} flexWrap="wrap">
+          <Button
+            variant="contained"
+            startIcon={learningInProgress ? <CircularProgress size={20} color="inherit" /> : <Psychology />}
+            onClick={handleRunLearning}
+            disabled={learningInProgress || (trainingStatus?.data_points ?? 0) < 50}
+          >
+            Run Pattern Learning
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={learningInProgress ? <CircularProgress size={20} color="inherit" /> : <Calculate />}
+            onClick={handleCalculateScores}
+            disabled={learningInProgress}
+          >
+            Calculate Account Scores
+          </Button>
+          <Tooltip title="Refresh analytics">
+            <IconButton onClick={fetchData} disabled={loading}>
+              <Refresh />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        {(trainingStatus?.data_points ?? 0) < 50 && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Pattern learning requires at least 50 data points. Current: {trainingStatus?.data_points ?? 0}
+          </Typography>
+        )}
+      </Paper>
+
       {/* Info Alert */}
       <Alert severity="info" icon={<School />}>
         <Typography variant="body2">
@@ -491,14 +611,13 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
         </Typography>
       </Alert>
 
-      {/* Refresh Button */}
-      <Box display="flex" justifyContent="flex-end" mt={2}>
-        <Tooltip title="Refresh analytics">
-          <IconButton onClick={fetchData}>
-            <Refresh />
-          </IconButton>
-        </Tooltip>
-      </Box>
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        message={snackbar.message}
+      />
     </Box>
   );
 };

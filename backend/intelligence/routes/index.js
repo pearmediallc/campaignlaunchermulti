@@ -812,6 +812,21 @@ router.post('/backfill/start', async (req, res) => {
           completed_at: new Date(),
           days_completed: days
         });
+
+        // Auto-trigger pattern learning after successful backfill
+        console.log('🧠 [Intelligence] Auto-triggering pattern learning after backfill completion...');
+        try {
+          const learningResults = await PatternLearningService.learnAllPatterns();
+          console.log('✅ [PatternLearning] Auto-learning complete:', learningResults);
+
+          // Also calculate account scores
+          console.log('📊 [Intelligence] Auto-calculating account scores...');
+          const scoreResults = await AccountScoreService.calculateAllScores();
+          console.log('✅ [AccountScore] Auto-calculation complete:', scoreResults);
+        } catch (learningError) {
+          console.error('⚠️ [Intelligence] Auto-learning/scoring after backfill failed:', learningError.message);
+          // Don't fail the backfill if learning fails
+        }
       } catch (error) {
         console.error('[Intelligence] Backfill background task error for user', userId, 'adAccountId:', adAccountId, ':', error.message, error.stack);
         await record.markFailed(error.message);
@@ -1021,6 +1036,86 @@ router.get('/training/clusters', async (req, res) => {
     });
   } catch (error) {
     console.error('[Intelligence] Training clusters error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/training/learn
+ * Manually trigger pattern learning (available to all users after backfill)
+ */
+router.post('/training/learn', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Check if user has enough data
+    const snapshotCount = await intelModels.IntelPerformanceSnapshot.count({
+      where: { user_id: userId }
+    });
+
+    if (snapshotCount < 50) {
+      return res.status(400).json({
+        success: false,
+        error: `Insufficient data for pattern learning. Have ${snapshotCount} snapshots, need at least 50.`
+      });
+    }
+
+    console.log(`[Intelligence] Manual pattern learning triggered by user ${userId} (${snapshotCount} data points)`);
+
+    // Run learning in background
+    setImmediate(async () => {
+      try {
+        console.log('🧠 [PatternLearning] Starting manual pattern learning...');
+        const results = await PatternLearningService.learnAllPatterns();
+        console.log('✅ [PatternLearning] Manual learning complete:', results);
+
+        // Also calculate account scores
+        console.log('📊 [AccountScore] Calculating scores after learning...');
+        await AccountScoreService.calculateAllScores();
+        console.log('✅ [AccountScore] Score calculation complete');
+      } catch (error) {
+        console.error('❌ [PatternLearning] Manual learning error:', error.message, error.stack);
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Pattern learning started in background',
+      data_points: snapshotCount
+    });
+  } catch (error) {
+    console.error('[Intelligence] Manual learning trigger error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/intelligence/training/calculate-scores
+ * Manually trigger account score calculation
+ */
+router.post('/training/calculate-scores', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log(`[Intelligence] Manual score calculation triggered by user ${userId}`);
+
+    // Run in background
+    setImmediate(async () => {
+      try {
+        console.log('📊 [AccountScore] Starting manual score calculation...');
+        const results = await AccountScoreService.calculateAllScores();
+        console.log('✅ [AccountScore] Manual calculation complete:', results);
+      } catch (error) {
+        console.error('❌ [AccountScore] Manual calculation error:', error.message, error.stack);
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Score calculation started in background'
+    });
+  } catch (error) {
+    console.error('[Intelligence] Manual score calculation error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });

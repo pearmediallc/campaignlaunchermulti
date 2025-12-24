@@ -478,6 +478,17 @@ export const intelligenceApi = {
     const response = await api.get('/intelligence/training/clusters');
     return response.data;
   },
+
+  // Manual Training Triggers
+  triggerPatternLearning: async (): Promise<{ success: boolean; message: string; data_points?: number }> => {
+    const response = await api.post('/intelligence/training/learn');
+    return response.data;
+  },
+
+  triggerScoreCalculation: async (): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post('/intelligence/training/calculate-scores');
+    return response.data;
+  },
 };
 
 export default intelligenceApi;
