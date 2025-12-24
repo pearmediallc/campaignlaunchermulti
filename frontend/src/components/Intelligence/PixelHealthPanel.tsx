@@ -182,8 +182,14 @@ const PixelHealthPanel: React.FC<PixelHealthPanelProps> = ({ onRefresh }) => {
       {/* Pixel Health Table */}
       {pixels.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">
-            No pixel health data available. Ensure pixels are connected and the intelligence engine is collecting data.
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No Pixel Health Data Yet
+          </Typography>
+          <Typography color="text.secondary" paragraph>
+            Pixel health data will be collected automatically by the Intelligence Engine, or you can start a manual backfill.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Go to the <strong>DATA BACKFILL</strong> tab to start collecting historical pixel data for your ad accounts.
           </Typography>
         </Paper>
       ) : (
