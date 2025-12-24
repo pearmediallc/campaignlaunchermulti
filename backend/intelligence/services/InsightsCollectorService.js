@@ -470,8 +470,8 @@ class InsightsCollectorService {
         }
 
         // Rate limiting: ~8 API calls per day now with all breakdowns
-        // 500ms between days = ~2 calls/second, well under Facebook's limits
-        await this.delay(500);
+        // 1 second between days to stay well under Facebook's limits
+        await this.delay(1000);
 
       } catch (error) {
         // Check if it's a database schema error (migration not run)
@@ -480,15 +480,20 @@ class InsightsCollectorService {
           console.error(`  💡 FIX: Run migrations with 'npx sequelize-cli db:migrate'`);
           throw error; // Stop the backfill - this won't fix itself
         }
-        // Check if it's an API rate limit error
-        if (error.response?.status === 429 || error.message.includes('rate limit')) {
-          console.error(`  ⏳ Rate limited on ${dateStr}, waiting 60s...`);
-          await this.delay(60000);
+        // Check if it's an API rate limit error (code 17 or 4)
+        const errorData = error.response?.data?.error;
+        if (error.response?.status === 429 ||
+            errorData?.code === 17 ||
+            errorData?.code === 4 ||
+            error.message.includes('rate limit') ||
+            error.message.includes('Too Many')) {
+          console.error(`  ⏳ Rate limited on ${dateStr}, waiting 2 minutes...`);
+          await this.delay(120000); // Wait 2 minutes
           // Don't increment date, retry this day
           continue;
         }
         // Check if it's a token error
-        if (error.response?.status === 190 || error.message.includes('access token')) {
+        if (error.response?.status === 190 || errorData?.code === 190 || error.message.includes('access token')) {
           console.error(`  ❌ TOKEN ERROR on ${dateStr}: ${error.message}`);
           throw error; // Stop - token issues won't fix themselves
         }

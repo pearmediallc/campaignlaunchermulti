@@ -478,7 +478,15 @@ class PixelHealthService {
       }
 
     } catch (error) {
-      console.error(`  Error backfilling pixel ${pixel.id}:`, error.message);
+      // Check for specific error types
+      const errorData = error.response?.data?.error;
+      if (errorData?.code === 100 || errorData?.code === 200) {
+        console.log(`  ⚠️ Pixel ${pixel.id}: Stats endpoint not available (permissions or no data)`);
+      } else if (errorData?.code === 17 || errorData?.code === 4) {
+        console.log(`  ⏳ Pixel ${pixel.id}: Rate limited, skipping`);
+      } else {
+        console.error(`  Error backfilling pixel ${pixel.id}:`, error.response?.data?.error?.message || error.message);
+      }
     }
   }
 
