@@ -736,7 +736,10 @@ router.get('/backfill/status', async (req, res) => {
 router.post('/backfill/start', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { adAccountId, days = 90, type = 'all' } = req.body;
+    // Support both camelCase and snake_case for adAccountId
+    const adAccountId = req.body.adAccountId || req.body.ad_account_id;
+    const days = req.body.days || 90;
+    const type = req.body.type || req.body.backfill_type || 'all';
 
     console.log('[Intelligence] Backfill start requested for user', userId, 'adAccountId:', adAccountId, 'days:', days, 'type:', type);
 
@@ -838,7 +841,8 @@ router.post('/backfill/start', async (req, res) => {
 router.post('/backfill/pause', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { adAccountId } = req.body;
+    // Support both camelCase and snake_case for adAccountId
+    const adAccountId = req.body.adAccountId || req.body.ad_account_id;
 
     const record = await intelModels.IntelBackfillProgress.findOne({
       where: { user_id: userId, ad_account_id: adAccountId }
