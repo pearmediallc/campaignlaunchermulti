@@ -67,11 +67,14 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedAccount, setSelectedAccount] = useState('');
+  const [pixelDialogOpen, setPixelDialogOpen] = useState(false);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [selectedPixel, setSelectedPixel] = useState('');
+  const [pixelIdInput, setPixelIdInput] = useState('');
   const [backfillDays, setBackfillDays] = useState(90);
   const [backfillType, setBackfillType] = useState('all');
   const [startingBackfill, setStartingBackfill] = useState(false);
+  const [fetchingPixel, setFetchingPixel] = useState(false);
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
   const [pixels, setPixels] = useState<Pixel[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(false);
@@ -109,8 +112,8 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
         const activeAccount = data.adAccounts?.find((acc: AdAccount) => acc.isActive);
         const activePixel = data.pixels?.find((p: Pixel) => p.isActive);
 
-        if (activeAccount && !selectedAccount) {
-          setSelectedAccount(activeAccount.id);
+        if (activeAccount && selectedAccounts.length === 0) {
+          setSelectedAccounts([activeAccount.id]);
         }
         if (activePixel && !selectedPixel) {
           setSelectedPixel(activePixel.id);
@@ -142,29 +145,76 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
   }, [fetchStatus, backfillStatus?.summary?.in_progress]);
 
   const handleStartBackfill = async () => {
-    if (!selectedAccount) {
-      toast.error('Please select an ad account');
+    if (selectedAccounts.length === 0) {
+      toast.error('Please select at least one ad account');
       return;
     }
 
     try {
       setStartingBackfill(true);
-      const response = await intelligenceApi.startBackfill(
-        selectedAccount,
-        backfillDays,
-        backfillType
-      );
 
-      if (response.success) {
-        toast.success('Backfill started successfully');
-        setDialogOpen(false);
-        fetchStatus();
-        if (onRefresh) onRefresh();
+      if (selectedAccounts.length === 1) {
+        // Single account - use original endpoint
+        const response = await intelligenceApi.startBackfill(
+          selectedAccounts[0],
+          backfillDays,
+          backfillType
+        );
+        if (response.success) {
+          toast.success('Backfill started successfully');
+        }
+      } else {
+        // Multiple accounts - use batch endpoint
+        const response = await intelligenceApi.startBatchBackfill(
+          selectedAccounts,
+          backfillDays,
+          backfillType
+        );
+        if (response.success) {
+          const { started, skipped, errors } = response.results;
+          if (started.length > 0) {
+            toast.success(`Started backfill for ${started.length} accounts`);
+          }
+          if (skipped.length > 0) {
+            toast.info(`${skipped.length} accounts skipped (already in progress)`);
+          }
+          if (errors.length > 0) {
+            toast.error(`${errors.length} accounts failed to start`);
+          }
+        }
       }
+
+      setDialogOpen(false);
+      fetchStatus();
+      if (onRefresh) onRefresh();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to start backfill');
     } finally {
       setStartingBackfill(false);
+    }
+  };
+
+  const handleFetchPixel = async () => {
+    if (!pixelIdInput.trim()) {
+      toast.error('Please enter a Pixel ID');
+      return;
+    }
+
+    try {
+      setFetchingPixel(true);
+      const response = await intelligenceApi.fetchPixelData(pixelIdInput.trim(), backfillDays);
+
+      if (response.success) {
+        toast.success(`Fetching data for pixel "${response.pixel.name || response.pixel.id}"...`);
+        setPixelDialogOpen(false);
+        setPixelIdInput('');
+        fetchStatus();
+        if (onRefresh) onRefresh();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to fetch pixel data');
+    } finally {
+      setFetchingPixel(false);
     }
   };
 
@@ -248,13 +298,21 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
               </Typography>
             </Box>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<PlayArrow />}
-            onClick={() => setDialogOpen(true)}
-          >
-            Start Backfill
-          </Button>
+          <Box display="flex" gap={1}>
+            <Button
+              variant="outlined"
+              onClick={() => setPixelDialogOpen(true)}
+            >
+              Fetch Pixel by ID
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<PlayArrow />}
+              onClick={() => setDialogOpen(true)}
+            >
+              Start Backfill
+            </Button>
+          </Box>
         </Box>
 
         {/* Summary Stats */}
@@ -449,16 +507,17 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
             <Grid container spacing={2}>
               <Grid size={12}>
                 <Autocomplete
+                  multiple
                   options={adAccounts}
                   getOptionLabel={(option) => `${option.name || option.id}${option.isActive ? ' (Active)' : ''}`}
-                  value={adAccounts.find(acc => acc.id === selectedAccount) || null}
-                  onChange={(_, newValue) => setSelectedAccount(newValue?.id || '')}
+                  value={adAccounts.filter(acc => selectedAccounts.includes(acc.id))}
+                  onChange={(_, newValue) => setSelectedAccounts(newValue.map(v => v.id))}
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Ad Account"
-                      placeholder="Search ad accounts..."
-                      helperText={`${adAccounts.length} accounts available`}
+                      label="Ad Accounts"
+                      placeholder="Search and select multiple accounts..."
+                      helperText={`${selectedAccounts.length} of ${adAccounts.length} accounts selected`}
                     />
                   )}
                   renderOption={(props, option) => (
@@ -481,8 +540,28 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
                     );
                   }}
                   isOptionEqualToValue={(option, value) => option.id === value.id}
+                  limitTags={3}
+                  disableCloseOnSelect
                   fullWidth
                 />
+                {adAccounts.length > 1 && (
+                  <Box display="flex" gap={1} mt={1}>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setSelectedAccounts(adAccounts.map(a => a.id))}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setSelectedAccounts([])}
+                    >
+                      Clear All
+                    </Button>
+                  </Box>
+                )}
               </Grid>
 
               {pixels.length > 0 && (
@@ -553,10 +632,68 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
           <Button
             variant="contained"
             onClick={handleStartBackfill}
-            disabled={!selectedAccount || startingBackfill || resourcesLoading}
+            disabled={selectedAccounts.length === 0 || startingBackfill || resourcesLoading}
             startIcon={startingBackfill ? <CircularProgress size={20} /> : <PlayArrow />}
           >
-            {startingBackfill ? 'Starting...' : 'Start Backfill'}
+            {startingBackfill
+              ? 'Starting...'
+              : selectedAccounts.length > 1
+                ? `Start Backfill (${selectedAccounts.length} accounts)`
+                : 'Start Backfill'}
+          </Button>
+        </MuiDialogActions>
+      </Dialog>
+
+      {/* Fetch Pixel Dialog */}
+      <Dialog open={pixelDialogOpen} onClose={() => setPixelDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Fetch Pixel Data by ID</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" paragraph sx={{ mt: 1 }}>
+            Enter a Facebook Pixel ID to fetch its historical data directly.
+            The system will retrieve the pixel's event statistics and store them for analysis.
+          </Typography>
+
+          <TextField
+            fullWidth
+            label="Pixel ID"
+            placeholder="Enter Facebook Pixel ID (e.g., 123456789012345)"
+            value={pixelIdInput}
+            onChange={(e) => setPixelIdInput(e.target.value)}
+            sx={{ mt: 2 }}
+            helperText="You can find your Pixel ID in Facebook Events Manager"
+          />
+
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Days to Fetch</InputLabel>
+            <Select
+              value={backfillDays}
+              label="Days to Fetch"
+              onChange={(e) => setBackfillDays(e.target.value as number)}
+            >
+              <MenuItem value={7}>7 Days</MenuItem>
+              <MenuItem value={14}>14 Days</MenuItem>
+              <MenuItem value={30}>30 Days</MenuItem>
+              <MenuItem value={60}>60 Days</MenuItem>
+              <MenuItem value={90}>90 Days (Recommended)</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Alert severity="info" sx={{ mt: 2 }}>
+            <Typography variant="body2">
+              <strong>Note:</strong> Make sure you have access to this pixel through your connected
+              Facebook account. The pixel must be owned by a business or ad account you have access to.
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <MuiDialogActions>
+          <Button onClick={() => setPixelDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleFetchPixel}
+            disabled={!pixelIdInput.trim() || fetchingPixel}
+            startIcon={fetchingPixel ? <CircularProgress size={20} /> : <CloudDownload />}
+          >
+            {fetchingPixel ? 'Fetching...' : 'Fetch Pixel Data'}
           </Button>
         </MuiDialogActions>
       </Dialog>

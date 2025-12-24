@@ -850,6 +850,122 @@ router.post('/backfill/start', async (req, res) => {
 });
 
 /**
+ * POST /api/intelligence/backfill/batch
+ * Start backfill for multiple accounts simultaneously
+ */
+router.post('/backfill/batch', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountIds, days = 90, type = 'all' } = req.body;
+
+    console.log('[Intelligence] Batch backfill requested for user', userId, 'accounts:', adAccountIds?.length || 0);
+
+    if (!adAccountIds || !Array.isArray(adAccountIds) || adAccountIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'adAccountIds array required' });
+    }
+
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const results = {
+      started: [],
+      skipped: [],
+      errors: []
+    };
+
+    // Create records for all accounts
+    for (const adAccountId of adAccountIds) {
+      try {
+        const { record, created } = await intelModels.IntelBackfillProgress.getOrCreate(
+          userId,
+          adAccountId,
+          {
+            type,
+            startDate,
+            endDate,
+            totalDays: days
+          }
+        );
+
+        if (!created && record.status === 'in_progress') {
+          results.skipped.push({ ad_account_id: adAccountId, reason: 'Already in progress' });
+          continue;
+        }
+
+        // Reset if restarting
+        if (!created) {
+          await record.update({
+            status: 'pending',
+            days_completed: 0,
+            error_message: null,
+            start_date: startDate,
+            end_date: endDate,
+            total_days: days
+          });
+        }
+
+        results.started.push(adAccountId);
+
+        // Start backfill in background for each account
+        setImmediate(async () => {
+          try {
+            await record.update({ status: 'in_progress', started_at: new Date() });
+
+            if (type === 'all' || type === 'insights') {
+              await InsightsCollectorService.backfillAccount(userId, adAccountId, {
+                startDate,
+                endDate,
+                progressCallback: async (day, current) => {
+                  await record.updateProgress(day, current);
+                }
+              });
+            }
+
+            if (type === 'all' || type === 'pixel') {
+              await PixelHealthService.backfillAccount(userId, adAccountId, {
+                startDate,
+                endDate
+              });
+            }
+
+            await record.update({
+              status: 'completed',
+              completed_at: new Date(),
+              days_completed: days
+            });
+
+            console.log(`✅ [Backfill] Account ${adAccountId} completed`);
+          } catch (error) {
+            console.error(`[Intelligence] Backfill error for account ${adAccountId}:`, error.message);
+            await record.markFailed(error.message);
+          }
+        });
+      } catch (error) {
+        results.errors.push({ ad_account_id: adAccountId, error: error.message });
+      }
+    }
+
+    // If all accounts started, trigger learning after a delay
+    if (results.started.length > 0) {
+      // Schedule pattern learning after all backfills complete (estimate based on accounts)
+      const estimatedMinutes = Math.max(5, results.started.length * 2);
+      console.log(`[Intelligence] Scheduling pattern learning in ~${estimatedMinutes} minutes after batch backfill`);
+    }
+
+    res.json({
+      success: true,
+      message: `Started backfill for ${results.started.length} accounts`,
+      results
+    });
+  } catch (error) {
+    console.error('[Intelligence] Batch backfill error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/intelligence/backfill/pause
  * Pause backfill for an account
  */
@@ -898,6 +1014,220 @@ router.delete('/backfill/:adAccountId', async (req, res) => {
     res.json({ success: true, message: 'Backfill cancelled' });
   } catch (error) {
     console.error('[Intelligence] Backfill cancel error for user', req.user?.id, 'adAccountId:', req.params?.adAccountId, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Pixel Direct Fetch Endpoints
+// ============================================
+
+/**
+ * POST /api/intelligence/pixel/fetch
+ * Fetch data for a specific pixel by ID
+ */
+router.post('/pixel/fetch', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { pixelId, days = 90 } = req.body;
+
+    console.log('[Intelligence] Pixel direct fetch requested for user', userId, 'pixelId:', pixelId);
+
+    if (!pixelId) {
+      return res.status(400).json({ success: false, error: 'pixelId required' });
+    }
+
+    const mainDb = require('../../models');
+
+    // Get access token
+    const fbAuth = await mainDb.FacebookAuth.findOne({
+      where: { userId: userId },
+      order: [['updated_at', 'DESC']]
+    });
+
+    if (!fbAuth || !fbAuth.accessToken) {
+      return res.status(400).json({ success: false, error: 'No valid Facebook access token found' });
+    }
+
+    const accessToken = fbAuth.accessToken;
+
+    // Fetch pixel info to get associated ad account
+    const axios = require('axios');
+    const apiVersion = process.env.FB_API_VERSION || 'v18.0';
+    const baseUrl = `https://graph.facebook.com/${apiVersion}`;
+
+    let pixelInfo;
+    try {
+      const pixelResponse = await axios.get(`${baseUrl}/${pixelId}`, {
+        params: {
+          access_token: accessToken,
+          fields: 'id,name,owner_ad_account,is_unavailable,last_fired_time,creation_time'
+        }
+      });
+      pixelInfo = pixelResponse.data;
+    } catch (error) {
+      const errMsg = error.response?.data?.error?.message || error.message;
+      console.error('[Intelligence] Error fetching pixel info:', errMsg);
+      return res.status(400).json({
+        success: false,
+        error: `Cannot access pixel ${pixelId}: ${errMsg}`
+      });
+    }
+
+    // Get ad account ID from pixel owner
+    let adAccountId = pixelInfo.owner_ad_account?.id;
+    if (!adAccountId) {
+      // Try to get from owner_business -> ad_accounts
+      try {
+        const ownerResponse = await axios.get(`${baseUrl}/${pixelId}`, {
+          params: {
+            access_token: accessToken,
+            fields: 'owner_business{id,name}'
+          }
+        });
+        if (ownerResponse.data.owner_business?.id) {
+          // Fetch business ad accounts
+          const bizAccountsResponse = await axios.get(
+            `${baseUrl}/${ownerResponse.data.owner_business.id}/owned_ad_accounts`,
+            {
+              params: {
+                access_token: accessToken,
+                fields: 'id,name',
+                limit: 1
+              }
+            }
+          );
+          if (bizAccountsResponse.data.data?.length > 0) {
+            adAccountId = bizAccountsResponse.data.data[0].id;
+          }
+        }
+      } catch (err) {
+        console.log('[Intelligence] Could not determine ad account from business, using pixel ID as reference');
+      }
+    }
+
+    // Use pixel ID as fallback ad account reference if we couldn't get one
+    const effectiveAdAccountId = adAccountId || `pixel_${pixelId}`;
+
+    // Start pixel data fetch in background
+    setImmediate(async () => {
+      try {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        console.log(`[Intelligence] Starting pixel ${pixelId} data fetch for ${days} days...`);
+
+        // Fetch pixel stats directly
+        const stats = await PixelHealthService.fetchPixelStats(pixelId, accessToken);
+        const emq = await PixelHealthService.fetchEventMatchQuality(pixelId, accessToken);
+
+        // Store current day's data
+        const now = new Date();
+        const snapshotDate = now.toISOString().split('T')[0];
+
+        await intelModels.IntelPixelHealth.upsert({
+          user_id: userId,
+          ad_account_id: effectiveAdAccountId,
+          pixel_id: pixelId,
+          pixel_name: pixelInfo.name || `Pixel ${pixelId}`,
+          snapshot_date: snapshotDate,
+          event_match_quality: emq?.emq || null,
+          last_fired_time: pixelInfo.last_fired_time ? new Date(pixelInfo.last_fired_time) : null,
+          is_active: !pixelInfo.is_unavailable,
+          page_view_count: stats.page_view || 0,
+          view_content_count: stats.view_content || 0,
+          add_to_cart_count: stats.add_to_cart || 0,
+          initiate_checkout_count: stats.initiate_checkout || 0,
+          purchase_count: stats.purchase || 0,
+          lead_count: stats.lead || 0,
+          complete_registration_count: stats.complete_registration || 0,
+          has_server_events: stats.has_server_events || false,
+          server_event_percentage: stats.server_percentage || 0,
+          domain_verified: emq?.domain_verified || false,
+          domain_name: emq?.domain || null,
+          raw_pixel_data: { pixelInfo, stats, emq }
+        });
+
+        // Also try to fetch historical data
+        try {
+          const histResponse = await axios.get(`${baseUrl}/${pixelId}/stats`, {
+            params: {
+              access_token: accessToken,
+              aggregation: 'day',
+              start_time: Math.floor(startDate.getTime() / 1000),
+              end_time: Math.floor(endDate.getTime() / 1000)
+            }
+          });
+
+          const dailyStats = histResponse.data.data || [];
+          const dateGroups = {};
+
+          dailyStats.forEach(stat => {
+            const date = stat.timestamp ? new Date(stat.timestamp * 1000).toISOString().split('T')[0] : null;
+            if (!date) return;
+
+            if (!dateGroups[date]) {
+              dateGroups[date] = {
+                page_view: 0, view_content: 0, add_to_cart: 0,
+                initiate_checkout: 0, purchase: 0, lead: 0,
+                complete_registration: 0, total: 0
+              };
+            }
+
+            const event = stat.event?.toLowerCase().replace(/ /g, '_');
+            const count = parseInt(stat.count || 0);
+
+            if (dateGroups[date][event] !== undefined) {
+              dateGroups[date][event] = count;
+            }
+            dateGroups[date].total += count;
+          });
+
+          for (const [date, dStats] of Object.entries(dateGroups)) {
+            const existing = await intelModels.IntelPixelHealth.findOne({
+              where: { pixel_id: pixelId, snapshot_date: date }
+            });
+            if (existing) continue;
+
+            await intelModels.IntelPixelHealth.create({
+              user_id: userId,
+              ad_account_id: effectiveAdAccountId,
+              pixel_id: pixelId,
+              pixel_name: pixelInfo.name || `Pixel ${pixelId}`,
+              snapshot_date: date,
+              is_active: !pixelInfo.is_unavailable,
+              page_view_count: dStats.page_view,
+              view_content_count: dStats.view_content,
+              add_to_cart_count: dStats.add_to_cart,
+              initiate_checkout_count: dStats.initiate_checkout,
+              purchase_count: dStats.purchase,
+              lead_count: dStats.lead,
+              complete_registration_count: dStats.complete_registration
+            });
+          }
+
+          console.log(`✅ [Intelligence] Pixel ${pixelId} data fetch complete (${Object.keys(dateGroups).length} days)`);
+        } catch (histError) {
+          console.log(`[Intelligence] Historical pixel stats not available for ${pixelId}:`, histError.message);
+        }
+      } catch (error) {
+        console.error(`[Intelligence] Pixel ${pixelId} data fetch error:`, error.message);
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Pixel data fetch started',
+      pixel: {
+        id: pixelId,
+        name: pixelInfo.name,
+        is_active: !pixelInfo.is_unavailable,
+        ad_account_id: effectiveAdAccountId
+      }
+    });
+  } catch (error) {
+    console.error('[Intelligence] Pixel fetch error for user', req.user?.id, 'pixelId:', req.body?.pixelId, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });

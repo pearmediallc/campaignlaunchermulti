@@ -446,6 +446,40 @@ export const intelligenceApi = {
     return response.data;
   },
 
+  startBatchBackfill: async (adAccountIds: string[], days?: number, type?: string): Promise<{
+    success: boolean;
+    message: string;
+    results: {
+      started: string[];
+      skipped: Array<{ ad_account_id: string; reason: string }>;
+      errors: Array<{ ad_account_id: string; error: string }>;
+    };
+  }> => {
+    const response = await api.post('/intelligence/backfill/batch', {
+      adAccountIds,
+      days: days || 90,
+      type: type || 'all'
+    });
+    return response.data;
+  },
+
+  fetchPixelData: async (pixelId: string, days?: number): Promise<{
+    success: boolean;
+    message: string;
+    pixel: {
+      id: string;
+      name: string;
+      is_active: boolean;
+      ad_account_id: string;
+    };
+  }> => {
+    const response = await api.post('/intelligence/pixel/fetch', {
+      pixelId,
+      days: days || 90
+    });
+    return response.data;
+  },
+
   pauseBackfill: async (adAccountId: string) => {
     const response = await api.post('/intelligence/backfill/pause', { ad_account_id: adAccountId });
     return response.data;
