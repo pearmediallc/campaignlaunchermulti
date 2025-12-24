@@ -73,7 +73,7 @@ class PixelHealthService {
 
     // Get access token
     const fbAuth = await mainDb.FacebookAuth.findOne({
-      where: { user_id: userId },
+      where: { userId: userId },
       order: [['updated_at', 'DESC']]
     });
 
@@ -379,7 +379,7 @@ class PixelHealthService {
 
     // Get access token
     const fbAuth = await mainDb.FacebookAuth.findOne({
-      where: { user_id: userId },
+      where: { userId: userId },
       order: [['updated_at', 'DESC']]
     });
 

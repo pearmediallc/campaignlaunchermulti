@@ -84,7 +84,7 @@ class InsightsCollectorService {
     // Get user's access token
     const mainDb = require('../../models');
     const fbAuth = await mainDb.FacebookAuth.findOne({
-      where: { user_id: userId },
+      where: { userId: userId },
       order: [['updated_at', 'DESC']]
     });
 
@@ -349,7 +349,7 @@ class InsightsCollectorService {
     // Get user's access token
     const mainDb = require('../../models');
     const fbAuth = await mainDb.FacebookAuth.findOne({
-      where: { user_id: userId },
+      where: { userId: userId },
       order: [['updated_at', 'DESC']]
     });
 

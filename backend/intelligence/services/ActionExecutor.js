@@ -83,7 +83,7 @@ class ActionExecutor {
     // Get access token for the user
     const mainDb = require('../../models');
     const fbAuth = await mainDb.FacebookAuth.findOne({
-      where: { user_id: action.user_id },
+      where: { userId: action.user_id },
       order: [['updated_at', 'DESC']]
     });
 
