@@ -77,7 +77,7 @@ class PixelHealthService {
       order: [['updated_at', 'DESC']]
     });
 
-    if (!fbAuth || !fbAuth.access_token) {
+    if (!fbAuth || !fbAuth.accessToken) {
       throw new Error('No valid access token found');
     }
 
@@ -383,7 +383,7 @@ class PixelHealthService {
       order: [['updated_at', 'DESC']]
     });
 
-    if (!fbAuth || !fbAuth.access_token) {
+    if (!fbAuth || !fbAuth.accessToken) {
       throw new Error('No valid access token found');
     }
 
