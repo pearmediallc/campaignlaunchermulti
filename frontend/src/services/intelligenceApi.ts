@@ -480,6 +480,21 @@ export const intelligenceApi = {
     return response.data;
   },
 
+  fetchBatchPixelData: async (pixelIds: string[], days?: number): Promise<{
+    success: boolean;
+    message: string;
+    results: {
+      started: Array<{ pixel_id: string; name: string; ad_account_id: string }>;
+      failed: Array<{ pixel_id: string; error: string }>;
+    };
+  }> => {
+    const response = await api.post('/intelligence/pixel/fetch-batch', {
+      pixelIds,
+      days: days || 90
+    });
+    return response.data;
+  },
+
   pauseBackfill: async (adAccountId: string) => {
     const response = await api.post('/intelligence/backfill/pause', { ad_account_id: adAccountId });
     return response.data;

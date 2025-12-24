@@ -1023,6 +1023,218 @@ router.delete('/backfill/:adAccountId', async (req, res) => {
 // ============================================
 
 /**
+ * POST /api/intelligence/pixel/fetch-batch
+ * Fetch data for multiple pixels by ID
+ */
+router.post('/pixel/fetch-batch', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { pixelIds, days = 90 } = req.body;
+
+    console.log('[Intelligence] Batch pixel fetch requested for user', userId, 'pixels:', pixelIds?.length || 0);
+
+    if (!pixelIds || !Array.isArray(pixelIds) || pixelIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'pixelIds array required' });
+    }
+
+    const mainDb = require('../../models');
+
+    // Get access token
+    const fbAuth = await mainDb.FacebookAuth.findOne({
+      where: { userId: userId },
+      order: [['updated_at', 'DESC']]
+    });
+
+    if (!fbAuth || !fbAuth.accessToken) {
+      return res.status(400).json({ success: false, error: 'No valid Facebook access token found' });
+    }
+
+    const accessToken = fbAuth.accessToken;
+    const axios = require('axios');
+    const apiVersion = process.env.FB_API_VERSION || 'v18.0';
+    const baseUrl = `https://graph.facebook.com/${apiVersion}`;
+
+    const results = {
+      started: [],
+      failed: []
+    };
+
+    // Process each pixel
+    for (const pixelId of pixelIds) {
+      try {
+        // Fetch pixel info
+        const pixelResponse = await axios.get(`${baseUrl}/${pixelId}`, {
+          params: {
+            access_token: accessToken,
+            fields: 'id,name,owner_ad_account,is_unavailable,last_fired_time,creation_time'
+          }
+        });
+        const pixelInfo = pixelResponse.data;
+
+        // Get ad account ID from pixel owner
+        let adAccountId = pixelInfo.owner_ad_account?.id;
+        if (!adAccountId) {
+          try {
+            const ownerResponse = await axios.get(`${baseUrl}/${pixelId}`, {
+              params: {
+                access_token: accessToken,
+                fields: 'owner_business{id,name}'
+              }
+            });
+            if (ownerResponse.data.owner_business?.id) {
+              const bizAccountsResponse = await axios.get(
+                `${baseUrl}/${ownerResponse.data.owner_business.id}/owned_ad_accounts`,
+                {
+                  params: {
+                    access_token: accessToken,
+                    fields: 'id,name',
+                    limit: 1
+                  }
+                }
+              );
+              if (bizAccountsResponse.data.data?.length > 0) {
+                adAccountId = bizAccountsResponse.data.data[0].id;
+              }
+            }
+          } catch (err) {
+            // Ignore, use fallback
+          }
+        }
+
+        const effectiveAdAccountId = adAccountId || `pixel_${pixelId}`;
+
+        results.started.push({
+          pixel_id: pixelId,
+          name: pixelInfo.name,
+          ad_account_id: effectiveAdAccountId
+        });
+
+        // Start pixel data fetch in background
+        setImmediate(async () => {
+          try {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(startDate.getDate() - days);
+
+            console.log(`[Intelligence] Starting pixel ${pixelId} data fetch for ${days} days...`);
+
+            const stats = await PixelHealthService.fetchPixelStats(pixelId, accessToken);
+            const emq = await PixelHealthService.fetchEventMatchQuality(pixelId, accessToken);
+
+            const now = new Date();
+            const snapshotDate = now.toISOString().split('T')[0];
+
+            await intelModels.IntelPixelHealth.upsert({
+              user_id: userId,
+              ad_account_id: effectiveAdAccountId,
+              pixel_id: pixelId,
+              pixel_name: pixelInfo.name || `Pixel ${pixelId}`,
+              snapshot_date: snapshotDate,
+              event_match_quality: emq?.emq || null,
+              last_fired_time: pixelInfo.last_fired_time ? new Date(pixelInfo.last_fired_time) : null,
+              is_active: !pixelInfo.is_unavailable,
+              page_view_count: stats.page_view || 0,
+              view_content_count: stats.view_content || 0,
+              add_to_cart_count: stats.add_to_cart || 0,
+              initiate_checkout_count: stats.initiate_checkout || 0,
+              purchase_count: stats.purchase || 0,
+              lead_count: stats.lead || 0,
+              complete_registration_count: stats.complete_registration || 0,
+              has_server_events: stats.has_server_events || false,
+              server_event_percentage: stats.server_percentage || 0,
+              domain_verified: emq?.domain_verified || false,
+              domain_name: emq?.domain || null,
+              raw_pixel_data: { pixelInfo, stats, emq }
+            });
+
+            // Try historical data
+            try {
+              const histResponse = await axios.get(`${baseUrl}/${pixelId}/stats`, {
+                params: {
+                  access_token: accessToken,
+                  aggregation: 'day',
+                  start_time: Math.floor(startDate.getTime() / 1000),
+                  end_time: Math.floor(endDate.getTime() / 1000)
+                }
+              });
+
+              const dailyStats = histResponse.data.data || [];
+              const dateGroups = {};
+
+              dailyStats.forEach(stat => {
+                const date = stat.timestamp ? new Date(stat.timestamp * 1000).toISOString().split('T')[0] : null;
+                if (!date) return;
+
+                if (!dateGroups[date]) {
+                  dateGroups[date] = {
+                    page_view: 0, view_content: 0, add_to_cart: 0,
+                    initiate_checkout: 0, purchase: 0, lead: 0,
+                    complete_registration: 0, total: 0
+                  };
+                }
+
+                const event = stat.event?.toLowerCase().replace(/ /g, '_');
+                const count = parseInt(stat.count || 0);
+
+                if (dateGroups[date][event] !== undefined) {
+                  dateGroups[date][event] = count;
+                }
+                dateGroups[date].total += count;
+              });
+
+              for (const [date, dStats] of Object.entries(dateGroups)) {
+                const existing = await intelModels.IntelPixelHealth.findOne({
+                  where: { pixel_id: pixelId, snapshot_date: date }
+                });
+                if (existing) continue;
+
+                await intelModels.IntelPixelHealth.create({
+                  user_id: userId,
+                  ad_account_id: effectiveAdAccountId,
+                  pixel_id: pixelId,
+                  pixel_name: pixelInfo.name || `Pixel ${pixelId}`,
+                  snapshot_date: date,
+                  is_active: !pixelInfo.is_unavailable,
+                  page_view_count: dStats.page_view,
+                  view_content_count: dStats.view_content,
+                  add_to_cart_count: dStats.add_to_cart,
+                  initiate_checkout_count: dStats.initiate_checkout,
+                  purchase_count: dStats.purchase,
+                  lead_count: dStats.lead,
+                  complete_registration_count: dStats.complete_registration
+                });
+              }
+
+              console.log(`✅ [Intelligence] Pixel ${pixelId} data fetch complete`);
+            } catch (histError) {
+              console.log(`[Intelligence] Historical pixel stats not available for ${pixelId}`);
+            }
+          } catch (error) {
+            console.error(`[Intelligence] Pixel ${pixelId} data fetch error:`, error.message);
+          }
+        });
+      } catch (error) {
+        const errMsg = error.response?.data?.error?.message || error.message;
+        console.error(`[Intelligence] Error fetching pixel ${pixelId}:`, errMsg);
+        results.failed.push({
+          pixel_id: pixelId,
+          error: errMsg
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Started fetch for ${results.started.length} pixels`,
+      results
+    });
+  } catch (error) {
+    console.error('[Intelligence] Batch pixel fetch error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/intelligence/pixel/fetch
  * Fetch data for a specific pixel by ID
  */

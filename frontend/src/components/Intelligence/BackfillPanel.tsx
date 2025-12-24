@@ -196,21 +196,48 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
 
   const handleFetchPixel = async () => {
     if (!pixelIdInput.trim()) {
-      toast.error('Please enter a Pixel ID');
+      toast.error('Please enter at least one Pixel ID');
+      return;
+    }
+
+    // Parse multiple pixel IDs (comma, newline, or space separated)
+    const pixelIds = pixelIdInput
+      .split(/[\s,\n]+/)
+      .map(id => id.trim())
+      .filter(id => id.length > 0 && /^\d+$/.test(id));
+
+    if (pixelIds.length === 0) {
+      toast.error('Please enter valid Pixel IDs (numeric only)');
       return;
     }
 
     try {
       setFetchingPixel(true);
-      const response = await intelligenceApi.fetchPixelData(pixelIdInput.trim(), backfillDays);
 
-      if (response.success) {
-        toast.success(`Fetching data for pixel "${response.pixel.name || response.pixel.id}"...`);
-        setPixelDialogOpen(false);
-        setPixelIdInput('');
-        fetchStatus();
-        if (onRefresh) onRefresh();
+      if (pixelIds.length === 1) {
+        // Single pixel - use original endpoint
+        const response = await intelligenceApi.fetchPixelData(pixelIds[0], backfillDays);
+        if (response.success) {
+          toast.success(`Fetching data for pixel "${response.pixel.name || response.pixel.id}"...`);
+        }
+      } else {
+        // Multiple pixels - use batch endpoint
+        const response = await intelligenceApi.fetchBatchPixelData(pixelIds, backfillDays);
+        if (response.success) {
+          const { started, failed } = response.results;
+          if (started.length > 0) {
+            toast.success(`Started fetch for ${started.length} pixels`);
+          }
+          if (failed.length > 0) {
+            toast.error(`${failed.length} pixels failed: ${failed.map(f => f.error).join(', ').substring(0, 100)}...`);
+          }
+        }
       }
+
+      setPixelDialogOpen(false);
+      setPixelIdInput('');
+      fetchStatus();
+      if (onRefresh) onRefresh();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to fetch pixel data');
     } finally {
@@ -649,18 +676,20 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
         <DialogTitle>Fetch Pixel Data by ID</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" paragraph sx={{ mt: 1 }}>
-            Enter a Facebook Pixel ID to fetch its historical data directly.
-            The system will retrieve the pixel's event statistics and store them for analysis.
+            Enter one or more Facebook Pixel IDs to fetch their historical data.
+            You can enter multiple IDs separated by commas, spaces, or new lines.
           </Typography>
 
           <TextField
             fullWidth
-            label="Pixel ID"
-            placeholder="Enter Facebook Pixel ID (e.g., 123456789012345)"
+            multiline
+            rows={3}
+            label="Pixel ID(s)"
+            placeholder="Enter Pixel IDs (e.g., 123456789012345, 987654321098765)"
             value={pixelIdInput}
             onChange={(e) => setPixelIdInput(e.target.value)}
             sx={{ mt: 2 }}
-            helperText="You can find your Pixel ID in Facebook Events Manager"
+            helperText={`${pixelIdInput.split(/[\s,\n]+/).filter(id => id.trim() && /^\d+$/.test(id.trim())).length} valid pixel ID(s) entered`}
           />
 
           <FormControl fullWidth sx={{ mt: 2 }}>
@@ -678,10 +707,16 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
             </Select>
           </FormControl>
 
-          <Alert severity="info" sx={{ mt: 2 }}>
+          <Alert severity="warning" sx={{ mt: 2 }}>
             <Typography variant="body2">
-              <strong>Note:</strong> Make sure you have access to this pixel through your connected
-              Facebook account. The pixel must be owned by a business or ad account you have access to.
+              <strong>Permissions Required:</strong> Your Facebook token needs <code>ads_read</code> or <code>ads_management</code> permission to access pixel data.
+              If you see permission errors, reconnect Facebook with the required permissions.
+            </Typography>
+          </Alert>
+          <Alert severity="info" sx={{ mt: 1 }}>
+            <Typography variant="body2">
+              The pixel must be owned by a business or ad account you have access to.
+              Find Pixel IDs in Facebook Events Manager → Data Sources → Pixels.
             </Typography>
           </Alert>
         </DialogContent>
