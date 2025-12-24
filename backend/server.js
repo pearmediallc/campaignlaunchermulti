@@ -199,8 +199,8 @@ try {
 
 if (intelligence.enabled && intelligence.routes && typeof intelligence.routes === 'function') {
   // Apply authentication middleware to intelligence routes
-  const { authenticateToken } = require('./middleware/auth');
-  app.use('/api/intelligence', authenticateToken, intelligence.routes);
+  const { authenticate } = require('./middleware/auth');
+  app.use('/api/intelligence', authenticate, intelligence.routes);
   console.log('🧠 Intelligence API routes mounted at /api/intelligence');
 } else {
   // Add fallback route that explains why intelligence is unavailable
