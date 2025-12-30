@@ -49,9 +49,10 @@ class IntelligenceScheduler {
     this.scheduleDailyJobs();
 
     // Auto-resume incomplete backfills after server restart
+    // Delay significantly to allow server to handle initial API requests first
     setTimeout(() => {
       this.resumeIncompleteBackfills();
-    }, 15000); // 15 second delay to allow DB connections to stabilize
+    }, 120000); // 2 minute delay to allow DB connections and API requests to stabilize
 
     // Run initial collection after a short delay
     setTimeout(() => {
@@ -99,8 +100,8 @@ class IntelligenceScheduler {
         // Resume backfill in background with delay between accounts
         this.scheduleBackfillResume(userId, adAccountId, record, startDate, endDate, daysCompleted);
 
-        // Wait 30 seconds between starting each backfill to avoid overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        // Wait 60 seconds between starting each backfill to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 60000));
       }
     } catch (error) {
       console.error('❌ [IntelligenceScheduler] Error resuming backfills:', error.message);

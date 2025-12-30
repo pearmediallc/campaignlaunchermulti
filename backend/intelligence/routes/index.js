@@ -1163,6 +1163,7 @@ router.delete('/backfill/:adAccountId', async (req, res) => {
 /**
  * GET /api/intelligence/top-performers
  * Get best performing campaigns, ad sets, and ads
+ * OPTIMIZED: Uses raw SQL for better performance on large datasets
  */
 router.get('/top-performers', async (req, res) => {
   try {
@@ -1177,51 +1178,57 @@ router.get('/top-performers', async (req, res) => {
 
     console.log('[Intelligence] Top performers requested for user', userId, 'metric:', metric);
 
-    const { Op, fn, col, literal } = intelModels.Sequelize;
-
     // Calculate date range
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
+    const startDateStr = startDate.toISOString().split('T')[0];
 
     // Build entity type filter
     const entityTypes = entity_type === 'all'
       ? ['campaign', 'adset', 'ad']
       : [entity_type];
 
-    // Get aggregated performance data
-    const performers = await intelModels.IntelPerformanceSnapshot.findAll({
-      attributes: [
-        'ad_account_id',
-        'entity_type',
-        'entity_id',
-        'entity_name',
-        [fn('SUM', col('spend')), 'total_spend'],
-        [fn('SUM', col('revenue')), 'total_revenue'],
-        [fn('SUM', col('conversions')), 'total_conversions'],
-        [fn('SUM', col('impressions')), 'total_impressions'],
-        [fn('SUM', col('clicks')), 'total_clicks'],
-        [fn('AVG', col('ctr')), 'avg_ctr'],
-        [fn('AVG', col('cpc')), 'avg_cpc'],
-        [fn('AVG', col('cpm')), 'avg_cpm'],
-        [fn('COUNT', col('id')), 'data_points']
-      ],
-      where: {
-        user_id: userId,
-        entity_type: { [Op.in]: entityTypes },
-        snapshot_date: { [Op.gte]: startDate },
-        spend: { [Op.gt]: 0 }
+    // Build order by clause based on metric
+    const orderByClause = metric === 'roas' ? 'SUM(revenue) / NULLIF(SUM(spend), 0) DESC' :
+      metric === 'cpa' ? 'SUM(spend) / NULLIF(SUM(conversions), 0) ASC' :
+      metric === 'ctr' ? 'AVG(ctr) DESC' :
+      metric === 'conversions' ? 'SUM(conversions) DESC' :
+      'SUM(revenue) / NULLIF(SUM(spend), 0) DESC';
+
+    // Use raw SQL for better performance - avoids Sequelize overhead
+    const [performers] = await intelModels.sequelize.query(`
+      SELECT
+        ad_account_id,
+        entity_type,
+        entity_id,
+        entity_name,
+        SUM(spend) as total_spend,
+        SUM(revenue) as total_revenue,
+        SUM(conversions) as total_conversions,
+        SUM(impressions) as total_impressions,
+        SUM(clicks) as total_clicks,
+        AVG(ctr) as avg_ctr,
+        AVG(cpc) as avg_cpc,
+        AVG(cpm) as avg_cpm,
+        COUNT(id) as data_points
+      FROM intel_performance_snapshots
+      WHERE user_id = :userId
+        AND entity_type IN (:entityTypes)
+        AND snapshot_date >= :startDate
+        AND spend > 0
+      GROUP BY ad_account_id, entity_type, entity_id, entity_name
+      HAVING SUM(spend) >= :minSpend
+      ORDER BY ${orderByClause}
+      LIMIT :limit
+    `, {
+      replacements: {
+        userId,
+        entityTypes,
+        startDate: startDateStr,
+        minSpend: parseFloat(min_spend),
+        limit: parseInt(limit)
       },
-      group: ['ad_account_id', 'entity_type', 'entity_id', 'entity_name'],
-      having: literal(`SUM(spend) >= ${parseFloat(min_spend)}`),
-      order: [[literal(
-        metric === 'roas' ? 'SUM(revenue) / NULLIF(SUM(spend), 0)' :
-        metric === 'cpa' ? 'SUM(spend) / NULLIF(SUM(conversions), 0)' :
-        metric === 'ctr' ? 'AVG(ctr)' :
-        metric === 'conversions' ? 'SUM(conversions)' :
-        'SUM(revenue) / NULLIF(SUM(spend), 0)'
-      ), metric === 'cpa' ? 'ASC' : 'DESC']],
-      limit: parseInt(limit),
-      raw: true
+      type: intelModels.sequelize.QueryTypes.SELECT
     });
 
     // Calculate derived metrics for each performer

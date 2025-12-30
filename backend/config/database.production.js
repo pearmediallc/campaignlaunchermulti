@@ -14,10 +14,11 @@ if (process.env.DATABASE_URL) {
       },
       logging: false,
       pool: {
-        max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
+        max: 20,
+        min: 2,
+        acquire: 60000,
+        idle: 10000,
+        evict: 30000
       }
     }
   };
@@ -40,10 +41,11 @@ if (process.env.DATABASE_URL) {
       },
       logging: false,
       pool: {
-        max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
+        max: 20,
+        min: 2,
+        acquire: 60000,
+        idle: 10000,
+        evict: 30000
       }
     }
   };
