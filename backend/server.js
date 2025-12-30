@@ -219,8 +219,35 @@ if (intelligence.enabled && intelligence.routes && typeof intelligence.routes ==
   console.log(`⚠️ Intelligence API unavailable (${reason}) - fallback route mounted at /api/intelligence`);
 }
 
+// Basic health check - NO database required (for Render health checks)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Facebook Campaign Launcher API is running' });
+  res.json({
+    status: 'ok',
+    message: 'Facebook Campaign Launcher API is running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Deep health check - includes database status
+app.get('/api/health/deep', async (req, res) => {
+  try {
+    await db.sequelize.authenticate();
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'degraded',
+      database: 'disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  }
 });
 
 // Serve static frontend files in production
@@ -289,15 +316,55 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
+/**
+ * Retry database connection with exponential backoff
+ * This handles PostgreSQL recovery mode after server restarts
+ */
+async function connectWithRetry(maxRetries = 10, initialDelay = 2000) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await db.sequelize.authenticate();
+      console.log(`✅ Database connection established on attempt ${attempt}`);
+      return true;
+    } catch (error) {
+      lastError = error;
+      const isRecoveryError = error.original?.code === '57P03' ||
+                              error.message?.includes('not yet accepting connections') ||
+                              error.message?.includes('recovery');
+
+      if (attempt < maxRetries) {
+        const delay = initialDelay * Math.pow(1.5, attempt - 1); // Exponential backoff
+        const maxDelay = 30000; // Cap at 30 seconds
+        const actualDelay = Math.min(delay, maxDelay);
+
+        console.log(`⏳ Database connection attempt ${attempt}/${maxRetries} failed${isRecoveryError ? ' (DB in recovery)' : ''}`);
+        console.log(`   Retrying in ${(actualDelay / 1000).toFixed(1)}s...`);
+
+        await new Promise(resolve => setTimeout(resolve, actualDelay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // Initialize database and start server
 async function startServer() {
   try {
-    // Ensure database integrity before starting
-    const ensureDatabase = require('./scripts/ensure-database');
-    await ensureDatabase();
-    
-    // Test database connection
-    await db.sequelize.authenticate();
+    // Skip database checks in production - Render will retry
+    if (process.env.NODE_ENV === 'production') {
+      console.log('✅ Skipping database checks in production (PostgreSQL)');
+    } else {
+      // Ensure database integrity before starting (dev only)
+      const ensureDatabase = require('./scripts/ensure-database');
+      await ensureDatabase();
+    }
+
+    // Test database connection with retry logic for recovery mode
+    console.log('🔄 Connecting to database...');
+    await connectWithRetry();
     console.log('Database connection established successfully.');
     
     // IMPORTANT: We use migrations instead of sync to prevent schema conflicts

@@ -48,11 +48,18 @@ class IntelligenceScheduler {
     this.scheduleHourlyJobs();
     this.scheduleDailyJobs();
 
-    // Auto-resume incomplete backfills after server restart
-    // Delay significantly to allow server to handle initial API requests first
-    setTimeout(() => {
-      this.resumeIncompleteBackfills();
-    }, 120000); // 2 minute delay to allow DB connections and API requests to stabilize
+    // DISABLED: Auto-resume of backfills
+    // This was causing database connection exhaustion and server crashes.
+    // Backfills should be resumed manually via the API or UI.
+    // To re-enable, set INTEL_AUTO_RESUME_BACKFILLS=true
+    if (process.env.INTEL_AUTO_RESUME_BACKFILLS === 'true') {
+      setTimeout(() => {
+        this.resumeIncompleteBackfills();
+      }, 300000); // 5 minute delay if enabled
+    } else {
+      console.log('  ⚠️ Auto-resume of backfills is DISABLED (prevents DB overload)');
+      console.log('  ⚠️ Set INTEL_AUTO_RESUME_BACKFILLS=true to enable');
+    }
 
     // Run initial collection after a short delay
     setTimeout(() => {

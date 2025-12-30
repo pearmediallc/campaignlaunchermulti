@@ -5,7 +5,7 @@
  * and component breakdowns.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Paper,
@@ -17,6 +17,8 @@ import {
   Tooltip,
   IconButton,
   Alert,
+  Button,
+  CircularProgress,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -25,8 +27,10 @@ import {
   TrendingFlat,
   Refresh,
   Info,
+  Calculate,
 } from '@mui/icons-material';
-import { AccountScore } from '../../services/intelligenceApi';
+import { toast } from 'react-toastify';
+import { AccountScore, intelligenceApi } from '../../services/intelligenceApi';
 
 interface AccountScoreCardProps {
   scores?: {
@@ -43,16 +47,45 @@ interface AccountScoreCardProps {
 }
 
 const AccountScoreCard: React.FC<AccountScoreCardProps> = ({ scores, onRefresh }) => {
+  const [calculating, setCalculating] = useState(false);
+
+  const handleCalculateScores = async () => {
+    try {
+      setCalculating(true);
+      toast.info('Starting score calculation for all accounts...');
+      await intelligenceApi.triggerScoreCalculation();
+      toast.success('Score calculation started! This may take a few minutes. Refresh to see updates.');
+      // Refresh after a short delay
+      setTimeout(() => {
+        onRefresh();
+      }, 5000);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to start score calculation');
+    } finally {
+      setCalculating(false);
+    }
+  };
+
   if (!scores?.hasData) {
     return (
       <Paper sx={{ p: 4, textAlign: 'center' }}>
         <Typography variant="h6" color="text.secondary" gutterBottom>
           No Account Scores Available
         </Typography>
-        <Typography color="text.secondary">
-          Account scores are calculated daily based on campaign performance.
-          Check back after data has been collected.
+        <Typography color="text.secondary" paragraph>
+          Account scores are calculated based on campaign performance data.
+          Click the button below to calculate scores for all backfilled accounts.
         </Typography>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={calculating ? <CircularProgress size={20} color="inherit" /> : <Calculate />}
+          onClick={handleCalculateScores}
+          disabled={calculating}
+          sx={{ mt: 2 }}
+        >
+          {calculating ? 'Calculating...' : 'Calculate All Account Scores'}
+        </Button>
       </Paper>
     );
   }
@@ -94,6 +127,19 @@ const AccountScoreCard: React.FC<AccountScoreCardProps> = ({ scores, onRefresh }
 
   return (
     <Box>
+      {/* Header with Recalculate Button */}
+      <Box display="flex" justifyContent="flex-end" mb={2}>
+        <Button
+          variant="outlined"
+          startIcon={calculating ? <CircularProgress size={18} /> : <Calculate />}
+          onClick={handleCalculateScores}
+          disabled={calculating}
+          size="small"
+        >
+          {calculating ? 'Calculating...' : 'Recalculate All Scores'}
+        </Button>
+      </Box>
+
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid size={{ xs: 12, md: 4 }}>
