@@ -196,7 +196,8 @@ module.exports = (sequelize, DataTypes) => {
    */
   IntelPixelHealth.getLatestForUser = async function(userId) {
     // Use raw SQL with DISTINCT ON to get latest snapshot per pixel
-    const [results] = await sequelize.query(`
+    // Note: With type: QueryTypes.SELECT, sequelize returns results directly (not [results, metadata])
+    const results = await sequelize.query(`
       SELECT DISTINCT ON (pixel_id)
         id, user_id, ad_account_id, pixel_id, pixel_name, snapshot_date,
         event_match_quality, last_fired_time, is_active,
@@ -212,7 +213,7 @@ module.exports = (sequelize, DataTypes) => {
       type: sequelize.Sequelize.QueryTypes.SELECT
     });
 
-    if (!results || results.length === 0) return [];
+    if (!results || !Array.isArray(results) || results.length === 0) return [];
 
     // Convert to model instances for instance methods like calculateHealthScore
     return results.map(r => this.build(r, { isNewRecord: false }));

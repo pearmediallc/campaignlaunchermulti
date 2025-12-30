@@ -144,19 +144,41 @@ const TransparencyPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TransparencyData | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('Loading transparency data...');
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
+    setLoadingMessage('Connecting to database...');
+
+    // Create a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timed out after 60 seconds. The database may be under heavy load.')), 60000);
+    });
+
     try {
-      const response = await intelligenceApi.getTransparencyDashboard();
+      setLoadingMessage('Fetching transparency data...');
+
+      // Race between the fetch and timeout
+      const response = await Promise.race([
+        intelligenceApi.getTransparencyDashboard(),
+        timeoutPromise
+      ]) as { success: boolean; transparency: TransparencyData };
+
       if (response.success) {
         setData(response.transparency);
+        console.log('[Transparency] Data loaded successfully:', {
+          dataPoints: response.transparency.data_sources?.total_data_points,
+          accounts: response.transparency.data_sources?.accounts_with_data,
+          patterns: response.transparency.patterns?.total
+        });
       } else {
         setError('Failed to load transparency data');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load transparency data');
+      console.error('[Transparency] Error loading data:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to load transparency data';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -194,8 +216,9 @@ const TransparencyPanel: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight={400}>
-        <CircularProgress />
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight={400}>
+        <CircularProgress sx={{ mb: 2 }} />
+        <Typography color="text.secondary">{loadingMessage}</Typography>
       </Box>
     );
   }

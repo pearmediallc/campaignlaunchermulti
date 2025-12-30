@@ -72,6 +72,7 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
     message: '',
     severity: 'info'
   });
+  const [loadingMessage, setLoadingMessage] = useState('Loading training analytics...');
 
   useEffect(() => {
     fetchData();
@@ -81,26 +82,56 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
     try {
       setLoading(true);
       setError(null);
+      setLoadingMessage('Fetching training status...');
 
-      const [statusRes, historyRes, clusterRes] = await Promise.all([
-        intelligenceApi.getTrainingStatus(),
-        intelligenceApi.getTrainingHistory(30),
-        intelligenceApi.getClusterData()
-      ]);
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out after 60 seconds. The database may be under heavy load.')), 60000);
+      });
+
+      // Fetch data with proper error handling for each request
+      const [statusRes, historyRes, clusterRes] = await Promise.race([
+        Promise.all([
+          intelligenceApi.getTrainingStatus().catch(e => {
+            console.error('[TrainingAnalytics] Status fetch error:', e.message);
+            return { success: false, error: e.message };
+          }),
+          intelligenceApi.getTrainingHistory(30).catch(e => {
+            console.error('[TrainingAnalytics] History fetch error:', e.message);
+            return { success: false, error: e.message };
+          }),
+          intelligenceApi.getClusterData().catch(e => {
+            console.error('[TrainingAnalytics] Cluster fetch error:', e.message);
+            return { success: false, error: e.message };
+          })
+        ]),
+        timeoutPromise
+      ]) as [any, any, any];
+
+      setLoadingMessage('Processing data...');
 
       if (statusRes.success) {
         setTrainingStatus(statusRes.status);
+        console.log('[TrainingAnalytics] Status loaded:', statusRes.status);
       }
       if (historyRes.success) {
         // Wrap history in array if needed
         const history = historyRes.history;
         setTrainingHistory(Array.isArray(history) ? history : [history]);
+        console.log('[TrainingAnalytics] History loaded:', Array.isArray(history) ? history.length : 1, 'records');
       }
       if (clusterRes.success) {
         setClusterData(clusterRes.clusters);
+        console.log('[TrainingAnalytics] Clusters loaded');
+      }
+
+      // Check if all requests failed
+      if (!statusRes.success && !historyRes.success && !clusterRes.success) {
+        setError('Failed to load training analytics. Database may be busy.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch training analytics');
+      console.error('[TrainingAnalytics] Error:', err);
+      setError(err.response?.data?.error || err.message || 'Failed to fetch training analytics');
     } finally {
       setLoading(false);
     }
@@ -168,8 +199,9 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" p={4}>
-        <CircularProgress />
+      <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" p={4} minHeight={300}>
+        <CircularProgress sx={{ mb: 2 }} />
+        <Typography color="text.secondary">{loadingMessage}</Typography>
       </Box>
     );
   }
