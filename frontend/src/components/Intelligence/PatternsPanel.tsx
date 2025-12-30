@@ -159,10 +159,32 @@ const PatternsPanel: React.FC<PatternsPanelProps> = ({ onRefresh }) => {
         min_spend: 10
       });
       if (response.success) {
+        // Map the response to our component's structure
         setTopPerformers({
-          campaigns: response.top_campaigns || [],
-          adsets: response.top_ad_sets || [],
-          ads: response.top_ads || []
+          campaigns: (response.top_campaigns || []).map(p => ({
+            ad_account_id: p.ad_account_id,
+            entity_type: p.entity_type,
+            entity_id: p.entity_id,
+            entity_name: p.entity_name,
+            metrics: p.metrics,
+            data_points: p.data_points
+          })),
+          adsets: (response.top_ad_sets || []).map(p => ({
+            ad_account_id: p.ad_account_id,
+            entity_type: p.entity_type,
+            entity_id: p.entity_id,
+            entity_name: p.entity_name,
+            metrics: p.metrics,
+            data_points: p.data_points
+          })),
+          ads: (response.top_ads || []).map(p => ({
+            ad_account_id: p.ad_account_id,
+            entity_type: p.entity_type,
+            entity_id: p.entity_id,
+            entity_name: p.entity_name,
+            metrics: p.metrics,
+            data_points: p.data_points
+          }))
         });
       }
     } catch (err: any) {

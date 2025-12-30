@@ -103,12 +103,14 @@ export interface PixelHealth {
 }
 
 export interface Pattern {
+  id: number;
   type: string;
   name: string;
   description: string;
   confidence: string;
   sample_size: number;
   valid_until: string;
+  ad_account_id?: string;
 }
 
 export interface DashboardData {
@@ -565,55 +567,87 @@ export const intelligenceApi = {
     days?: number;
   }): Promise<{
     success: boolean;
-    metric: string;
-    days: number;
-    performers: {
-      campaigns: Array<{
-        entity_id: string;
-        entity_name: string;
-        ad_account_id: string;
-        spend: number;
-        revenue: number;
-        roas: number;
-        clicks: number;
-        impressions: number;
-        conversions: number;
-        ctr: number;
-        cpc: number;
-        days_active: number;
-      }>;
-      adsets: Array<{
-        entity_id: string;
-        entity_name: string;
-        campaign_id: string;
-        ad_account_id: string;
-        spend: number;
-        revenue: number;
-        roas: number;
-        clicks: number;
-        impressions: number;
-        conversions: number;
-        ctr: number;
-        cpc: number;
-        days_active: number;
-      }>;
-      ads: Array<{
-        entity_id: string;
-        entity_name: string;
-        adset_id: string;
-        campaign_id: string;
-        ad_account_id: string;
-        spend: number;
-        revenue: number;
-        roas: number;
-        clicks: number;
-        impressions: number;
-        conversions: number;
-        ctr: number;
-        cpc: number;
-        days_active: number;
-      }>;
+    metric_used: string;
+    time_period_days: number;
+    min_spend: number;
+    summary: {
+      total_performers: number;
+      campaigns: number;
+      ad_sets: number;
+      ads: number;
     };
+    top_campaigns: Array<{
+      ad_account_id: string;
+      entity_type: string;
+      entity_id: string;
+      entity_name: string;
+      metrics: {
+        spend: string;
+        revenue: string;
+        conversions: number;
+        impressions: number;
+        clicks: number;
+        roas: string;
+        cpa: string;
+        ctr: string;
+        cpc: string;
+      };
+      data_points: number;
+    }>;
+    top_ad_sets: Array<{
+      ad_account_id: string;
+      entity_type: string;
+      entity_id: string;
+      entity_name: string;
+      metrics: {
+        spend: string;
+        revenue: string;
+        conversions: number;
+        impressions: number;
+        clicks: number;
+        roas: string;
+        cpa: string;
+        ctr: string;
+        cpc: string;
+      };
+      data_points: number;
+    }>;
+    top_ads: Array<{
+      ad_account_id: string;
+      entity_type: string;
+      entity_id: string;
+      entity_name: string;
+      metrics: {
+        spend: string;
+        revenue: string;
+        conversions: number;
+        impressions: number;
+        clicks: number;
+        roas: string;
+        cpa: string;
+        ctr: string;
+        cpc: string;
+      };
+      data_points: number;
+    }>;
+    all_performers: Array<{
+      ad_account_id: string;
+      entity_type: string;
+      entity_id: string;
+      entity_name: string;
+      metrics: {
+        spend: string;
+        revenue: string;
+        conversions: number;
+        impressions: number;
+        clicks: number;
+        roas: string;
+        cpa: string;
+        ctr: string;
+        cpc: string;
+      };
+      data_points: number;
+    }>;
   }> => {
     const params = new URLSearchParams();
     if (options?.metric) params.append('metric', options.metric);
