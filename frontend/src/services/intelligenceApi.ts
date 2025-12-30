@@ -690,6 +690,108 @@ export const intelligenceApi = {
     const response = await api.get(`/intelligence/campaigns-list?${params}`);
     return response.data;
   },
+
+  // Full Transparency Dashboard - shows exactly what data is being used for training
+  getTransparencyDashboard: async (): Promise<{
+    success: boolean;
+    transparency: {
+      data_sources: {
+        total_data_points: number;
+        total_entities: number;
+        accounts_with_data: number;
+        accounts: Array<{
+          ad_account_id: string;
+          data_points: number;
+          unique_entities: number;
+          date_range: { from: string; to: string };
+          total_spend: string;
+          total_revenue: string;
+        }>;
+      };
+      backfill: {
+        summary: {
+          total: number;
+          completed: number;
+          in_progress: number;
+          failed: number;
+          pending: number;
+        };
+        accounts: Array<{
+          ad_account_id: string;
+          status: string;
+          progress: number;
+          days_completed: number;
+          total_days: number;
+        }>;
+      };
+      patterns: {
+        total: number;
+        learned_from_data: number;
+        from_expert_rules: number;
+        details: Array<{
+          id: number;
+          type: string;
+          name: string;
+          description: string;
+          sample_size: number;
+          confidence: string;
+          created_at: string;
+          valid_until: string;
+          data_source: string;
+          is_expert_rule: boolean;
+          accounts_used: string;
+          key_metrics: any;
+        }>;
+      };
+      account_scores: {
+        total_scored: number;
+        accounts: Array<{
+          ad_account_id: string;
+          overall_score: number;
+          score_date: string;
+          components: {
+            performance: number;
+            efficiency: number;
+            pixel_health: number;
+            learning: number;
+            consistency: number;
+          };
+        }>;
+      };
+      pixel_health: {
+        total_unique_pixels: number;
+        pixels: Array<{
+          pixel_id: string;
+          pixel_name: string;
+          ad_account_id: string;
+          emq: number | null;
+          is_active: boolean;
+          last_snapshot: string;
+          events: {
+            page_views: number;
+            view_content: number;
+            add_to_cart: number;
+            purchases: number;
+          };
+        }>;
+      };
+      expert_rules: {
+        summary: Record<string, number>;
+        total: number;
+      };
+      training_readiness: {
+        data_status: string;
+        min_data_for_patterns: number;
+        current_data: number;
+        patterns_active: number;
+        accounts_scored: number;
+        backfill_completion: number;
+      };
+    };
+  }> => {
+    const response = await api.get('/intelligence/transparency');
+    return response.data;
+  },
 };
 
 export default intelligenceApi;

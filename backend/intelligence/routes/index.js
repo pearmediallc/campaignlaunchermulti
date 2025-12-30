@@ -2118,4 +2118,281 @@ router.post('/training/calculate-scores', async (req, res) => {
   }
 });
 
+// ============================================
+// Transparency Dashboard Endpoint
+// ============================================
+
+/**
+ * GET /api/intelligence/transparency
+ * Full transparency dashboard showing exactly what data is being used for training
+ */
+router.get('/transparency', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { Op, fn, col } = intelModels.Sequelize;
+
+    // Use Promise.allSettled to handle partial failures gracefully
+    const results = await Promise.allSettled([
+      // 1. Get data source summary
+      intelModels.IntelPerformanceSnapshot.findAll({
+        attributes: [
+          'ad_account_id',
+          [fn('COUNT', col('id')), 'total_snapshots'],
+          [fn('COUNT', fn('DISTINCT', col('entity_id'))), 'unique_entities'],
+          [fn('MIN', col('snapshot_date')), 'earliest_date'],
+          [fn('MAX', col('snapshot_date')), 'latest_date'],
+          [fn('SUM', col('spend')), 'total_spend'],
+          [fn('SUM', col('revenue')), 'total_revenue']
+        ],
+        where: { user_id: userId },
+        group: ['ad_account_id'],
+        raw: true,
+        limit: 100
+      }),
+
+      // 2. Get backfill status summary
+      intelModels.IntelBackfillProgress.findAll({
+        attributes: ['ad_account_id', 'status', 'days_completed', 'total_days', 'started_at', 'completed_at'],
+        where: { user_id: userId },
+        raw: true,
+        limit: 700
+      }),
+
+      // 3. Get patterns with full details
+      intelModels.IntelLearnedPattern.findAll({
+        where: { is_active: true },
+        order: [['created_at', 'DESC']],
+        raw: true
+      }),
+
+      // 4. Get pixel health unique pixels (latest per pixel)
+      intelModels.sequelize.query(`
+        SELECT DISTINCT ON (pixel_id)
+          pixel_id, pixel_name, ad_account_id, snapshot_date,
+          event_match_quality, is_active, purchase_count,
+          page_view_count, view_content_count, add_to_cart_count
+        FROM intel_pixel_health
+        WHERE user_id = :userId
+        ORDER BY pixel_id, snapshot_date DESC
+        LIMIT 200
+      `, {
+        replacements: { userId },
+        type: intelModels.sequelize.QueryTypes.SELECT
+      }),
+
+      // 5. Get account scores
+      intelModels.IntelAccountScore.findAll({
+        where: { user_id: userId },
+        order: [['score_date', 'DESC']],
+        raw: true,
+        limit: 700
+      }),
+
+      // 6. Get expert rules count by type
+      intelModels.IntelExpertRule.findAll({
+        attributes: [
+          'rule_type',
+          'vertical',
+          [fn('COUNT', col('id')), 'count']
+        ],
+        where: { is_active: true },
+        group: ['rule_type', 'vertical'],
+        raw: true
+      })
+    ]);
+
+    // Extract results, handling failures gracefully
+    const [
+      dataSourcesResult,
+      backfillStatusResult,
+      patternsResult,
+      pixelHealthResult,
+      accountScoresResult,
+      expertRulesResult
+    ] = results;
+
+    const dataSources = dataSourcesResult.status === 'fulfilled' ? dataSourcesResult.value : [];
+    const backfillStatus = backfillStatusResult.status === 'fulfilled' ? backfillStatusResult.value : [];
+    const patterns = patternsResult.status === 'fulfilled' ? patternsResult.value : [];
+    const pixelHealth = pixelHealthResult.status === 'fulfilled' ? pixelHealthResult.value : [];
+    const accountScores = accountScoresResult.status === 'fulfilled' ? accountScoresResult.value : [];
+    const expertRules = expertRulesResult.status === 'fulfilled' ? expertRulesResult.value : [];
+
+    // Calculate totals
+    const totalDataPoints = dataSources.reduce((sum, ds) => sum + parseInt(ds.total_snapshots || 0), 0);
+    const totalEntities = dataSources.reduce((sum, ds) => sum + parseInt(ds.unique_entities || 0), 0);
+    const accountsWithData = dataSources.length;
+
+    // Backfill summary
+    const backfillSummary = {
+      total: backfillStatus.length,
+      completed: backfillStatus.filter(b => b.status === 'completed').length,
+      in_progress: backfillStatus.filter(b => b.status === 'in_progress').length,
+      failed: backfillStatus.filter(b => b.status === 'failed').length,
+      pending: backfillStatus.filter(b => b.status === 'pending').length
+    };
+
+    // Get unique scores (latest per account)
+    const latestScores = {};
+    accountScores.forEach(s => {
+      if (!latestScores[s.ad_account_id] || s.score_date > latestScores[s.ad_account_id].score_date) {
+        latestScores[s.ad_account_id] = s;
+      }
+    });
+
+    // Pattern analysis - show what data each pattern used
+    const patternDetails = patterns.map(p => {
+      const data = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data;
+      return {
+        id: p.id,
+        type: p.pattern_type,
+        name: p.pattern_name,
+        description: p.description,
+        sample_size: p.sample_size,
+        confidence: (p.confidence_score * 100).toFixed(0) + '%',
+        created_at: p.created_at,
+        valid_until: p.valid_until,
+        data_source: p.pattern_type.startsWith('expert_') ? 'Expert Rules (Static)' : 'Learned from Performance Data',
+        is_expert_rule: p.pattern_type.startsWith('expert_'),
+        accounts_used: data?.accounts || data?.vertical || 'Global',
+        key_metrics: extractKeyMetrics(p.pattern_type, data)
+      };
+    });
+
+    // Expert rules summary
+    const expertRulesSummary = expertRules.reduce((acc, r) => {
+      const key = `${r.rule_type}-${r.vertical}`;
+      acc[key] = parseInt(r.count);
+      return acc;
+    }, {});
+
+    res.json({
+      success: true,
+      transparency: {
+        data_sources: {
+          total_data_points: totalDataPoints,
+          total_entities: totalEntities,
+          accounts_with_data: accountsWithData,
+          accounts: dataSources.map(ds => ({
+            ad_account_id: ds.ad_account_id,
+            data_points: parseInt(ds.total_snapshots),
+            unique_entities: parseInt(ds.unique_entities),
+            date_range: {
+              from: ds.earliest_date,
+              to: ds.latest_date
+            },
+            total_spend: parseFloat(ds.total_spend || 0).toFixed(2),
+            total_revenue: parseFloat(ds.total_revenue || 0).toFixed(2)
+          }))
+        },
+        backfill: {
+          summary: backfillSummary,
+          accounts: backfillStatus.map(b => ({
+            ad_account_id: b.ad_account_id,
+            status: b.status,
+            progress: b.total_days > 0 ? Math.round((b.days_completed / b.total_days) * 100) : 0,
+            days_completed: b.days_completed,
+            total_days: b.total_days
+          }))
+        },
+        patterns: {
+          total: patterns.length,
+          learned_from_data: patternDetails.filter(p => !p.is_expert_rule).length,
+          from_expert_rules: patternDetails.filter(p => p.is_expert_rule).length,
+          details: patternDetails
+        },
+        account_scores: {
+          total_scored: Object.keys(latestScores).length,
+          accounts: Object.values(latestScores).map(s => ({
+            ad_account_id: s.ad_account_id,
+            overall_score: s.overall_score,
+            score_date: s.score_date,
+            components: {
+              performance: s.performance_score,
+              efficiency: s.efficiency_score,
+              pixel_health: s.pixel_health_score,
+              learning: s.learning_score,
+              consistency: s.consistency_score
+            }
+          }))
+        },
+        pixel_health: {
+          total_unique_pixels: pixelHealth.length,
+          pixels: pixelHealth.map(p => ({
+            pixel_id: p.pixel_id,
+            pixel_name: p.pixel_name,
+            ad_account_id: p.ad_account_id,
+            emq: p.event_match_quality,
+            is_active: p.is_active,
+            last_snapshot: p.snapshot_date,
+            events: {
+              page_views: p.page_view_count,
+              view_content: p.view_content_count,
+              add_to_cart: p.add_to_cart_count,
+              purchases: p.purchase_count
+            }
+          }))
+        },
+        expert_rules: {
+          summary: expertRulesSummary,
+          total: expertRules.reduce((sum, r) => sum + parseInt(r.count), 0)
+        },
+        training_readiness: {
+          data_status: totalDataPoints >= 1000 ? 'ready' : totalDataPoints >= 100 ? 'learning' : 'collecting',
+          min_data_for_patterns: 100,
+          current_data: totalDataPoints,
+          patterns_active: patterns.length,
+          accounts_scored: Object.keys(latestScores).length,
+          backfill_completion: backfillSummary.total > 0
+            ? Math.round((backfillSummary.completed / backfillSummary.total) * 100)
+            : 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[Intelligence] Transparency dashboard error:', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Helper to extract key metrics from pattern data
+ */
+function extractKeyMetrics(patternType, data) {
+  if (!data) return {};
+
+  switch (patternType) {
+    case 'time_performance':
+      return {
+        best_hours: data.bestHours || [],
+        worst_hours: data.worstHours || [],
+        overall_avg_roas: data.overallAvg?.toFixed(2)
+      };
+    case 'cluster':
+      return {
+        k: data.k,
+        cluster_sizes: data.cluster_sizes,
+        features: data.feature_names
+      };
+    case 'winner_profile':
+    case 'loser_profile':
+      return {
+        profile_metrics: Object.keys(data.profile || {})
+      };
+    case 'audience_fatigue':
+      return {
+        fatigue_threshold: data.fatigueThreshold?.toFixed(2),
+        ctr_decline_rate: data.frequencyDecay?.toFixed(4)
+      };
+    case 'expert_kill_threshold':
+    case 'expert_scale_threshold':
+      return {
+        vertical: data.vertical,
+        rules_count: data.rules?.length
+      };
+    default:
+      return {};
+  }
+}
+
 module.exports = router;

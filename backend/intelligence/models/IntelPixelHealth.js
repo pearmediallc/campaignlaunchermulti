@@ -191,21 +191,31 @@ module.exports = (sequelize, DataTypes) => {
   // Class methods
 
   /**
-   * Get latest pixel health for a user
+   * Get latest pixel health for a user (one record per unique pixel)
+   * Uses DISTINCT ON to get the most recent snapshot for each pixel
    */
   IntelPixelHealth.getLatestForUser = async function(userId) {
-    const latestDate = await this.max('snapshot_date', {
-      where: { user_id: userId }
+    // Use raw SQL with DISTINCT ON to get latest snapshot per pixel
+    const [results] = await sequelize.query(`
+      SELECT DISTINCT ON (pixel_id)
+        id, user_id, ad_account_id, pixel_id, pixel_name, snapshot_date,
+        event_match_quality, last_fired_time, is_active,
+        page_view_count, view_content_count, add_to_cart_count,
+        initiate_checkout_count, purchase_count, lead_count,
+        complete_registration_count, has_server_events, server_event_percentage,
+        domain_verified, domain_name, created_at, updated_at
+      FROM intel_pixel_health
+      WHERE user_id = :userId
+      ORDER BY pixel_id, snapshot_date DESC
+    `, {
+      replacements: { userId },
+      type: sequelize.Sequelize.QueryTypes.SELECT
     });
 
-    if (!latestDate) return [];
+    if (!results || results.length === 0) return [];
 
-    return this.findAll({
-      where: {
-        user_id: userId,
-        snapshot_date: latestDate
-      }
-    });
+    // Convert to model instances for instance methods like calculateHealthScore
+    return results.map(r => this.build(r, { isNewRecord: false }));
   };
 
   /**

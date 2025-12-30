@@ -57,6 +57,7 @@ import PatternsPanel from '../components/Intelligence/PatternsPanel';
 import ExpertRulesPanel from '../components/Intelligence/ExpertRulesPanel';
 import BackfillPanel from '../components/Intelligence/BackfillPanel';
 import TrainingAnalyticsPanel from '../components/Intelligence/TrainingAnalyticsPanel';
+import TransparencyPanel from '../components/Intelligence/TransparencyPanel';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -386,6 +387,11 @@ const IntelligenceDashboard: React.FC = () => {
             icon={<ShowChart />}
             iconPosition="start"
           />
+          <Tab
+            label="Transparency"
+            icon={<Psychology />}
+            iconPosition="start"
+          />
         </Tabs>
       </Paper>
 
@@ -432,6 +438,10 @@ const IntelligenceDashboard: React.FC = () => {
 
       <TabPanel value={activeTab} index={8}>
         <TrainingAnalyticsPanel onRefresh={handleRefresh} />
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={9}>
+        <TransparencyPanel />
       </TabPanel>
     </Container>
   );
