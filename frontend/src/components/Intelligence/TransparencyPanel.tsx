@@ -236,7 +236,7 @@ const TransparencyPanel: React.FC = () => {
           <DataUsage /> Training Readiness
         </Typography>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <Card variant="outlined">
               <CardContent>
                 <Typography color="textSecondary" variant="body2">Data Status</Typography>
@@ -250,7 +250,7 @@ const TransparencyPanel: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <Card variant="outlined">
               <CardContent>
                 <Typography color="textSecondary" variant="body2">Total Data Points</Typography>
@@ -261,7 +261,7 @@ const TransparencyPanel: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <Card variant="outlined">
               <CardContent>
                 <Typography color="textSecondary" variant="body2">Active Patterns</Typography>
@@ -269,7 +269,7 @@ const TransparencyPanel: React.FC = () => {
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <Card variant="outlined">
               <CardContent>
                 <Typography color="textSecondary" variant="body2">Backfill Completion</Typography>
@@ -489,7 +489,7 @@ const TransparencyPanel: React.FC = () => {
         </AccordionSummary>
         <AccordionDetails>
           <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card variant="outlined" sx={{ bgcolor: 'success.light' }}>
                 <CardContent>
                   <Typography variant="h4">{data.backfill.summary.completed}</Typography>
@@ -497,7 +497,7 @@ const TransparencyPanel: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card variant="outlined" sx={{ bgcolor: 'info.light' }}>
                 <CardContent>
                   <Typography variant="h4">{data.backfill.summary.in_progress}</Typography>
@@ -505,7 +505,7 @@ const TransparencyPanel: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card variant="outlined" sx={{ bgcolor: 'error.light' }}>
                 <CardContent>
                   <Typography variant="h4">{data.backfill.summary.failed}</Typography>
@@ -513,7 +513,7 @@ const TransparencyPanel: React.FC = () => {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card variant="outlined" sx={{ bgcolor: 'grey.200' }}>
                 <CardContent>
                   <Typography variant="h4">{data.backfill.summary.pending}</Typography>
@@ -604,7 +604,7 @@ const TransparencyPanel: React.FC = () => {
           </Alert>
           <Grid container spacing={2}>
             {Object.entries(data.expert_rules.summary).map(([key, count]) => (
-              <Grid item xs={6} md={3} key={key}>
+              <Grid size={{ xs: 6, md: 3 }} key={key}>
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="body2" color="textSecondary">
