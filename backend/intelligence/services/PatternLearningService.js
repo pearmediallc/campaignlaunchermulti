@@ -777,9 +777,46 @@ class PatternLearningService {
   async getPatternInsights(userId = null, adAccountId = null) {
     const patterns = await intelModels.IntelLearnedPattern.getActivePatterns(userId, adAccountId);
 
+    // Get unique ad account IDs that contributed to patterns
+    const accountIds = [...new Set(patterns.filter(p => p.ad_account_id).map(p => p.ad_account_id))];
+
+    // Get account names if available
+    let accountsInfo = [];
+    if (accountIds.length > 0) {
+      try {
+        const snapshots = await intelModels.IntelPerformanceSnapshot.findAll({
+          attributes: ['ad_account_id'],
+          where: { ad_account_id: { [intelModels.Sequelize.Op.in]: accountIds } },
+          group: ['ad_account_id'],
+          raw: true
+        });
+        accountsInfo = snapshots.map(s => ({
+          id: s.ad_account_id,
+          name: s.ad_account_id // Could enhance with actual account names if stored
+        }));
+      } catch (err) {
+        console.log('[PatternLearning] Could not fetch account names:', err.message);
+        accountsInfo = accountIds.map(id => ({ id, name: id }));
+      }
+    }
+
     return {
       total_patterns: patterns.length,
       by_type: this.groupPatternsByType(patterns),
+      source_accounts: accountsInfo,
+      patterns: patterns.map(p => ({
+        id: p.id,
+        type: p.pattern_type,
+        name: p.pattern_name,
+        description: p.description,
+        confidence: (p.confidence_score * 100).toFixed(0) + '%',
+        confidence_score: p.confidence_score,
+        sample_size: p.sample_size,
+        valid_until: p.valid_until,
+        ad_account_id: p.ad_account_id,
+        created_at: p.created_at
+      })),
+      // Keep insights for backwards compatibility
       insights: patterns.map(p => ({
         type: p.pattern_type,
         name: p.pattern_name,

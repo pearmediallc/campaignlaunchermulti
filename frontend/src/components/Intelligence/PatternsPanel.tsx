@@ -2,7 +2,7 @@
  * PatternsPanel.tsx
  *
  * Displays learned patterns and ML insights from the intelligence engine.
- * Shows pattern types, confidence levels, and recommendations.
+ * Shows pattern types, confidence levels, recommendations, and top performers.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -22,6 +22,19 @@ import {
   AccordionDetails,
   LinearProgress,
   Divider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -35,8 +48,12 @@ import {
   AutoGraph,
   Timer,
   Category,
+  EmojiEvents,
+  AccountBalance,
+  Campaign,
 } from '@mui/icons-material';
 import { intelligenceApi, Pattern } from '../../services/intelligenceApi';
+import { toast } from 'react-toastify';
 
 interface PatternsPanelProps {
   onRefresh?: () => void;

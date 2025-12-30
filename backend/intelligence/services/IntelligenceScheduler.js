@@ -48,12 +48,115 @@ class IntelligenceScheduler {
     this.scheduleHourlyJobs();
     this.scheduleDailyJobs();
 
+    // Auto-resume incomplete backfills after server restart
+    setTimeout(() => {
+      this.resumeIncompleteBackfills();
+    }, 15000); // 15 second delay to allow DB connections to stabilize
+
     // Run initial collection after a short delay
     setTimeout(() => {
       if (process.env.INTEL_RUN_ON_START === 'true') {
         this.runHourlyJobs();
       }
     }, 10000); // 10 second delay to allow server to fully start
+  }
+
+  /**
+   * Auto-resume incomplete backfills on server restart
+   * This ensures backfills continue even after server crashes/restarts
+   */
+  async resumeIncompleteBackfills() {
+    try {
+      const intelModels = require('../models');
+
+      // Find all incomplete backfills
+      const incompleteBackfills = await intelModels.IntelBackfillProgress.findAll({
+        where: {
+          status: 'in_progress'
+        }
+      });
+
+      if (incompleteBackfills.length === 0) {
+        console.log('🔄 [IntelligenceScheduler] No incomplete backfills to resume');
+        return;
+      }
+
+      console.log(`🔄 [IntelligenceScheduler] Found ${incompleteBackfills.length} incomplete backfills to resume`);
+
+      // Resume each backfill one at a time to avoid memory issues
+      for (const record of incompleteBackfills) {
+        const adAccountId = record.ad_account_id;
+        const daysCompleted = record.days_completed || 0;
+        const totalDays = record.total_days || 90;
+        const userId = record.user_id;
+
+        console.log(`  🔄 Resuming backfill for ${adAccountId} from day ${daysCompleted}/${totalDays}`);
+
+        // Calculate date range from the original backfill
+        const endDate = record.end_date ? new Date(record.end_date) : new Date();
+        const startDate = record.start_date ? new Date(record.start_date) : new Date(endDate - totalDays * 24 * 60 * 60 * 1000);
+
+        // Resume backfill in background with delay between accounts
+        this.scheduleBackfillResume(userId, adAccountId, record, startDate, endDate, daysCompleted);
+
+        // Wait 30 seconds between starting each backfill to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
+    } catch (error) {
+      console.error('❌ [IntelligenceScheduler] Error resuming backfills:', error.message);
+    }
+  }
+
+  /**
+   * Schedule a backfill resume with memory management
+   */
+  scheduleBackfillResume(userId, adAccountId, record, startDate, endDate, daysCompleted) {
+    setImmediate(async () => {
+      try {
+        const type = record.backfill_type || 'all';
+
+        if (type === 'all' || type === 'insights') {
+          await InsightsCollectorService.backfillAccount(userId, adAccountId, {
+            startDate,
+            endDate,
+            startFromDay: daysCompleted,
+            progressCallback: async (day, current) => {
+              await record.updateProgress(day, current);
+              // Force garbage collection periodically if available
+              if (global.gc && day % 10 === 0) {
+                global.gc();
+              }
+            }
+          });
+        }
+
+        if (type === 'all' || type === 'pixel') {
+          await PixelHealthService.backfillAccount(userId, adAccountId, {
+            startDate,
+            endDate
+          });
+        }
+
+        await record.update({
+          status: 'completed',
+          completed_at: new Date(),
+          days_completed: record.total_days
+        });
+
+        console.log(`✅ [IntelligenceScheduler] Backfill completed for ${adAccountId}`);
+
+        // Trigger pattern learning after completion
+        try {
+          await PatternLearningService.learnAllPatterns();
+          await AccountScoreService.calculateAllScores();
+        } catch (learningError) {
+          console.error('⚠️ [IntelligenceScheduler] Auto-learning after resume failed:', learningError.message);
+        }
+      } catch (error) {
+        console.error(`❌ [IntelligenceScheduler] Resume error for ${adAccountId}:`, error.message);
+        await record.markFailed(error.message);
+      }
+    });
   }
 
   /**

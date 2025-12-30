@@ -1018,10 +1018,27 @@ router.post('/backfill/batch', async (req, res) => {
         }
 
         results.started.push(adAccountId);
+      } catch (error) {
+        results.errors.push({ ad_account_id: adAccountId, error: error.message });
+      }
+    }
 
-        // Start backfill in background for each account
-        setImmediate(async () => {
+    // Process backfills SEQUENTIALLY in background (one at a time to avoid OOM)
+    // This prevents memory exhaustion from running 100+ backfills simultaneously
+    if (results.started.length > 0) {
+      console.log(`[Intelligence] Starting sequential backfill for ${results.started.length} accounts (one at a time to prevent memory issues)`);
+
+      // Start the sequential processing in background
+      setImmediate(async () => {
+        for (const adAccountId of results.started) {
           try {
+            const record = await intelModels.IntelBackfillProgress.findOne({
+              where: { user_id: userId, ad_account_id: adAccountId }
+            });
+
+            if (!record || record.status === 'completed') continue;
+
+            console.log(`📊 [Backfill] Starting account ${adAccountId} (${results.started.indexOf(adAccountId) + 1}/${results.started.length})`);
             await record.update({ status: 'in_progress', started_at: new Date() });
 
             if (type === 'all' || type === 'insights') {
@@ -1030,6 +1047,10 @@ router.post('/backfill/batch', async (req, res) => {
                 endDate,
                 progressCallback: async (day, current) => {
                   await record.updateProgress(day, current);
+                  // Force garbage collection every 10 days if available
+                  if (global.gc && day % 10 === 0) {
+                    global.gc();
+                  }
                 }
               });
             }
@@ -1048,21 +1069,27 @@ router.post('/backfill/batch', async (req, res) => {
             });
 
             console.log(`✅ [Backfill] Account ${adAccountId} completed`);
+
+            // Small delay between accounts to let memory settle
+            await new Promise(resolve => setTimeout(resolve, 5000));
           } catch (error) {
             console.error(`[Intelligence] Backfill error for account ${adAccountId}:`, error.message);
-            await record.markFailed(error.message);
+            const record = await intelModels.IntelBackfillProgress.findOne({
+              where: { user_id: userId, ad_account_id: adAccountId }
+            });
+            if (record) await record.markFailed(error.message);
           }
-        });
-      } catch (error) {
-        results.errors.push({ ad_account_id: adAccountId, error: error.message });
-      }
-    }
+        }
 
-    // If all accounts started, trigger learning after a delay
-    if (results.started.length > 0) {
-      // Schedule pattern learning after all backfills complete (estimate based on accounts)
-      const estimatedMinutes = Math.max(5, results.started.length * 2);
-      console.log(`[Intelligence] Scheduling pattern learning in ~${estimatedMinutes} minutes after batch backfill`);
+        // Trigger pattern learning after ALL accounts complete
+        try {
+          console.log('🧠 [Intelligence] Auto-triggering pattern learning after batch backfill...');
+          await PatternLearningService.learnAllPatterns();
+          await AccountScoreService.calculateAllScores();
+        } catch (learningError) {
+          console.error('⚠️ [Intelligence] Auto-learning after batch failed:', learningError.message);
+        }
+      });
     }
 
     res.json({
