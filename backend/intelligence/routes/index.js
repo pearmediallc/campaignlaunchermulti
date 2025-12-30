@@ -850,6 +850,117 @@ router.post('/backfill/start', async (req, res) => {
 });
 
 /**
+ * POST /api/intelligence/backfill/resume-all
+ * Resume all incomplete backfills from where they left off
+ */
+router.post('/backfill/resume-all', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log('[Intelligence] Resume all incomplete backfills requested for user', userId);
+
+    // Find all incomplete backfills for this user
+    const incompleteBackfills = await intelModels.IntelBackfillProgress.findAll({
+      where: {
+        user_id: userId,
+        status: 'in_progress'
+      }
+    });
+
+    if (incompleteBackfills.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No incomplete backfills to resume',
+        results: { resumed: 0, accounts: [] }
+      });
+    }
+
+    console.log(`[Intelligence] Found ${incompleteBackfills.length} incomplete backfills to resume`);
+
+    const results = {
+      resumed: 0,
+      accounts: []
+    };
+
+    // Resume each incomplete backfill
+    for (const record of incompleteBackfills) {
+      const adAccountId = record.ad_account_id;
+      const daysCompleted = record.days_completed || 0;
+      const totalDays = record.total_days || 90;
+      const type = record.backfill_type || 'all';
+
+      // Calculate date range from the original backfill
+      const endDate = record.end_date ? new Date(record.end_date) : new Date();
+      const startDate = record.start_date ? new Date(record.start_date) : new Date(endDate - totalDays * 24 * 60 * 60 * 1000);
+
+      results.resumed++;
+      results.accounts.push({
+        ad_account_id: adAccountId,
+        days_completed: daysCompleted,
+        total_days: totalDays,
+        resuming_from_day: daysCompleted
+      });
+
+      // Resume backfill in background
+      setImmediate(async () => {
+        try {
+          console.log(`🔄 [Backfill] Resuming ${adAccountId} from day ${daysCompleted}/${totalDays}`);
+
+          await record.update({ status: 'in_progress', started_at: new Date() });
+
+          if (type === 'all' || type === 'insights') {
+            await InsightsCollectorService.backfillAccount(userId, adAccountId, {
+              startDate,
+              endDate,
+              startFromDay: daysCompleted, // Resume from where we left off
+              progressCallback: async (day, current) => {
+                await record.updateProgress(day, current);
+              }
+            });
+          }
+
+          if (type === 'all' || type === 'pixel') {
+            await PixelHealthService.backfillAccount(userId, adAccountId, {
+              startDate,
+              endDate
+            });
+          }
+
+          await record.update({
+            status: 'completed',
+            completed_at: new Date(),
+            days_completed: totalDays
+          });
+
+          console.log(`✅ [Backfill] Account ${adAccountId} completed (resumed)`);
+
+          // Auto-trigger pattern learning after completion
+          try {
+            console.log('🧠 [Intelligence] Auto-triggering pattern learning after resumed backfill...');
+            await PatternLearningService.learnAllPatterns();
+            await AccountScoreService.calculateAllScores();
+          } catch (learningError) {
+            console.error('⚠️ [Intelligence] Auto-learning after resume failed:', learningError.message);
+          }
+        } catch (error) {
+          console.error(`[Intelligence] Resume backfill error for account ${adAccountId}:`, error.message);
+          await record.markFailed(error.message);
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Resuming ${results.resumed} incomplete backfills`,
+      results
+    });
+  } catch (error) {
+    console.error('[Intelligence] Resume all backfills error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/intelligence/backfill/batch
  * Start backfill for multiple accounts simultaneously
  */
@@ -1014,6 +1125,253 @@ router.delete('/backfill/:adAccountId', async (req, res) => {
     res.json({ success: true, message: 'Backfill cancelled' });
   } catch (error) {
     console.error('[Intelligence] Backfill cancel error for user', req.user?.id, 'adAccountId:', req.params?.adAccountId, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// Top Performers & Analytics Endpoints
+// ============================================
+
+/**
+ * GET /api/intelligence/top-performers
+ * Get best performing campaigns, ad sets, and ads
+ */
+router.get('/top-performers', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      metric = 'roas',        // roas, cpa, ctr, conversions
+      min_spend = 10,         // Minimum spend to be considered
+      limit = 20,             // Number of results
+      entity_type = 'all',    // all, campaign, adset, ad
+      days = 30               // Time period
+    } = req.query;
+
+    console.log('[Intelligence] Top performers requested for user', userId, 'metric:', metric);
+
+    const { Op, fn, col, literal } = intelModels.Sequelize;
+
+    // Calculate date range
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+
+    // Build entity type filter
+    const entityTypes = entity_type === 'all'
+      ? ['campaign', 'adset', 'ad']
+      : [entity_type];
+
+    // Get aggregated performance data
+    const performers = await intelModels.IntelPerformanceSnapshot.findAll({
+      attributes: [
+        'ad_account_id',
+        'entity_type',
+        'entity_id',
+        'entity_name',
+        [fn('SUM', col('spend')), 'total_spend'],
+        [fn('SUM', col('revenue')), 'total_revenue'],
+        [fn('SUM', col('conversions')), 'total_conversions'],
+        [fn('SUM', col('impressions')), 'total_impressions'],
+        [fn('SUM', col('clicks')), 'total_clicks'],
+        [fn('AVG', col('ctr')), 'avg_ctr'],
+        [fn('AVG', col('cpc')), 'avg_cpc'],
+        [fn('AVG', col('cpm')), 'avg_cpm'],
+        [fn('COUNT', col('id')), 'data_points']
+      ],
+      where: {
+        user_id: userId,
+        entity_type: { [Op.in]: entityTypes },
+        snapshot_date: { [Op.gte]: startDate },
+        spend: { [Op.gt]: 0 }
+      },
+      group: ['ad_account_id', 'entity_type', 'entity_id', 'entity_name'],
+      having: literal(`SUM(spend) >= ${parseFloat(min_spend)}`),
+      order: [[literal(
+        metric === 'roas' ? 'SUM(revenue) / NULLIF(SUM(spend), 0)' :
+        metric === 'cpa' ? 'SUM(spend) / NULLIF(SUM(conversions), 0)' :
+        metric === 'ctr' ? 'AVG(ctr)' :
+        metric === 'conversions' ? 'SUM(conversions)' :
+        'SUM(revenue) / NULLIF(SUM(spend), 0)'
+      ), metric === 'cpa' ? 'ASC' : 'DESC']],
+      limit: parseInt(limit),
+      raw: true
+    });
+
+    // Calculate derived metrics for each performer
+    const results = performers.map(p => {
+      const spend = parseFloat(p.total_spend) || 0;
+      const revenue = parseFloat(p.total_revenue) || 0;
+      const conversions = parseInt(p.total_conversions) || 0;
+      const impressions = parseInt(p.total_impressions) || 0;
+      const clicks = parseInt(p.total_clicks) || 0;
+
+      return {
+        ad_account_id: p.ad_account_id,
+        entity_type: p.entity_type,
+        entity_id: p.entity_id,
+        entity_name: p.entity_name,
+        metrics: {
+          spend: spend.toFixed(2),
+          revenue: revenue.toFixed(2),
+          conversions,
+          impressions,
+          clicks,
+          roas: spend > 0 ? (revenue / spend).toFixed(2) : '0.00',
+          cpa: conversions > 0 ? (spend / conversions).toFixed(2) : 'N/A',
+          ctr: impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) : '0.00',
+          cpc: clicks > 0 ? (spend / clicks).toFixed(2) : 'N/A'
+        },
+        data_points: parseInt(p.data_points)
+      };
+    });
+
+    // Get unique campaigns for the top performers
+    const topCampaigns = results.filter(r => r.entity_type === 'campaign');
+    const topAdSets = results.filter(r => r.entity_type === 'adset');
+    const topAds = results.filter(r => r.entity_type === 'ad');
+
+    res.json({
+      success: true,
+      metric_used: metric,
+      time_period_days: parseInt(days),
+      min_spend: parseFloat(min_spend),
+      summary: {
+        total_performers: results.length,
+        campaigns: topCampaigns.length,
+        ad_sets: topAdSets.length,
+        ads: topAds.length
+      },
+      top_campaigns: topCampaigns.slice(0, 10),
+      top_ad_sets: topAdSets.slice(0, 10),
+      top_ads: topAds.slice(0, 10),
+      all_performers: results
+    });
+  } catch (error) {
+    console.error('[Intelligence] Top performers error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/intelligence/campaigns-list
+ * Get list of all campaigns with their ad accounts for creative analysis
+ */
+router.get('/campaigns-list', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { min_spend = 0, days = 90 } = req.query;
+
+    console.log('[Intelligence] Campaigns list requested for user', userId);
+
+    const { Op, fn, col, literal } = intelModels.Sequelize;
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(days));
+
+    // Get all campaigns with aggregated metrics
+    const campaigns = await intelModels.IntelPerformanceSnapshot.findAll({
+      attributes: [
+        'ad_account_id',
+        'entity_id',
+        'entity_name',
+        [fn('SUM', col('spend')), 'total_spend'],
+        [fn('SUM', col('revenue')), 'total_revenue'],
+        [fn('SUM', col('conversions')), 'total_conversions'],
+        [fn('MIN', col('snapshot_date')), 'first_seen'],
+        [fn('MAX', col('snapshot_date')), 'last_seen'],
+        [fn('COUNT', col('id')), 'data_points']
+      ],
+      where: {
+        user_id: userId,
+        entity_type: 'campaign',
+        snapshot_date: { [Op.gte]: startDate }
+      },
+      group: ['ad_account_id', 'entity_id', 'entity_name'],
+      having: literal(`SUM(spend) >= ${parseFloat(min_spend)}`),
+      order: [[literal('SUM(spend)'), 'DESC']],
+      raw: true
+    });
+
+    // Get ads for each campaign (to show creatives)
+    const campaignIds = campaigns.map(c => c.entity_id);
+
+    const ads = await intelModels.IntelPerformanceSnapshot.findAll({
+      attributes: [
+        'ad_account_id',
+        'entity_id',
+        'entity_name',
+        [fn('SUM', col('spend')), 'total_spend'],
+        [fn('SUM', col('revenue')), 'total_revenue'],
+        [fn('SUM', col('conversions')), 'total_conversions'],
+        [col('raw_data'), 'raw_data']
+      ],
+      where: {
+        user_id: userId,
+        entity_type: 'ad',
+        snapshot_date: { [Op.gte]: startDate }
+      },
+      group: ['ad_account_id', 'entity_id', 'entity_name', 'raw_data'],
+      order: [[literal('SUM(spend)'), 'DESC']],
+      limit: 500,
+      raw: true
+    });
+
+    // Map ads to their campaigns
+    const adsByCampaign = {};
+    ads.forEach(ad => {
+      const rawData = typeof ad.raw_data === 'string' ? JSON.parse(ad.raw_data) : ad.raw_data;
+      const campaignId = rawData?.campaign_id;
+      if (campaignId) {
+        if (!adsByCampaign[campaignId]) {
+          adsByCampaign[campaignId] = [];
+        }
+        adsByCampaign[campaignId].push({
+          ad_id: ad.entity_id,
+          ad_name: ad.entity_name,
+          spend: parseFloat(ad.total_spend) || 0,
+          revenue: parseFloat(ad.total_revenue) || 0,
+          conversions: parseInt(ad.total_conversions) || 0,
+          roas: parseFloat(ad.total_spend) > 0
+            ? (parseFloat(ad.total_revenue) / parseFloat(ad.total_spend)).toFixed(2)
+            : '0.00'
+        });
+      }
+    });
+
+    // Format campaigns with their ads
+    const formattedCampaigns = campaigns.map(c => {
+      const spend = parseFloat(c.total_spend) || 0;
+      const revenue = parseFloat(c.total_revenue) || 0;
+      const conversions = parseInt(c.total_conversions) || 0;
+
+      return {
+        ad_account_id: c.ad_account_id,
+        campaign_id: c.entity_id,
+        campaign_name: c.entity_name,
+        metrics: {
+          spend: spend.toFixed(2),
+          revenue: revenue.toFixed(2),
+          conversions,
+          roas: spend > 0 ? (revenue / spend).toFixed(2) : '0.00',
+          cpa: conversions > 0 ? (spend / conversions).toFixed(2) : 'N/A'
+        },
+        date_range: {
+          first_seen: c.first_seen,
+          last_seen: c.last_seen
+        },
+        ads: adsByCampaign[c.entity_id] || [],
+        ad_count: (adsByCampaign[c.entity_id] || []).length
+      };
+    });
+
+    res.json({
+      success: true,
+      total_campaigns: formattedCampaigns.length,
+      time_period_days: parseInt(days),
+      campaigns: formattedCampaigns
+    });
+  } catch (error) {
+    console.error('[Intelligence] Campaigns list error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
   }
 });

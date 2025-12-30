@@ -341,7 +341,8 @@ class InsightsCollectorService {
     const {
       startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
       endDate = new Date(),
-      progressCallback = null
+      progressCallback = null,
+      startFromDay = 0 // Resume support: skip this many days from startDate
     } = options;
 
     console.log(`📊 [Backfill] Starting for account ${adAccountId} from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
@@ -385,17 +386,24 @@ class InsightsCollectorService {
     // Calculate days to fetch
     const dayMs = 24 * 60 * 60 * 1000;
     const totalDays = Math.ceil((endDate - startDate) / dayMs);
-    let daysCompleted = 0;
+    let daysCompleted = startFromDay; // Resume from where we left off
     let totalInsightsSaved = 0;
 
-    console.log(`  📊 Optimized backfill: ${totalDays} days using account-level insights with breakdowns`);
-    console.log(`  📅 Date range: ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
+    // If resuming, skip ahead to the correct start date
+    const effectiveStartDate = new Date(startDate);
+    if (startFromDay > 0) {
+      effectiveStartDate.setDate(effectiveStartDate.getDate() + startFromDay);
+      console.log(`  🔄 RESUMING from day ${startFromDay}/${totalDays} (${effectiveStartDate.toISOString().split('T')[0]})`);
+    }
+
+    console.log(`  📊 Optimized backfill: ${totalDays - startFromDay} days remaining using account-level insights with breakdowns`);
+    console.log(`  📅 Date range: ${effectiveStartDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`);
 
     // OPTIMIZED APPROACH: Use account-level insights with level=campaign and level=adset
     // This is MUCH more efficient than fetching each entity individually
     // Instead of thousands of API calls, we make ~3-4 calls per day
 
-    const currentDate = new Date(startDate);
+    const currentDate = new Date(effectiveStartDate);
     while (currentDate <= endDate) {
       const dateStr = currentDate.toISOString().split('T')[0];
 

@@ -42,6 +42,7 @@ import {
   Error as ErrorIcon,
   Schedule,
   Storage,
+  RestartAlt,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { intelligenceApi, BackfillStatus } from '../../services/intelligenceApi';
@@ -78,6 +79,7 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
   const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
   const [pixels, setPixels] = useState<Pixel[]>([]);
   const [resourcesLoading, setResourcesLoading] = useState(false);
+  const [resumingBackfills, setResumingBackfills] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -267,6 +269,43 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
     }
   };
 
+  const handleResumeIncomplete = async () => {
+    try {
+      setResumingBackfills(true);
+      const response = await intelligenceApi.resumeIncompleteBackfills();
+
+      if (response.success) {
+        const { resumed, skipped, errors } = response;
+
+        if (resumed.length > 0) {
+          toast.success(`Resumed ${resumed.length} incomplete backfill(s)`);
+        }
+        if (skipped.length > 0) {
+          toast.info(`${skipped.length} backfill(s) skipped (already completed or running)`);
+        }
+        if (errors.length > 0) {
+          toast.error(`${errors.length} backfill(s) failed to resume`);
+        }
+        if (resumed.length === 0 && skipped.length === 0 && errors.length === 0) {
+          toast.info('No incomplete backfills found to resume');
+        }
+
+        fetchStatus();
+        if (onRefresh) onRefresh();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to resume backfills');
+    } finally {
+      setResumingBackfills(false);
+    }
+  };
+
+  // Check if there are any incomplete backfills (in_progress, paused, or failed with partial progress)
+  const hasIncompleteBackfills = backfillStatus?.accounts?.some(
+    acc => acc.status === 'in_progress' || acc.status === 'paused' ||
+           (acc.status === 'failed' && acc.days_completed > 0)
+  ) || false;
+
   const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
     switch (status) {
       case 'completed': return 'success';
@@ -326,6 +365,19 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
             </Box>
           </Box>
           <Box display="flex" gap={1}>
+            {hasIncompleteBackfills && (
+              <Tooltip title="Resume all incomplete backfills from where they left off">
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  startIcon={resumingBackfills ? <CircularProgress size={20} /> : <RestartAlt />}
+                  onClick={handleResumeIncomplete}
+                  disabled={resumingBackfills}
+                >
+                  {resumingBackfills ? 'Resuming...' : 'Resume Incomplete'}
+                </Button>
+              </Tooltip>
+            )}
             <Button
               variant="outlined"
               onClick={() => setPixelDialogOpen(true)}

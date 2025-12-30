@@ -538,6 +538,124 @@ export const intelligenceApi = {
     const response = await api.post('/intelligence/training/calculate-scores');
     return response.data;
   },
+
+  // Resume incomplete backfills
+  resumeIncompleteBackfills: async (): Promise<{
+    success: boolean;
+    message: string;
+    resumed: Array<{
+      ad_account_id: string;
+      days_completed: number;
+      total_days: number;
+      resuming_from_day: number;
+    }>;
+    skipped: Array<{ ad_account_id: string; reason: string }>;
+    errors: Array<{ ad_account_id: string; error: string }>;
+  }> => {
+    const response = await api.post('/intelligence/backfill/resume-all');
+    return response.data;
+  },
+
+  // Top performers
+  getTopPerformers: async (options?: {
+    metric?: 'roas' | 'ctr' | 'cpc' | 'conversions' | 'spend';
+    min_spend?: number;
+    limit?: number;
+    entity_type?: 'campaign' | 'adset' | 'ad' | 'all';
+    days?: number;
+  }): Promise<{
+    success: boolean;
+    metric: string;
+    days: number;
+    performers: {
+      campaigns: Array<{
+        entity_id: string;
+        entity_name: string;
+        ad_account_id: string;
+        spend: number;
+        revenue: number;
+        roas: number;
+        clicks: number;
+        impressions: number;
+        conversions: number;
+        ctr: number;
+        cpc: number;
+        days_active: number;
+      }>;
+      adsets: Array<{
+        entity_id: string;
+        entity_name: string;
+        campaign_id: string;
+        ad_account_id: string;
+        spend: number;
+        revenue: number;
+        roas: number;
+        clicks: number;
+        impressions: number;
+        conversions: number;
+        ctr: number;
+        cpc: number;
+        days_active: number;
+      }>;
+      ads: Array<{
+        entity_id: string;
+        entity_name: string;
+        adset_id: string;
+        campaign_id: string;
+        ad_account_id: string;
+        spend: number;
+        revenue: number;
+        roas: number;
+        clicks: number;
+        impressions: number;
+        conversions: number;
+        ctr: number;
+        cpc: number;
+        days_active: number;
+      }>;
+    };
+  }> => {
+    const params = new URLSearchParams();
+    if (options?.metric) params.append('metric', options.metric);
+    if (options?.min_spend !== undefined) params.append('min_spend', options.min_spend.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.entity_type) params.append('entity_type', options.entity_type);
+    if (options?.days) params.append('days', options.days.toString());
+    const response = await api.get(`/intelligence/top-performers?${params}`);
+    return response.data;
+  },
+
+  // Campaigns list with ad accounts
+  getCampaignsList: async (options?: {
+    ad_account_id?: string;
+    limit?: number;
+  }): Promise<{
+    success: boolean;
+    campaigns: Array<{
+      campaign_id: string;
+      campaign_name: string;
+      ad_account_id: string;
+      objective: string;
+      status: string;
+      total_spend: number;
+      total_impressions: number;
+      total_clicks: number;
+      ads: Array<{
+        ad_id: string;
+        ad_name: string;
+        adset_id: string;
+        creative_id: string;
+        status: string;
+        spend: number;
+      }>;
+    }>;
+  }> => {
+    const params = new URLSearchParams();
+    if (options?.ad_account_id) params.append('ad_account_id', options.ad_account_id);
+    if (options?.limit) params.append('limit', options.limit.toString());
+    const response = await api.get(`/intelligence/campaigns-list?${params}`);
+    return response.data;
+  },
 };
 
 export default intelligenceApi;
