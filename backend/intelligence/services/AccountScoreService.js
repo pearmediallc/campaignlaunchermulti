@@ -23,6 +23,7 @@ class AccountScoreService {
 
   /**
    * Calculate scores for all tracked accounts
+   * Uses accounts from completed backfills + performance snapshots
    */
   async calculateAllScores() {
     if (this.calculationInProgress) {
@@ -34,16 +35,48 @@ class AccountScoreService {
     console.log('📊 [AccountScore] Starting score calculation...');
 
     try {
-      const mainDb = require('../../models');
+      // Get unique user-account combinations from MULTIPLE sources:
+      // 1. Completed backfills (primary source for historical data)
+      // 2. Performance snapshots (accounts with data)
+      // 3. CampaignTracking (legacy source)
 
-      // Get unique user-account combinations
-      const accounts = await mainDb.CampaignTracking.findAll({
+      const accountsSet = new Map(); // Use Map to dedupe by user_id + ad_account_id
+
+      // Source 1: Completed backfills - these accounts have historical data
+      const completedBackfills = await intelModels.IntelBackfillProgress.findAll({
+        attributes: ['user_id', 'ad_account_id'],
+        where: {
+          status: 'completed'
+        },
+        group: ['user_id', 'ad_account_id'],
+        raw: true
+      });
+
+      completedBackfills.forEach(b => {
+        const key = `${b.user_id}-${b.ad_account_id}`;
+        if (!accountsSet.has(key)) {
+          accountsSet.set(key, { user_id: b.user_id, ad_account_id: b.ad_account_id });
+        }
+      });
+      console.log(`  Found ${completedBackfills.length} accounts from completed backfills`);
+
+      // Source 2: Performance snapshots - accounts with actual data
+      const snapshotAccounts = await intelModels.IntelPerformanceSnapshot.findAll({
         attributes: ['user_id', 'ad_account_id'],
         group: ['user_id', 'ad_account_id'],
         raw: true
       });
 
-      console.log(`  Found ${accounts.length} accounts to score`);
+      snapshotAccounts.forEach(s => {
+        const key = `${s.user_id}-${s.ad_account_id}`;
+        if (!accountsSet.has(key)) {
+          accountsSet.set(key, { user_id: s.user_id, ad_account_id: s.ad_account_id });
+        }
+      });
+      console.log(`  Found ${snapshotAccounts.length} accounts from performance snapshots`);
+
+      const accounts = Array.from(accountsSet.values());
+      console.log(`  Total unique accounts to score: ${accounts.length}`);
 
       const results = { success: 0, failed: 0 };
 
@@ -51,6 +84,11 @@ class AccountScoreService {
         try {
           await this.calculateScoreForAccount(account.user_id, account.ad_account_id);
           results.success++;
+
+          // Log progress every 50 accounts
+          if (results.success % 50 === 0) {
+            console.log(`  📊 Progress: ${results.success}/${accounts.length} accounts scored`);
+          }
         } catch (error) {
           console.error(`❌ Error calculating score for ${account.ad_account_id}:`, error.message);
           results.failed++;

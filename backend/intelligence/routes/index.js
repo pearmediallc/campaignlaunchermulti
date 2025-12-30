@@ -1836,29 +1836,72 @@ router.post('/pixel/fetch', async (req, res) => {
 /**
  * GET /api/intelligence/training/status
  * Get overall training status and progress
+ * OPTIMIZED: Uses parallel queries and efficient counts
  */
 router.get('/training/status', async (req, res) => {
   try {
     const userId = req.user.id;
+    const { Op, fn, col } = intelModels.Sequelize;
 
-    // Get pattern counts and history
-    const patterns = await intelModels.IntelLearnedPattern.findAll({
-      where: { is_active: true },
-      attributes: ['pattern_type', 'confidence_score', 'sample_size', 'created_at', 'last_validated']
+    // Run queries in parallel for speed
+    const [patterns, snapshotCounts, expertRuleCount, backfillSummary] = await Promise.all([
+      // Get pattern counts (small table, fast)
+      intelModels.IntelLearnedPattern.findAll({
+        where: { is_active: true },
+        attributes: ['pattern_type', 'confidence_score', 'sample_size', 'created_at', 'last_validated']
+      }),
+
+      // Get snapshot count for user (use COUNT which is faster than findAll)
+      intelModels.IntelPerformanceSnapshot.count({
+        where: { user_id: userId }
+      }),
+
+      // Get expert rules count
+      intelModels.IntelExpertRule.count({
+        where: { is_active: true }
+      }),
+
+      // Get backfill summary using efficient aggregation instead of loading all records
+      intelModels.IntelBackfillProgress.findAll({
+        attributes: [
+          'status',
+          [fn('COUNT', col('id')), 'count'],
+          [fn('SUM', col('total_days')), 'total_days'],
+          [fn('SUM', col('days_completed')), 'days_completed']
+        ],
+        where: { user_id: userId },
+        group: ['status'],
+        raw: true
+      })
+    ]);
+
+    // Calculate backfill summary from aggregated data
+    const backfillStats = {
+      total_accounts: 0,
+      completed: 0,
+      in_progress: 0,
+      pending: 0,
+      failed: 0,
+      overall_progress: 0,
+      total_days: 0,
+      days_completed: 0
+    };
+
+    backfillSummary.forEach(row => {
+      const count = parseInt(row.count) || 0;
+      backfillStats.total_accounts += count;
+      backfillStats.total_days += parseInt(row.total_days) || 0;
+      backfillStats.days_completed += parseInt(row.days_completed) || 0;
+
+      if (row.status === 'completed') backfillStats.completed = count;
+      else if (row.status === 'in_progress') backfillStats.in_progress = count;
+      else if (row.status === 'pending') backfillStats.pending = count;
+      else if (row.status === 'failed') backfillStats.failed = count;
     });
 
-    // Get snapshot counts
-    const snapshotCounts = await intelModels.IntelPerformanceSnapshot.count({
-      where: { user_id: userId }
-    });
-
-    // Get expert rules count
-    const expertRuleCount = await intelModels.IntelExpertRule.count({
-      where: { is_active: true }
-    });
-
-    // Get backfill status
-    const backfillStatus = await intelModels.IntelBackfillProgress.getUserStatus(userId);
+    backfillStats.overall_progress = backfillStats.total_days > 0
+      ? Math.round((backfillStats.days_completed / backfillStats.total_days) * 100)
+      : 0;
 
     // Calculate training readiness
     const minSnapshots = 100;
@@ -1877,9 +1920,9 @@ router.get('/training/status', async (req, res) => {
         return acc;
       }, {}),
       average_confidence: patterns.length > 0
-        ? (patterns.reduce((sum, p) => sum + p.confidence_score, 0) / patterns.length * 100).toFixed(1)
+        ? (patterns.reduce((sum, p) => sum + parseFloat(p.confidence_score || 0), 0) / patterns.length * 100).toFixed(1)
         : 0,
-      backfill: backfillStatus.summary,
+      backfill: backfillStats,
       // Required by TrainingStatus type
       pixel_data_points: 0,
       readiness: {
@@ -1906,26 +1949,32 @@ router.get('/training/status', async (req, res) => {
 /**
  * GET /api/intelligence/training/history
  * Get learning history over time
+ * OPTIMIZED: Uses snapshot_date directly instead of DATE() function
  */
 router.get('/training/history', async (req, res) => {
   try {
     const { days = 30 } = req.query;
+    const userId = req.user?.id;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
 
-    // Get snapshot counts by date
+    const { fn, col, Op } = intelModels.Sequelize;
+
+    // Get snapshot counts by date - snapshot_date is already a date column
+    // Using raw SQL for better performance with large datasets
     const snapshots = await intelModels.IntelPerformanceSnapshot.findAll({
       attributes: [
-        [intelModels.sequelize.fn('DATE', intelModels.sequelize.col('snapshot_date')), 'date'],
-        [intelModels.sequelize.fn('COUNT', '*'), 'count']
+        'snapshot_date',
+        [fn('COUNT', col('id')), 'count']
       ],
       where: {
+        ...(userId ? { user_id: userId } : {}),
         snapshot_date: {
-          [intelModels.Sequelize.Op.gte]: startDate.toISOString().split('T')[0]
+          [Op.gte]: startDate.toISOString().split('T')[0]
         }
       },
-      group: [intelModels.sequelize.fn('DATE', intelModels.sequelize.col('snapshot_date'))],
-      order: [[intelModels.sequelize.fn('DATE', intelModels.sequelize.col('snapshot_date')), 'ASC']],
+      group: ['snapshot_date'],
+      order: [['snapshot_date', 'ASC']],
       raw: true
     });
 
@@ -1934,7 +1983,7 @@ router.get('/training/history', async (req, res) => {
     const history = snapshots.map(s => {
       cumulative += parseInt(s.count);
       return {
-        date: s.date,
+        date: s.snapshot_date,
         daily_points: parseInt(s.count),
         total_points: cumulative
       };
