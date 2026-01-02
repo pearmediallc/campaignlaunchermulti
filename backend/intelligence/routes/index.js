@@ -1890,12 +1890,16 @@ router.get('/training/status', async (req, res) => {
     };
 
     // Run ALL queries in parallel with individual timeouts
+    // NOTE: snapshot_count uses reltuples estimate (instant) instead of COUNT(*) (slow without index)
     const [snapshotRes, patternRes, expertRes, backfillRes] = await Promise.all([
       runQuery('snapshot_count', () =>
         intelModels.sequelize.query(
-          `SELECT COUNT(*) as count FROM intel_performance_snapshots WHERE user_id = :userId`,
-          { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT }
-        )
+          `SELECT COALESCE(
+            (SELECT reltuples::bigint FROM pg_class WHERE relname = 'intel_performance_snapshots'),
+            0
+          ) as count`,
+          { type: intelModels.sequelize.QueryTypes.SELECT }
+        ), 5000 // Fast query, short timeout
       ),
       runQuery('patterns', () =>
         intelModels.IntelLearnedPattern.findAll({
@@ -1992,7 +1996,7 @@ router.get('/training/status', async (req, res) => {
 /**
  * GET /api/intelligence/training/history
  * Get learning history over time
- * OPTIMIZED: Uses raw SQL with date range limit and timeout
+ * OPTIMIZED: Uses backfill progress (small table) instead of snapshot counts (large table)
  */
 router.get('/training/history', async (req, res) => {
   try {
@@ -2004,48 +2008,67 @@ router.get('/training/history', async (req, res) => {
 
     console.log(`[Training History] ====== START for user ${userId}, days=${days} ======`);
 
-    // Use raw SQL with timeout
-    let snapshots = [];
+    // Use backfill progress to estimate data collection (much faster than counting snapshots)
+    let history = [];
     try {
-      const queryPromise = intelModels.sequelize.query(`
-        SELECT snapshot_date, COUNT(*) as count
-        FROM intel_performance_snapshots
-        WHERE user_id = :userId
-          AND snapshot_date >= :startDate
-        GROUP BY snapshot_date
-        ORDER BY snapshot_date ASC
-        LIMIT 31
-      `, {
-        replacements: {
-          userId,
-          startDate: startDate.toISOString().split('T')[0]
-        },
-        type: intelModels.sequelize.QueryTypes.SELECT
-      });
-
-      snapshots = await Promise.race([
-        queryPromise,
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Query timeout after 25s')), 25000)
-        )
+      // Get total estimated snapshots from pg_class (instant)
+      const totalResult = await Promise.race([
+        intelModels.sequelize.query(
+          `SELECT COALESCE(reltuples::bigint, 0) as total FROM pg_class WHERE relname = 'intel_performance_snapshots'`,
+          { type: intelModels.sequelize.QueryTypes.SELECT }
+        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
       ]);
 
-      console.log(`[Training History] ✅ Query completed in ${Date.now() - startTime}ms, ${snapshots.length} rows`);
+      const totalSnapshots = parseInt(totalResult[0]?.total || 0);
+
+      // Get backfill completion dates (small table, fast query)
+      const backfillDates = await Promise.race([
+        intelModels.sequelize.query(`
+          SELECT
+            DATE(updated_at) as date,
+            SUM(days_completed) as days_done,
+            COUNT(*) as accounts
+          FROM intel_backfill_progress
+          WHERE user_id = :userId
+            AND updated_at >= :startDate
+          GROUP BY DATE(updated_at)
+          ORDER BY DATE(updated_at) ASC
+          LIMIT 31
+        `, {
+          replacements: { userId, startDate: startDate.toISOString().split('T')[0] },
+          type: intelModels.sequelize.QueryTypes.SELECT
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+      ]);
+
+      // If we have backfill data, use it to show progress
+      if (backfillDates.length > 0) {
+        let cumulative = 0;
+        // Estimate ~100 snapshots per day of backfill (rough estimate)
+        history = backfillDates.map(d => {
+          const dailyEstimate = parseInt(d.days_done || 0) * 100;
+          cumulative += dailyEstimate;
+          return {
+            date: d.date,
+            daily_points: dailyEstimate,
+            total_points: Math.min(cumulative, totalSnapshots)
+          };
+        });
+      } else if (totalSnapshots > 0) {
+        // No backfill dates but we have data - show single point for today
+        history = [{
+          date: new Date().toISOString().split('T')[0],
+          daily_points: totalSnapshots,
+          total_points: totalSnapshots
+        }];
+      }
+
+      console.log(`[Training History] ✅ Completed in ${Date.now() - startTime}ms, ${history.length} days, total=${totalSnapshots}`);
     } catch (queryError) {
       console.error(`[Training History] ❌ Query FAILED after ${Date.now() - startTime}ms: ${queryError.message}`);
-      snapshots = []; // Return empty on timeout
+      history = []; // Return empty on timeout
     }
-
-    // Calculate cumulative data points
-    let cumulative = 0;
-    const history = snapshots.map(s => {
-      cumulative += parseInt(s.count);
-      return {
-        date: s.snapshot_date,
-        daily_points: parseInt(s.count),
-        total_points: cumulative
-      };
-    });
 
     console.log(`[Training History] Completed in ${Date.now() - startTime}ms, ${history.length} days`);
     res.json({ success: true, history });
