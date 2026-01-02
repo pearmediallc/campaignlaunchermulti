@@ -882,16 +882,11 @@ router.post('/backfill/resume-all', async (req, res) => {
       accounts: []
     };
 
-    // Resume each incomplete backfill
+    // Collect backfill info for response
     for (const record of incompleteBackfills) {
       const adAccountId = record.ad_account_id;
       const daysCompleted = record.days_completed || 0;
       const totalDays = record.total_days || 90;
-      const type = record.backfill_type || 'all';
-
-      // Calculate date range from the original backfill
-      const endDate = record.end_date ? new Date(record.end_date) : new Date();
-      const startDate = record.start_date ? new Date(record.start_date) : new Date(endDate - totalDays * 24 * 60 * 60 * 1000);
 
       results.resumed++;
       results.accounts.push({
@@ -900,11 +895,26 @@ router.post('/backfill/resume-all', async (req, res) => {
         total_days: totalDays,
         resuming_from_day: daysCompleted
       });
+    }
 
-      // Resume backfill in background
-      setImmediate(async () => {
+    // Process backfills SEQUENTIALLY in background (ONE at a time)
+    // This prevents database connection exhaustion and memory issues
+    setImmediate(async () => {
+      console.log(`🔄 [Backfill] Starting SEQUENTIAL resume of ${incompleteBackfills.length} accounts (one at a time)`);
+
+      for (let i = 0; i < incompleteBackfills.length; i++) {
+        const record = incompleteBackfills[i];
+        const adAccountId = record.ad_account_id;
+        const daysCompleted = record.days_completed || 0;
+        const totalDays = record.total_days || 90;
+        const type = record.backfill_type || 'all';
+
+        // Calculate date range from the original backfill
+        const endDate = record.end_date ? new Date(record.end_date) : new Date();
+        const startDate = record.start_date ? new Date(record.start_date) : new Date(endDate - totalDays * 24 * 60 * 60 * 1000);
+
         try {
-          console.log(`🔄 [Backfill] Resuming ${adAccountId} from day ${daysCompleted}/${totalDays}`);
+          console.log(`🔄 [Backfill] Resuming ${i + 1}/${incompleteBackfills.length}: ${adAccountId} from day ${daysCompleted}/${totalDays}`);
 
           await record.update({ status: 'in_progress', started_at: new Date() });
 
@@ -932,26 +942,35 @@ router.post('/backfill/resume-all', async (req, res) => {
             days_completed: totalDays
           });
 
-          console.log(`✅ [Backfill] Account ${adAccountId} completed (resumed)`);
+          console.log(`✅ [Backfill] Account ${adAccountId} completed (resumed) - ${i + 1}/${incompleteBackfills.length}`);
 
-          // Auto-trigger pattern learning after completion
-          try {
-            console.log('🧠 [Intelligence] Auto-triggering pattern learning after resumed backfill...');
-            await PatternLearningService.learnAllPatterns();
-            await AccountScoreService.calculateAllScores();
-          } catch (learningError) {
-            console.error('⚠️ [Intelligence] Auto-learning after resume failed:', learningError.message);
+          // Add delay between accounts to let connections return to pool
+          if (i < incompleteBackfills.length - 1) {
+            console.log('  ⏳ Waiting 5s before next account...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
           }
         } catch (error) {
           console.error(`[Intelligence] Resume backfill error for account ${adAccountId}:`, error.message);
           await record.markFailed(error.message);
+          // Continue to next account even if one fails
         }
-      });
-    }
+      }
+
+      // Auto-trigger pattern learning ONCE after ALL accounts complete
+      try {
+        console.log('🧠 [Intelligence] Auto-triggering pattern learning after all resumed backfills...');
+        await PatternLearningService.learnAllPatterns();
+        await AccountScoreService.calculateAllScores();
+      } catch (learningError) {
+        console.error('⚠️ [Intelligence] Auto-learning after resume failed:', learningError.message);
+      }
+
+      console.log(`✅ [Backfill] All ${incompleteBackfills.length} accounts processed`);
+    });
 
     res.json({
       success: true,
-      message: `Resuming ${results.resumed} incomplete backfills`,
+      message: `Resuming ${results.resumed} incomplete backfills SEQUENTIALLY (one at a time)`,
       results
     });
   } catch (error) {

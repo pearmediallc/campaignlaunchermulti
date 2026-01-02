@@ -111,9 +111,9 @@ intelModels.getModelNames = function() {
 /**
  * Ensure performance indexes exist
  * This is critical for query performance on large tables (83K+ records)
- * Called automatically during initialization
+ * Called automatically during initialization with retry logic
  */
-intelModels.ensureIndexes = async function() {
+intelModels.ensureIndexes = async function(maxRetries = 3) {
   console.log('🔧 [Intel] Ensuring performance indexes exist...');
 
   const indexes = [
@@ -144,15 +144,32 @@ intelModels.ensureIndexes = async function() {
   let failed = 0;
 
   for (const index of indexes) {
-    try {
-      await sequelize.query(index.sql);
-      created++;
-    } catch (error) {
-      if (error.message.includes('already exists')) {
-        skipped++;
-      } else {
-        failed++;
-        console.error(`   ❌ Failed to create ${index.name}: ${error.message}`);
+    let success = false;
+
+    for (let attempt = 1; attempt <= maxRetries && !success; attempt++) {
+      try {
+        await sequelize.query(index.sql);
+        created++;
+        success = true;
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          skipped++;
+          success = true;
+        } else if (error.message.includes('not yet accepting connections') || error.message.includes('recovery')) {
+          // Database is in recovery mode, wait and retry
+          if (attempt < maxRetries) {
+            const delay = attempt * 5000; // 5s, 10s, 15s
+            console.log(`   ⏳ DB in recovery, waiting ${delay / 1000}s before retry ${attempt + 1}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            failed++;
+            console.error(`   ❌ Failed to create ${index.name} after ${maxRetries} retries: ${error.message}`);
+          }
+        } else {
+          failed++;
+          console.error(`   ❌ Failed to create ${index.name}: ${error.message}`);
+          success = true; // Don't retry for other errors
+        }
       }
     }
   }
