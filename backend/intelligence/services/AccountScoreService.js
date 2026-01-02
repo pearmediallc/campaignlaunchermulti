@@ -24,78 +24,83 @@ class AccountScoreService {
   /**
    * Calculate scores for all tracked accounts
    * Uses accounts from completed backfills + performance snapshots
+   * OPTIMIZED: Uses batch processing to prevent connection exhaustion
    */
   async calculateAllScores() {
     if (this.calculationInProgress) {
       console.log('⏳ Score calculation already in progress, skipping...');
-      return;
+      return { success: 0, failed: 0, skipped: true };
     }
 
     this.calculationInProgress = true;
     console.log('📊 [AccountScore] Starting score calculation...');
 
     try {
-      // Get unique user-account combinations from MULTIPLE sources:
-      // 1. Completed backfills (primary source for historical data)
-      // 2. Performance snapshots (accounts with data)
-      // 3. CampaignTracking (legacy source)
-
-      const accountsSet = new Map(); // Use Map to dedupe by user_id + ad_account_id
-
-      // Source 1: Completed backfills - these accounts have historical data
-      const completedBackfills = await intelModels.IntelBackfillProgress.findAll({
-        attributes: ['user_id', 'ad_account_id'],
-        where: {
-          status: 'completed'
-        },
-        group: ['user_id', 'ad_account_id'],
-        raw: true
+      // Get unique user-account combinations using efficient raw SQL
+      // This avoids loading full records into memory
+      const accountsQuery = await intelModels.sequelize.query(`
+        SELECT DISTINCT user_id, ad_account_id
+        FROM (
+          SELECT user_id, ad_account_id FROM intel_backfill_progress WHERE status = 'completed'
+          UNION
+          SELECT user_id, ad_account_id FROM intel_performance_snapshots
+        ) AS combined_accounts
+        ORDER BY user_id, ad_account_id
+      `, {
+        type: intelModels.sequelize.QueryTypes.SELECT
       });
 
-      completedBackfills.forEach(b => {
-        const key = `${b.user_id}-${b.ad_account_id}`;
-        if (!accountsSet.has(key)) {
-          accountsSet.set(key, { user_id: b.user_id, ad_account_id: b.ad_account_id });
-        }
-      });
-      console.log(`  Found ${completedBackfills.length} accounts from completed backfills`);
-
-      // Source 2: Performance snapshots - accounts with actual data
-      const snapshotAccounts = await intelModels.IntelPerformanceSnapshot.findAll({
-        attributes: ['user_id', 'ad_account_id'],
-        group: ['user_id', 'ad_account_id'],
-        raw: true
-      });
-
-      snapshotAccounts.forEach(s => {
-        const key = `${s.user_id}-${s.ad_account_id}`;
-        if (!accountsSet.has(key)) {
-          accountsSet.set(key, { user_id: s.user_id, ad_account_id: s.ad_account_id });
-        }
-      });
-      console.log(`  Found ${snapshotAccounts.length} accounts from performance snapshots`);
-
-      const accounts = Array.from(accountsSet.values());
+      const accounts = accountsQuery;
       console.log(`  Total unique accounts to score: ${accounts.length}`);
 
-      const results = { success: 0, failed: 0 };
+      if (accounts.length === 0) {
+        console.log('  No accounts found to score');
+        return { success: 0, failed: 0 };
+      }
 
-      for (const account of accounts) {
-        try {
-          await this.calculateScoreForAccount(account.user_id, account.ad_account_id);
-          results.success++;
+      const results = { success: 0, failed: 0, total: accounts.length };
+      const BATCH_SIZE = 25; // Process 25 accounts at a time to prevent connection exhaustion
+      const BATCH_DELAY = 2000; // 2 second delay between batches
 
-          // Log progress every 50 accounts
-          if (results.success % 50 === 0) {
-            console.log(`  📊 Progress: ${results.success}/${accounts.length} accounts scored`);
+      // Process in batches
+      for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+        const batch = accounts.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(accounts.length / BATCH_SIZE);
+
+        console.log(`  📊 Processing batch ${batchNum}/${totalBatches} (${batch.length} accounts)`);
+
+        // Process batch with Promise.allSettled to handle individual failures gracefully
+        const batchResults = await Promise.allSettled(
+          batch.map(account =>
+            this.calculateScoreForAccount(account.user_id, account.ad_account_id)
+              .catch(err => {
+                // Re-throw with account info for better error reporting
+                throw new Error(`${account.ad_account_id}: ${err.message}`);
+              })
+          )
+        );
+
+        // Count results
+        batchResults.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            results.success++;
+          } else {
+            results.failed++;
+            console.error(`  ❌ ${batch[idx].ad_account_id}: ${result.reason?.message || 'Unknown error'}`);
           }
-        } catch (error) {
-          console.error(`❌ Error calculating score for ${account.ad_account_id}:`, error.message);
-          results.failed++;
+        });
+
+        // Progress log
+        console.log(`  📊 Progress: ${results.success + results.failed}/${accounts.length} (${results.success} success, ${results.failed} failed)`);
+
+        // Delay between batches to let connections return to pool
+        if (i + BATCH_SIZE < accounts.length) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
         }
       }
 
-      console.log(`✅ [AccountScore] Complete: ${results.success} success, ${results.failed} failed`);
+      console.log(`✅ [AccountScore] Complete: ${results.success} success, ${results.failed} failed out of ${results.total}`);
       return results;
 
     } finally {
@@ -356,9 +361,10 @@ class AccountScoreService {
 
   /**
    * Get score dashboard data for a user
+   * OPTIMIZED: Limits account data and defers trend loading
    */
   async getDashboardData(userId) {
-    // Get all account scores
+    // Get account scores with pagination (limit to top 50 for dashboard)
     const rankings = await intelModels.IntelAccountScore.getAccountRankings(userId);
 
     if (rankings.length === 0) {
@@ -372,22 +378,39 @@ class AccountScoreService {
     const totalScore = rankings.reduce((sum, r) => sum + r.overall_score, 0);
     const avgScore = Math.round(totalScore / rankings.length);
 
-    // Get trend data for chart
-    const allAccounts = rankings.map(r => r.ad_account_id);
+    // Get trend data only for top 10 accounts (to reduce DB load)
+    // Full trends available via getAccountDetail endpoint
+    const topAccounts = rankings.slice(0, 10);
     const trendData = {};
 
-    for (const accountId of allAccounts) {
-      const history = await intelModels.IntelAccountScore.getScoreHistory(
-        userId,
-        accountId,
-        14 // 2 weeks of data
-      );
+    // Fetch trends in parallel for efficiency
+    const trendPromises = topAccounts.map(async (account) => {
+      try {
+        const history = await intelModels.IntelAccountScore.getScoreHistory(
+          userId,
+          account.ad_account_id,
+          7 // 1 week of data (reduced from 14)
+        );
+        return {
+          accountId: account.ad_account_id,
+          history: history.map(h => ({
+            date: h.score_date,
+            score: h.overall_score
+          }))
+        };
+      } catch (err) {
+        console.error(`Failed to get trend for ${account.ad_account_id}:`, err.message);
+        return { accountId: account.ad_account_id, history: [] };
+      }
+    });
 
-      trendData[accountId] = history.map(h => ({
-        date: h.score_date,
-        score: h.overall_score
-      }));
-    }
+    const trendResults = await Promise.all(trendPromises);
+    trendResults.forEach(r => {
+      trendData[r.accountId] = r.history;
+    });
+
+    // Limit accounts returned to 50 for dashboard view
+    const accountsToReturn = rankings.slice(0, 50);
 
     return {
       hasData: true,
@@ -405,7 +428,7 @@ class AccountScoreService {
           grade: rankings[rankings.length - 1].getGrade()
         } : null
       },
-      accounts: rankings.map(r => ({
+      accounts: accountsToReturn.map(r => ({
         ad_account_id: r.ad_account_id,
         overall_score: r.overall_score,
         grade: r.getGrade(),
@@ -422,7 +445,9 @@ class AccountScoreService {
         improvement_priority: r.getImprovementPriority(),
         recommendations: r.recommendations
       })),
-      trends: trendData
+      trends: trendData,
+      total_available: rankings.length,
+      showing: accountsToReturn.length
     };
   }
 

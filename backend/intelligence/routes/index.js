@@ -2124,71 +2124,99 @@ router.post('/training/calculate-scores', async (req, res) => {
 
 /**
  * GET /api/intelligence/transparency
- * Full transparency dashboard showing exactly what data is being used for training
+ * OPTIMIZED: Returns summary counts and limited sample data
+ * Use ?detailed=true for more data (with pagination)
  */
 router.get('/transparency', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { Op, fn, col } = intelModels.Sequelize;
+    const { fn, col } = intelModels.Sequelize;
+    const detailed = req.query.detailed === 'true';
+    const limit = detailed ? 50 : 10; // Limit sample data
 
-    // Use Promise.allSettled to handle partial failures gracefully
+    console.log(`[Transparency] Fetching for user ${userId}, detailed=${detailed}`);
+    const startTime = Date.now();
+
+    // Use raw SQL for counts - much faster than ORM aggregations
     const results = await Promise.allSettled([
-      // 1. Get data source summary
-      intelModels.IntelPerformanceSnapshot.findAll({
-        attributes: [
-          'ad_account_id',
-          [fn('COUNT', col('id')), 'total_snapshots'],
-          [fn('COUNT', fn('DISTINCT', col('entity_id'))), 'unique_entities'],
-          [fn('MIN', col('snapshot_date')), 'earliest_date'],
-          [fn('MAX', col('snapshot_date')), 'latest_date'],
-          [fn('SUM', col('spend')), 'total_spend'],
-          [fn('SUM', col('revenue')), 'total_revenue']
-        ],
-        where: { user_id: userId },
-        group: ['ad_account_id'],
-        raw: true,
-        limit: 100
-      }),
-
-      // 2. Get backfill status summary
-      intelModels.IntelBackfillProgress.findAll({
-        attributes: ['ad_account_id', 'status', 'days_completed', 'total_days', 'started_at', 'completed_at'],
-        where: { user_id: userId },
-        raw: true,
-        limit: 700
-      }),
-
-      // 3. Get patterns with full details
-      intelModels.IntelLearnedPattern.findAll({
-        where: { is_active: true },
-        order: [['created_at', 'DESC']],
-        raw: true
-      }),
-
-      // 4. Get pixel health unique pixels (latest per pixel)
+      // 1. Get data source COUNTS only (fast)
       intelModels.sequelize.query(`
-        SELECT DISTINCT ON (pixel_id)
-          pixel_id, pixel_name, ad_account_id, snapshot_date,
-          event_match_quality, is_active, purchase_count,
-          page_view_count, view_content_count, add_to_cart_count
-        FROM intel_pixel_health
+        SELECT
+          COUNT(DISTINCT ad_account_id) as accounts_with_data,
+          COUNT(*) as total_data_points,
+          COUNT(DISTINCT entity_id) as total_entities,
+          COALESCE(SUM(spend), 0) as total_spend,
+          COALESCE(SUM(revenue), 0) as total_revenue
+        FROM intel_performance_snapshots
         WHERE user_id = :userId
-        ORDER BY pixel_id, snapshot_date DESC
-        LIMIT 200
       `, {
         replacements: { userId },
         type: intelModels.sequelize.QueryTypes.SELECT
       }),
 
-      // 5. Get account scores
-      intelModels.IntelAccountScore.findAll({
-        where: { user_id: userId },
-        order: [['score_date', 'DESC']],
-        raw: true,
-        limit: 700
+      // 2. Get top accounts by data points (limited)
+      intelModels.sequelize.query(`
+        SELECT
+          ad_account_id,
+          COUNT(*) as data_points,
+          COUNT(DISTINCT entity_id) as unique_entities,
+          MIN(snapshot_date) as earliest_date,
+          MAX(snapshot_date) as latest_date,
+          COALESCE(SUM(spend), 0) as total_spend,
+          COALESCE(SUM(revenue), 0) as total_revenue
+        FROM intel_performance_snapshots
+        WHERE user_id = :userId
+        GROUP BY ad_account_id
+        ORDER BY COUNT(*) DESC
+        LIMIT :limit
+      `, {
+        replacements: { userId, limit },
+        type: intelModels.sequelize.QueryTypes.SELECT
       }),
 
-      // 6. Get expert rules count by type
+      // 3. Get backfill COUNTS by status (fast)
+      intelModels.sequelize.query(`
+        SELECT
+          status,
+          COUNT(*) as count
+        FROM intel_backfill_progress
+        WHERE user_id = :userId
+        GROUP BY status
+      `, {
+        replacements: { userId },
+        type: intelModels.sequelize.QueryTypes.SELECT
+      }),
+
+      // 4. Get pattern counts and limited samples
+      intelModels.IntelLearnedPattern.findAll({
+        attributes: ['id', 'pattern_type', 'pattern_name', 'description', 'sample_size', 'confidence_score', 'created_at', 'valid_until'],
+        where: { is_active: true },
+        order: [['created_at', 'DESC']],
+        raw: true,
+        limit: 20
+      }),
+
+      // 5. Get pixel health count
+      intelModels.sequelize.query(`
+        SELECT COUNT(DISTINCT pixel_id) as unique_pixels
+        FROM intel_pixel_health
+        WHERE user_id = :userId
+      `, {
+        replacements: { userId },
+        type: intelModels.sequelize.QueryTypes.SELECT
+      }),
+
+      // 6. Get account score count
+      intelModels.sequelize.query(`
+        SELECT COUNT(DISTINCT ad_account_id) as scored_accounts
+        FROM intel_account_scores
+        WHERE user_id = :userId
+      `, {
+        replacements: { userId },
+        type: intelModels.sequelize.QueryTypes.SELECT
+      }),
+
+      // 7. Get expert rules count by type
       intelModels.IntelExpertRule.findAll({
         attributes: [
           'rule_type',
@@ -2201,63 +2229,68 @@ router.get('/transparency', async (req, res) => {
       })
     ]);
 
+    console.log(`[Transparency] Queries completed in ${Date.now() - startTime}ms`);
+
     // Extract results, handling failures gracefully
     const [
-      dataSourcesResult,
-      backfillStatusResult,
+      dataCountsResult,
+      topAccountsResult,
+      backfillCountsResult,
       patternsResult,
-      pixelHealthResult,
-      accountScoresResult,
+      pixelCountResult,
+      scoreCountResult,
       expertRulesResult
     ] = results;
 
-    const dataSources = dataSourcesResult.status === 'fulfilled' ? dataSourcesResult.value : [];
-    const backfillStatus = backfillStatusResult.status === 'fulfilled' ? backfillStatusResult.value : [];
+    // Parse results with defaults
+    const dataCounts = dataCountsResult.status === 'fulfilled' && dataCountsResult.value[0]
+      ? dataCountsResult.value[0]
+      : { accounts_with_data: 0, total_data_points: 0, total_entities: 0, total_spend: 0, total_revenue: 0 };
+
+    const topAccounts = topAccountsResult.status === 'fulfilled' ? topAccountsResult.value : [];
+    const backfillCounts = backfillCountsResult.status === 'fulfilled' ? backfillCountsResult.value : [];
     const patterns = patternsResult.status === 'fulfilled' ? patternsResult.value : [];
-    const pixelHealth = pixelHealthResult.status === 'fulfilled' ? pixelHealthResult.value : [];
-    const accountScores = accountScoresResult.status === 'fulfilled' ? accountScoresResult.value : [];
+    const pixelCount = pixelCountResult.status === 'fulfilled' && pixelCountResult.value[0]
+      ? parseInt(pixelCountResult.value[0].unique_pixels) : 0;
+    const scoreCount = scoreCountResult.status === 'fulfilled' && scoreCountResult.value[0]
+      ? parseInt(scoreCountResult.value[0].scored_accounts) : 0;
     const expertRules = expertRulesResult.status === 'fulfilled' ? expertRulesResult.value : [];
 
-    // Calculate totals
-    const totalDataPoints = dataSources.reduce((sum, ds) => sum + parseInt(ds.total_snapshots || 0), 0);
-    const totalEntities = dataSources.reduce((sum, ds) => sum + parseInt(ds.unique_entities || 0), 0);
-    const accountsWithData = dataSources.length;
+    // Parse numeric values
+    const totalDataPoints = parseInt(dataCounts.total_data_points) || 0;
+    const totalEntities = parseInt(dataCounts.total_entities) || 0;
+    const accountsWithData = parseInt(dataCounts.accounts_with_data) || 0;
 
-    // Backfill summary
+    // Build backfill summary from counts
     const backfillSummary = {
-      total: backfillStatus.length,
-      completed: backfillStatus.filter(b => b.status === 'completed').length,
-      in_progress: backfillStatus.filter(b => b.status === 'in_progress').length,
-      failed: backfillStatus.filter(b => b.status === 'failed').length,
-      pending: backfillStatus.filter(b => b.status === 'pending').length
+      total: 0,
+      completed: 0,
+      in_progress: 0,
+      failed: 0,
+      pending: 0
     };
-
-    // Get unique scores (latest per account)
-    const latestScores = {};
-    accountScores.forEach(s => {
-      if (!latestScores[s.ad_account_id] || s.score_date > latestScores[s.ad_account_id].score_date) {
-        latestScores[s.ad_account_id] = s;
-      }
+    backfillCounts.forEach(b => {
+      const count = parseInt(b.count) || 0;
+      backfillSummary.total += count;
+      if (b.status === 'completed') backfillSummary.completed = count;
+      else if (b.status === 'in_progress') backfillSummary.in_progress = count;
+      else if (b.status === 'failed') backfillSummary.failed = count;
+      else if (b.status === 'pending') backfillSummary.pending = count;
     });
 
-    // Pattern analysis - show what data each pattern used
-    const patternDetails = patterns.map(p => {
-      const data = typeof p.pattern_data === 'string' ? JSON.parse(p.pattern_data) : p.pattern_data;
-      return {
-        id: p.id,
-        type: p.pattern_type,
-        name: p.pattern_name,
-        description: p.description,
-        sample_size: p.sample_size,
-        confidence: (p.confidence_score * 100).toFixed(0) + '%',
-        created_at: p.created_at,
-        valid_until: p.valid_until,
-        data_source: p.pattern_type.startsWith('expert_') ? 'Expert Rules (Static)' : 'Learned from Performance Data',
-        is_expert_rule: p.pattern_type.startsWith('expert_'),
-        accounts_used: data?.accounts || data?.vertical || 'Global',
-        key_metrics: extractKeyMetrics(p.pattern_type, data)
-      };
-    });
+    // Pattern analysis - simplified without heavy pattern_data parsing
+    const patternDetails = patterns.map(p => ({
+      id: p.id,
+      type: p.pattern_type,
+      name: p.pattern_name,
+      description: p.description,
+      sample_size: p.sample_size,
+      confidence: ((p.confidence_score || 0) * 100).toFixed(0) + '%',
+      created_at: p.created_at,
+      valid_until: p.valid_until,
+      data_source: p.pattern_type?.startsWith('expert_') ? 'Expert Rules (Static)' : 'Learned from Performance Data',
+      is_expert_rule: p.pattern_type?.startsWith('expert_') || false
+    }));
 
     // Expert rules summary
     const expertRulesSummary = expertRules.reduce((acc, r) => {
@@ -2266,17 +2299,20 @@ router.get('/transparency', async (req, res) => {
       return acc;
     }, {});
 
-    res.json({
+    const response = {
       success: true,
+      query_time_ms: Date.now() - startTime,
       transparency: {
         data_sources: {
           total_data_points: totalDataPoints,
           total_entities: totalEntities,
           accounts_with_data: accountsWithData,
-          accounts: dataSources.map(ds => ({
+          total_spend: parseFloat(dataCounts.total_spend || 0).toFixed(2),
+          total_revenue: parseFloat(dataCounts.total_revenue || 0).toFixed(2),
+          accounts: topAccounts.map(ds => ({
             ad_account_id: ds.ad_account_id,
-            data_points: parseInt(ds.total_snapshots),
-            unique_entities: parseInt(ds.unique_entities),
+            data_points: parseInt(ds.data_points) || 0,
+            unique_entities: parseInt(ds.unique_entities) || 0,
             date_range: {
               from: ds.earliest_date,
               to: ds.latest_date
@@ -2287,13 +2323,7 @@ router.get('/transparency', async (req, res) => {
         },
         backfill: {
           summary: backfillSummary,
-          accounts: backfillStatus.map(b => ({
-            ad_account_id: b.ad_account_id,
-            status: b.status,
-            progress: b.total_days > 0 ? Math.round((b.days_completed / b.total_days) * 100) : 0,
-            days_completed: b.days_completed,
-            total_days: b.total_days
-          }))
+          accounts: [] // Removed to reduce payload - available via /backfill/status endpoint
         },
         patterns: {
           total: patterns.length,
@@ -2302,36 +2332,12 @@ router.get('/transparency', async (req, res) => {
           details: patternDetails
         },
         account_scores: {
-          total_scored: Object.keys(latestScores).length,
-          accounts: Object.values(latestScores).map(s => ({
-            ad_account_id: s.ad_account_id,
-            overall_score: s.overall_score,
-            score_date: s.score_date,
-            components: {
-              performance: s.performance_score,
-              efficiency: s.efficiency_score,
-              pixel_health: s.pixel_health_score,
-              learning: s.learning_score,
-              consistency: s.consistency_score
-            }
-          }))
+          total_scored: scoreCount,
+          accounts: [] // Removed to reduce payload - available via /scores endpoint
         },
         pixel_health: {
-          total_unique_pixels: pixelHealth.length,
-          pixels: pixelHealth.map(p => ({
-            pixel_id: p.pixel_id,
-            pixel_name: p.pixel_name,
-            ad_account_id: p.ad_account_id,
-            emq: p.event_match_quality,
-            is_active: p.is_active,
-            last_snapshot: p.snapshot_date,
-            events: {
-              page_views: p.page_view_count,
-              view_content: p.view_content_count,
-              add_to_cart: p.add_to_cart_count,
-              purchases: p.purchase_count
-            }
-          }))
+          total_unique_pixels: pixelCount,
+          pixels: [] // Removed to reduce payload - available via /pixels endpoint
         },
         expert_rules: {
           summary: expertRulesSummary,
@@ -2342,13 +2348,16 @@ router.get('/transparency', async (req, res) => {
           min_data_for_patterns: 100,
           current_data: totalDataPoints,
           patterns_active: patterns.length,
-          accounts_scored: Object.keys(latestScores).length,
+          accounts_scored: scoreCount,
           backfill_completion: backfillSummary.total > 0
             ? Math.round((backfillSummary.completed / backfillSummary.total) * 100)
             : 0
         }
       }
-    });
+    };
+
+    console.log(`[Transparency] Response ready, total time: ${Date.now() - startTime}ms`);
+    res.json(response);
   } catch (error) {
     console.error('[Intelligence] Transparency dashboard error:', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
