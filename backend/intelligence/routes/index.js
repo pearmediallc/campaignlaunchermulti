@@ -1843,59 +1843,74 @@ router.post('/pixel/fetch', async (req, res) => {
 /**
  * GET /api/intelligence/training/status
  * Get overall training status and progress
- * OPTIMIZED: Uses raw SQL for maximum performance on large tables
+ * OPTIMIZED: Uses raw SQL with individual timeouts and detailed logging
  */
 router.get('/training/status', async (req, res) => {
   try {
     const userId = req.user.id;
     const startTime = Date.now();
-    console.log(`[Training Status] Fetching for user ${userId}...`);
+    console.log(`[Training Status] ====== START for user ${userId} ======`);
 
-    // Run ALL queries in parallel using raw SQL for speed
-    const results = await Promise.allSettled([
-      // 1. Snapshot count - FAST raw SQL count
-      intelModels.sequelize.query(
-        `SELECT COUNT(*) as count FROM intel_performance_snapshots WHERE user_id = :userId`,
-        { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT }
+    // Helper function to run a query with timeout and detailed logging
+    const runQuery = async (name, queryFn, timeoutMs = 25000) => {
+      const queryStart = Date.now();
+      console.log(`[Training Status] 🔄 Starting: ${name}`);
+      try {
+        const result = await Promise.race([
+          queryFn(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`TIMEOUT after ${timeoutMs}ms`)), timeoutMs)
+          )
+        ]);
+        console.log(`[Training Status] ✅ ${name}: ${Date.now() - queryStart}ms`);
+        return { ok: true, data: result };
+      } catch (err) {
+        console.error(`[Training Status] ❌ ${name} FAILED after ${Date.now() - queryStart}ms: ${err.message}`);
+        return { ok: false, error: err.message };
+      }
+    };
+
+    // Run ALL queries in parallel with individual timeouts
+    const [snapshotRes, patternRes, expertRes, backfillRes] = await Promise.all([
+      runQuery('snapshot_count', () =>
+        intelModels.sequelize.query(
+          `SELECT COUNT(*) as count FROM intel_performance_snapshots WHERE user_id = :userId`,
+          { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT }
+        )
       ),
-
-      // 2. Pattern data - small table, ORM is fine
-      intelModels.IntelLearnedPattern.findAll({
-        where: { is_active: true },
-        attributes: ['pattern_type', 'confidence_score'],
-        raw: true,
-        limit: 100
-      }),
-
-      // 3. Expert rules count - small table
-      intelModels.sequelize.query(
-        `SELECT COUNT(*) as count FROM intel_expert_rules WHERE is_active = true`,
-        { type: intelModels.sequelize.QueryTypes.SELECT }
+      runQuery('patterns', () =>
+        intelModels.IntelLearnedPattern.findAll({
+          where: { is_active: true },
+          attributes: ['pattern_type', 'confidence_score'],
+          raw: true,
+          limit: 100
+        })
       ),
-
-      // 4. Backfill summary - raw SQL aggregation
-      intelModels.sequelize.query(`
-        SELECT status, COUNT(*) as count,
-               COALESCE(SUM(total_days), 0) as total_days,
-               COALESCE(SUM(days_completed), 0) as days_completed
-        FROM intel_backfill_progress
-        WHERE user_id = :userId
-        GROUP BY status
-      `, { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT })
+      runQuery('expert_rules', () =>
+        intelModels.sequelize.query(
+          `SELECT COUNT(*) as count FROM intel_expert_rules WHERE is_active = true`,
+          { type: intelModels.sequelize.QueryTypes.SELECT }
+        )
+      ),
+      runQuery('backfill_summary', () =>
+        intelModels.sequelize.query(`
+          SELECT status, COUNT(*) as count,
+                 COALESCE(SUM(total_days), 0) as total_days,
+                 COALESCE(SUM(days_completed), 0) as days_completed
+          FROM intel_backfill_progress
+          WHERE user_id = :userId
+          GROUP BY status
+        `, { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT })
+      )
     ]);
 
     // Extract results with defaults for failed queries
-    const snapshotCount = results[0].status === 'fulfilled' ? parseInt(results[0].value[0]?.count || 0) : 0;
-    const patterns = results[1].status === 'fulfilled' ? results[1].value : [];
-    const expertRuleCount = results[2].status === 'fulfilled' ? parseInt(results[2].value[0]?.count || 0) : 0;
-    const backfillSummary = results[3].status === 'fulfilled' ? results[3].value : [];
+    const snapshotCount = snapshotRes.ok ? parseInt(snapshotRes.data[0]?.count || 0) : 0;
+    const patterns = patternRes.ok ? patternRes.data : [];
+    const expertRuleCount = expertRes.ok ? parseInt(expertRes.data[0]?.count || 0) : 0;
+    const backfillSummary = backfillRes.ok ? backfillRes.data : [];
 
-    // Log any query failures
-    results.forEach((r, i) => {
-      if (r.status === 'rejected') {
-        console.error(`[Training Status] Query ${i} failed:`, r.reason?.message);
-      }
-    });
+    console.log(`[Training Status] 📊 Results: snapshots=${snapshotCount}, patterns=${patterns.length}, rules=${expertRuleCount}, backfill=${backfillSummary.length} rows`);
 
     // Calculate backfill stats
     const backfillStats = {
@@ -1958,7 +1973,7 @@ router.get('/training/status', async (req, res) => {
 /**
  * GET /api/intelligence/training/history
  * Get learning history over time
- * OPTIMIZED: Uses raw SQL with date range limit
+ * OPTIMIZED: Uses raw SQL with date range limit and timeout
  */
 router.get('/training/history', async (req, res) => {
   try {
@@ -1968,24 +1983,39 @@ router.get('/training/history', async (req, res) => {
     startDate.setDate(startDate.getDate() - Math.min(parseInt(days), 30)); // Max 30 days
     const startTime = Date.now();
 
-    console.log(`[Training History] Fetching ${days} days for user ${userId}...`);
+    console.log(`[Training History] ====== START for user ${userId}, days=${days} ======`);
 
-    // Use raw SQL for maximum performance
-    const snapshots = await intelModels.sequelize.query(`
-      SELECT snapshot_date, COUNT(*) as count
-      FROM intel_performance_snapshots
-      WHERE user_id = :userId
-        AND snapshot_date >= :startDate
-      GROUP BY snapshot_date
-      ORDER BY snapshot_date ASC
-      LIMIT 31
-    `, {
-      replacements: {
-        userId,
-        startDate: startDate.toISOString().split('T')[0]
-      },
-      type: intelModels.sequelize.QueryTypes.SELECT
-    });
+    // Use raw SQL with timeout
+    let snapshots = [];
+    try {
+      const queryPromise = intelModels.sequelize.query(`
+        SELECT snapshot_date, COUNT(*) as count
+        FROM intel_performance_snapshots
+        WHERE user_id = :userId
+          AND snapshot_date >= :startDate
+        GROUP BY snapshot_date
+        ORDER BY snapshot_date ASC
+        LIMIT 31
+      `, {
+        replacements: {
+          userId,
+          startDate: startDate.toISOString().split('T')[0]
+        },
+        type: intelModels.sequelize.QueryTypes.SELECT
+      });
+
+      snapshots = await Promise.race([
+        queryPromise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Query timeout after 25s')), 25000)
+        )
+      ]);
+
+      console.log(`[Training History] ✅ Query completed in ${Date.now() - startTime}ms, ${snapshots.length} rows`);
+    } catch (queryError) {
+      console.error(`[Training History] ❌ Query FAILED after ${Date.now() - startTime}ms: ${queryError.message}`);
+      snapshots = []; // Return empty on timeout
+    }
 
     // Calculate cumulative data points
     let cumulative = 0;
