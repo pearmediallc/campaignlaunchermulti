@@ -2399,6 +2399,142 @@ router.get('/transparency', async (req, res) => {
   }
 });
 
+// ============================================
+// Database Maintenance Endpoints
+// ============================================
+
+/**
+ * POST /api/intelligence/maintenance/create-indexes
+ * Manually create performance indexes on intel tables
+ * This is a one-time operation to fix slow queries
+ */
+router.post('/maintenance/create-indexes', async (req, res) => {
+  const startTime = Date.now();
+  console.log('[Maintenance] ====== CREATE INDEXES START ======');
+
+  const results = {
+    success: [],
+    skipped: [],
+    failed: []
+  };
+
+  const indexes = [
+    {
+      name: 'idx_intel_snapshots_user_id',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_snapshots_user_id ON intel_performance_snapshots(user_id)'
+    },
+    {
+      name: 'idx_intel_snapshots_user_date',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_snapshots_user_date ON intel_performance_snapshots(user_id, snapshot_date)'
+    },
+    {
+      name: 'idx_intel_snapshots_date',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_snapshots_date ON intel_performance_snapshots(snapshot_date)'
+    },
+    {
+      name: 'idx_intel_backfill_user_id',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_backfill_user_id ON intel_backfill_progress(user_id)'
+    },
+    {
+      name: 'idx_intel_backfill_user_status',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_backfill_user_status ON intel_backfill_progress(user_id, status)'
+    }
+  ];
+
+  for (const index of indexes) {
+    const indexStart = Date.now();
+    console.log(`[Maintenance] 🔧 Creating index: ${index.name}`);
+
+    try {
+      await intelModels.sequelize.query(index.sql);
+      const duration = Date.now() - indexStart;
+      console.log(`[Maintenance] ✅ ${index.name} created in ${duration}ms`);
+      results.success.push({ name: index.name, duration });
+    } catch (error) {
+      const duration = Date.now() - indexStart;
+      if (error.message.includes('already exists')) {
+        console.log(`[Maintenance] ⏭️ ${index.name} already exists (${duration}ms)`);
+        results.skipped.push({ name: index.name, duration });
+      } else {
+        console.error(`[Maintenance] ❌ ${index.name} failed: ${error.message}`);
+        results.failed.push({ name: index.name, error: error.message, duration });
+      }
+    }
+  }
+
+  const totalDuration = Date.now() - startTime;
+  console.log(`[Maintenance] ====== CREATE INDEXES COMPLETE: ${totalDuration}ms ======`);
+  console.log(`[Maintenance] Results: ${results.success.length} created, ${results.skipped.length} skipped, ${results.failed.length} failed`);
+
+  res.json({
+    success: true,
+    message: `Index creation complete in ${totalDuration}ms`,
+    results,
+    total_duration_ms: totalDuration
+  });
+});
+
+/**
+ * GET /api/intelligence/maintenance/check-indexes
+ * Check which indexes exist on intel tables
+ */
+router.get('/maintenance/check-indexes', async (req, res) => {
+  try {
+    console.log('[Maintenance] Checking existing indexes...');
+
+    // PostgreSQL query to check indexes
+    const indexQuery = `
+      SELECT
+        indexname,
+        tablename,
+        indexdef
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND tablename IN ('intel_performance_snapshots', 'intel_backfill_progress')
+      ORDER BY tablename, indexname
+    `;
+
+    const indexes = await intelModels.sequelize.query(indexQuery, {
+      type: intelModels.sequelize.QueryTypes.SELECT
+    });
+
+    // Also check table row counts
+    const countQuery = `
+      SELECT
+        'intel_performance_snapshots' as table_name,
+        COUNT(*) as row_count
+      FROM intel_performance_snapshots
+      UNION ALL
+      SELECT
+        'intel_backfill_progress' as table_name,
+        COUNT(*) as row_count
+      FROM intel_backfill_progress
+    `;
+
+    const counts = await intelModels.sequelize.query(countQuery, {
+      type: intelModels.sequelize.QueryTypes.SELECT
+    });
+
+    console.log(`[Maintenance] Found ${indexes.length} indexes`);
+
+    res.json({
+      success: true,
+      indexes,
+      table_counts: counts,
+      expected_indexes: [
+        'idx_intel_snapshots_user_id',
+        'idx_intel_snapshots_user_date',
+        'idx_intel_snapshots_date',
+        'idx_intel_backfill_user_id',
+        'idx_intel_backfill_user_status'
+      ]
+    });
+  } catch (error) {
+    console.error('[Maintenance] Check indexes error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 /**
  * Helper to extract key metrics from pattern data
  */

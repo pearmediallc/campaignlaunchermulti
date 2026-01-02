@@ -15,15 +15,14 @@ module.exports = {
     // This is critical for training/status endpoint
     try {
       await queryInterface.addIndex('intel_performance_snapshots', ['user_id'], {
-        name: 'idx_intel_snapshots_user_id',
-        concurrently: true // Non-blocking index creation
+        name: 'idx_intel_snapshots_user_id'
       });
       console.log('✅ Added idx_intel_snapshots_user_id');
     } catch (error) {
-      if (error.message.includes('already exists')) {
+      if (error.message.includes('already exists') || error.message.includes('duplicate')) {
         console.log('⏭️ Index idx_intel_snapshots_user_id already exists');
       } else {
-        throw error;
+        console.error('⚠️ Failed to add idx_intel_snapshots_user_id:', error.message);
       }
     }
 
@@ -31,60 +30,56 @@ module.exports = {
     // This is critical for training/history endpoint
     try {
       await queryInterface.addIndex('intel_performance_snapshots', ['user_id', 'snapshot_date'], {
-        name: 'idx_intel_snapshots_user_date',
-        concurrently: true
+        name: 'idx_intel_snapshots_user_date'
       });
       console.log('✅ Added idx_intel_snapshots_user_date');
     } catch (error) {
-      if (error.message.includes('already exists')) {
+      if (error.message.includes('already exists') || error.message.includes('duplicate')) {
         console.log('⏭️ Index idx_intel_snapshots_user_date already exists');
       } else {
-        throw error;
+        console.error('⚠️ Failed to add idx_intel_snapshots_user_date:', error.message);
       }
     }
 
     // Index 3: snapshot_date alone for global queries
     try {
       await queryInterface.addIndex('intel_performance_snapshots', ['snapshot_date'], {
-        name: 'idx_intel_snapshots_date',
-        concurrently: true
+        name: 'idx_intel_snapshots_date'
       });
       console.log('✅ Added idx_intel_snapshots_date');
     } catch (error) {
-      if (error.message.includes('already exists')) {
+      if (error.message.includes('already exists') || error.message.includes('duplicate')) {
         console.log('⏭️ Index idx_intel_snapshots_date already exists');
       } else {
-        throw error;
+        console.error('⚠️ Failed to add idx_intel_snapshots_date:', error.message);
       }
     }
 
     // Index 4: Backfill progress user_id index
     try {
       await queryInterface.addIndex('intel_backfill_progress', ['user_id'], {
-        name: 'idx_intel_backfill_user_id',
-        concurrently: true
+        name: 'idx_intel_backfill_user_id'
       });
       console.log('✅ Added idx_intel_backfill_user_id');
     } catch (error) {
-      if (error.message.includes('already exists')) {
+      if (error.message.includes('already exists') || error.message.includes('duplicate')) {
         console.log('⏭️ Index idx_intel_backfill_user_id already exists');
       } else {
-        throw error;
+        console.error('⚠️ Failed to add idx_intel_backfill_user_id:', error.message);
       }
     }
 
     // Index 5: Backfill progress status for aggregation
     try {
       await queryInterface.addIndex('intel_backfill_progress', ['user_id', 'status'], {
-        name: 'idx_intel_backfill_user_status',
-        concurrently: true
+        name: 'idx_intel_backfill_user_status'
       });
       console.log('✅ Added idx_intel_backfill_user_status');
     } catch (error) {
-      if (error.message.includes('already exists')) {
+      if (error.message.includes('already exists') || error.message.includes('duplicate')) {
         console.log('⏭️ Index idx_intel_backfill_user_status already exists');
       } else {
-        throw error;
+        console.error('⚠️ Failed to add idx_intel_backfill_user_status:', error.message);
       }
     }
 
