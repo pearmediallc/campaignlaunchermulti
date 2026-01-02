@@ -1843,55 +1843,64 @@ router.post('/pixel/fetch', async (req, res) => {
 /**
  * GET /api/intelligence/training/status
  * Get overall training status and progress
- * OPTIMIZED: Uses parallel queries and efficient counts
+ * OPTIMIZED: Uses raw SQL for maximum performance on large tables
  */
 router.get('/training/status', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { Op, fn, col } = intelModels.Sequelize;
+    const startTime = Date.now();
+    console.log(`[Training Status] Fetching for user ${userId}...`);
 
-    // Run queries in parallel for speed
-    const [patterns, snapshotCounts, expertRuleCount, backfillSummary] = await Promise.all([
-      // Get pattern counts (small table, fast)
+    // Run ALL queries in parallel using raw SQL for speed
+    const results = await Promise.allSettled([
+      // 1. Snapshot count - FAST raw SQL count
+      intelModels.sequelize.query(
+        `SELECT COUNT(*) as count FROM intel_performance_snapshots WHERE user_id = :userId`,
+        { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT }
+      ),
+
+      // 2. Pattern data - small table, ORM is fine
       intelModels.IntelLearnedPattern.findAll({
         where: { is_active: true },
-        attributes: ['pattern_type', 'confidence_score', 'sample_size', 'created_at', 'last_validated']
+        attributes: ['pattern_type', 'confidence_score'],
+        raw: true,
+        limit: 100
       }),
 
-      // Get snapshot count for user (use COUNT which is faster than findAll)
-      intelModels.IntelPerformanceSnapshot.count({
-        where: { user_id: userId }
-      }),
+      // 3. Expert rules count - small table
+      intelModels.sequelize.query(
+        `SELECT COUNT(*) as count FROM intel_expert_rules WHERE is_active = true`,
+        { type: intelModels.sequelize.QueryTypes.SELECT }
+      ),
 
-      // Get expert rules count
-      intelModels.IntelExpertRule.count({
-        where: { is_active: true }
-      }),
-
-      // Get backfill summary using efficient aggregation instead of loading all records
-      intelModels.IntelBackfillProgress.findAll({
-        attributes: [
-          'status',
-          [fn('COUNT', col('id')), 'count'],
-          [fn('SUM', col('total_days')), 'total_days'],
-          [fn('SUM', col('days_completed')), 'days_completed']
-        ],
-        where: { user_id: userId },
-        group: ['status'],
-        raw: true
-      })
+      // 4. Backfill summary - raw SQL aggregation
+      intelModels.sequelize.query(`
+        SELECT status, COUNT(*) as count,
+               COALESCE(SUM(total_days), 0) as total_days,
+               COALESCE(SUM(days_completed), 0) as days_completed
+        FROM intel_backfill_progress
+        WHERE user_id = :userId
+        GROUP BY status
+      `, { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT })
     ]);
 
-    // Calculate backfill summary from aggregated data
+    // Extract results with defaults for failed queries
+    const snapshotCount = results[0].status === 'fulfilled' ? parseInt(results[0].value[0]?.count || 0) : 0;
+    const patterns = results[1].status === 'fulfilled' ? results[1].value : [];
+    const expertRuleCount = results[2].status === 'fulfilled' ? parseInt(results[2].value[0]?.count || 0) : 0;
+    const backfillSummary = results[3].status === 'fulfilled' ? results[3].value : [];
+
+    // Log any query failures
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        console.error(`[Training Status] Query ${i} failed:`, r.reason?.message);
+      }
+    });
+
+    // Calculate backfill stats
     const backfillStats = {
-      total_accounts: 0,
-      completed: 0,
-      in_progress: 0,
-      pending: 0,
-      failed: 0,
-      overall_progress: 0,
-      total_days: 0,
-      days_completed: 0
+      total_accounts: 0, completed: 0, in_progress: 0, pending: 0, failed: 0,
+      overall_progress: 0, total_days: 0, days_completed: 0
     };
 
     backfillSummary.forEach(row => {
@@ -1899,7 +1908,6 @@ router.get('/training/status', async (req, res) => {
       backfillStats.total_accounts += count;
       backfillStats.total_days += parseInt(row.total_days) || 0;
       backfillStats.days_completed += parseInt(row.days_completed) || 0;
-
       if (row.status === 'completed') backfillStats.completed = count;
       else if (row.status === 'in_progress') backfillStats.in_progress = count;
       else if (row.status === 'pending') backfillStats.pending = count;
@@ -1907,21 +1915,19 @@ router.get('/training/status', async (req, res) => {
     });
 
     backfillStats.overall_progress = backfillStats.total_days > 0
-      ? Math.round((backfillStats.days_completed / backfillStats.total_days) * 100)
-      : 0;
+      ? Math.round((backfillStats.days_completed / backfillStats.total_days) * 100) : 0;
 
     // Calculate training readiness
     const minSnapshots = 100;
-    const dataReadiness = Math.min(100, Math.round((snapshotCounts / minSnapshots) * 100));
+    const dataReadiness = Math.min(100, Math.round((snapshotCount / minSnapshots) * 100));
 
-    // Return both 'status' (for frontend compatibility) and 'training' (legacy)
     const statusData = {
-      data_points: snapshotCounts,
+      data_points: snapshotCount,
       data_readiness: dataReadiness,
       min_required: minSnapshots,
       patterns_learned: patterns.length,
       expert_rules: expertRuleCount,
-      expert_rules_loaded: expertRuleCount, // Alias for compatibility
+      expert_rules_loaded: expertRuleCount,
       pattern_breakdown: patterns.reduce((acc, p) => {
         acc[p.pattern_type] = (acc[p.pattern_type] || 0) + 1;
         return acc;
@@ -1930,7 +1936,6 @@ router.get('/training/status', async (req, res) => {
         ? (patterns.reduce((sum, p) => sum + parseFloat(p.confidence_score || 0), 0) / patterns.length * 100).toFixed(1)
         : 0,
       backfill: backfillStats,
-      // Required by TrainingStatus type
       pixel_data_points: 0,
       readiness: {
         data: dataReadiness,
@@ -1942,11 +1947,8 @@ router.get('/training/status', async (req, res) => {
       last_learning_run: null
     };
 
-    res.json({
-      success: true,
-      status: statusData, // For frontend TrainingAnalyticsPanel
-      training: statusData // Legacy support
-    });
+    console.log(`[Training Status] Completed in ${Date.now() - startTime}ms`);
+    res.json({ success: true, status: statusData, training: statusData });
   } catch (error) {
     console.error('[Intelligence] Training status error for user', req.user?.id, ':', error.message, error.stack);
     res.status(500).json({ success: false, error: error.message });
@@ -1956,33 +1958,33 @@ router.get('/training/status', async (req, res) => {
 /**
  * GET /api/intelligence/training/history
  * Get learning history over time
- * OPTIMIZED: Uses snapshot_date directly instead of DATE() function
+ * OPTIMIZED: Uses raw SQL with date range limit
  */
 router.get('/training/history', async (req, res) => {
   try {
     const { days = 30 } = req.query;
     const userId = req.user?.id;
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(days));
+    startDate.setDate(startDate.getDate() - Math.min(parseInt(days), 30)); // Max 30 days
+    const startTime = Date.now();
 
-    const { fn, col, Op } = intelModels.Sequelize;
+    console.log(`[Training History] Fetching ${days} days for user ${userId}...`);
 
-    // Get snapshot counts by date - snapshot_date is already a date column
-    // Using raw SQL for better performance with large datasets
-    const snapshots = await intelModels.IntelPerformanceSnapshot.findAll({
-      attributes: [
-        'snapshot_date',
-        [fn('COUNT', col('id')), 'count']
-      ],
-      where: {
-        ...(userId ? { user_id: userId } : {}),
-        snapshot_date: {
-          [Op.gte]: startDate.toISOString().split('T')[0]
-        }
+    // Use raw SQL for maximum performance
+    const snapshots = await intelModels.sequelize.query(`
+      SELECT snapshot_date, COUNT(*) as count
+      FROM intel_performance_snapshots
+      WHERE user_id = :userId
+        AND snapshot_date >= :startDate
+      GROUP BY snapshot_date
+      ORDER BY snapshot_date ASC
+      LIMIT 31
+    `, {
+      replacements: {
+        userId,
+        startDate: startDate.toISOString().split('T')[0]
       },
-      group: ['snapshot_date'],
-      order: [['snapshot_date', 'ASC']],
-      raw: true
+      type: intelModels.sequelize.QueryTypes.SELECT
     });
 
     // Calculate cumulative data points
@@ -1996,6 +1998,7 @@ router.get('/training/history', async (req, res) => {
       };
     });
 
+    console.log(`[Training History] Completed in ${Date.now() - startTime}ms, ${history.length} days`);
     res.json({ success: true, history });
   } catch (error) {
     console.error('[Intelligence] Training history error for days:', req.query?.days, ':', error.message, error.stack);
@@ -2046,10 +2049,12 @@ router.post('/training/learn', async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Check if user has enough data
-    const snapshotCount = await intelModels.IntelPerformanceSnapshot.count({
-      where: { user_id: userId }
-    });
+    // Check if user has enough data - use raw SQL for speed
+    const countResult = await intelModels.sequelize.query(
+      `SELECT COUNT(*) as count FROM intel_performance_snapshots WHERE user_id = :userId`,
+      { replacements: { userId }, type: intelModels.sequelize.QueryTypes.SELECT }
+    );
+    const snapshotCount = parseInt(countResult[0]?.count || 0);
 
     if (snapshotCount < 50) {
       return res.status(400).json({
