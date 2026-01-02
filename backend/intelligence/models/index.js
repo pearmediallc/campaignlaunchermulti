@@ -76,6 +76,15 @@ intelModels.initialize = async function() {
       console.log('✅ Intelligence models synced');
     }
 
+    // CRITICAL: Ensure performance indexes exist
+    // This prevents query timeouts on large tables (83K+ records)
+    try {
+      await intelModels.ensureIndexes();
+    } catch (indexError) {
+      console.error('⚠️ Index creation warning:', indexError.message);
+      // Don't fail initialization if indexes can't be created
+    }
+
     // Initialize default rules model if not exists
     const IntelModelVersion = intelModels.IntelModelVersion;
     if (IntelModelVersion) {
@@ -97,6 +106,59 @@ intelModels.getModelNames = function() {
   return Object.keys(intelModels).filter(
     name => name !== 'sequelize' && name !== 'Sequelize' && typeof intelModels[name] !== 'function'
   );
+};
+
+/**
+ * Ensure performance indexes exist
+ * This is critical for query performance on large tables (83K+ records)
+ * Called automatically during initialization
+ */
+intelModels.ensureIndexes = async function() {
+  console.log('🔧 [Intel] Ensuring performance indexes exist...');
+
+  const indexes = [
+    {
+      name: 'idx_intel_snapshots_user_id',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_snapshots_user_id ON intel_performance_snapshots(user_id)'
+    },
+    {
+      name: 'idx_intel_snapshots_user_date',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_snapshots_user_date ON intel_performance_snapshots(user_id, snapshot_date)'
+    },
+    {
+      name: 'idx_intel_snapshots_date',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_snapshots_date ON intel_performance_snapshots(snapshot_date)'
+    },
+    {
+      name: 'idx_intel_backfill_user_id',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_backfill_user_id ON intel_backfill_progress(user_id)'
+    },
+    {
+      name: 'idx_intel_backfill_user_status',
+      sql: 'CREATE INDEX IF NOT EXISTS idx_intel_backfill_user_status ON intel_backfill_progress(user_id, status)'
+    }
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const index of indexes) {
+    try {
+      await sequelize.query(index.sql);
+      created++;
+    } catch (error) {
+      if (error.message.includes('already exists')) {
+        skipped++;
+      } else {
+        failed++;
+        console.error(`   ❌ Failed to create ${index.name}: ${error.message}`);
+      }
+    }
+  }
+
+  console.log(`🔧 [Intel] Indexes: ${created} created, ${skipped} existed, ${failed} failed`);
+  return { created, skipped, failed };
 };
 
 /**
