@@ -2835,7 +2835,7 @@ class FacebookAPI {
 
         // Wrap ad creation with retry logic for transient errors
         const adParams = {
-          name: `[Launcher] ${campaignData.campaignName} - Ad Main`, // Explicitly set "Main" suffix for initial ad
+          // Don't set custom name - let createAd() generate it with editorName if present
           campaignName: campaignData.campaignName,
           adsetId: adSet.id,
           status: campaignData.status, // Pass status (PAUSED for test campaigns)
@@ -2848,6 +2848,7 @@ class FacebookAPI {
           mediaType: campaignData.mediaType || 'single_image',
           editorName: campaignData.editorName, // Pass editor name for ad naming
           dynamicEditorName: campaignData.dynamicEditorName, // Pass dynamic creative editor name for ad naming
+          fromLibrary: campaignData.fromLibrary, // Pass library flag so createAd knows to use editorName
           // Dynamic Text Variations (Facebook's Multiple Text Options)
           dynamicTextEnabled: campaignData.dynamicTextEnabled,
           primaryTextVariations: campaignData.primaryTextVariations,
@@ -3113,7 +3114,7 @@ class FacebookAPI {
 
       const ad = await this.createAd({
         campaignName: campaignData.campaignName,
-        name: `[Launcher] ${campaignData.campaignName} - Ad Main`, // Explicitly set "Main" suffix for initial ad
+        // Don't set custom name - let createAd() generate it with editorName if present
         adsetId: adSet.id,
         status: campaignData.status, // Pass status (PAUSED for test campaigns)
         url: campaignData.url,
@@ -3125,6 +3126,7 @@ class FacebookAPI {
         mediaType: campaignData.mediaType || 'single_image',
         publishDirectly: campaignData.publishDirectly,
         editorName: campaignData.editorName, // Pass editor name for ad naming
+        fromLibrary: campaignData.fromLibrary, // Pass library flag so createAd knows to use editorName
         // Pass dynamic text variations
         dynamicTextEnabled: campaignData.dynamicTextEnabled,
         primaryTextVariations: campaignData.primaryTextVariations,
