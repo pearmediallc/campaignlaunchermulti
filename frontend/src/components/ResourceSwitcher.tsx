@@ -121,9 +121,10 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
           // Load ad limits for the current ad account
           loadAdLimits(config.adAccountId);
 
-          // NEW: Fetch pixels for the current ad account (safe addition)
-          // This ensures pixels are always up-to-date when account is switched
-          fetchPixelsForAccount(config.adAccountId);
+          // DISABLED: Automatic pixel fetching causes rate limit issues
+          // Pixels are already fetched during authentication and stored in FacebookAuth table
+          // Users can manually refresh pixels if needed from the pixel selector
+          // fetchPixelsForAccount(config.adAccountId);
         }
         if (config.pageId) {
           const page = pages?.find((p: any) => p.id === config.pageId);

@@ -581,21 +581,27 @@ router.get('/pixels/:adAccountId', authenticate, async (req, res) => {
       });
     }
 
-    // Decrypt token
+    // Decrypt token - handle both encrypted and plain tokens
     let accessToken;
-    if (facebookAuth.accessToken.startsWith('{')) {
-      accessToken = decryptToken(facebookAuth.accessToken);
+    const rawToken = facebookAuth.accessToken;
+
+    // Check if token is encrypted (starts with '{') or plain (starts with 'EAA')
+    if (rawToken.startsWith('{')) {
+      // Encrypted token - decrypt it
+      accessToken = decryptToken(rawToken);
+      if (!accessToken) {
+        return res.status(401).json({
+          success: false,
+          message: 'Failed to decrypt access token'
+        });
+      }
+    } else if (rawToken.startsWith('EAA')) {
+      // Plain token - use as is
+      accessToken = rawToken;
     } else {
       return res.status(401).json({
         success: false,
         message: 'Invalid token format'
-      });
-    }
-
-    if (!accessToken) {
-      return res.status(401).json({
-        success: false,
-        message: 'Failed to decrypt access token'
       });
     }
 
