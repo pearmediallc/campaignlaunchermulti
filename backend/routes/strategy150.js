@@ -372,18 +372,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       });
     }
 
-    let decryptedToken;
-    if (facebookAuth.accessToken.startsWith('{')) {
-      decryptedToken = decryptToken(facebookAuth.accessToken);
-      if (!decryptedToken) {
-        return res.status(401).json({
-          error: 'Failed to decrypt access token. Please reconnect your Facebook account.',
-          requiresReauth: true
-        });
-      }
-    } else {
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
       return res.status(401).json({
-        error: 'Invalid access token. Please reconnect your Facebook account.',
+        error: 'Invalid or missing access token',
         requiresReauth: true
       });
     }
@@ -1373,12 +1367,12 @@ router.get('/post-id/:adId', authenticate, requireFacebookAuth, async (req, res)
       });
     }
 
-    let decryptedToken;
-    if (facebookAuth.accessToken.startsWith('{')) {
-      decryptedToken = decryptToken(facebookAuth.accessToken);
-    } else {
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
       return res.status(401).json({
-        error: 'Invalid access token format',
+        error: 'Invalid or missing access token',
         requiresReauth: true
       });
     }
@@ -1515,13 +1509,13 @@ router.get('/verify-post/:postId', authenticate, requireFacebookAuth, async (req
       where: { userId: req.user.id, isActive: true }
     });
 
-    let decryptedToken;
-    if (facebookAuth.accessToken.startsWith('{')) {
-      decryptedToken = decryptToken(facebookAuth.accessToken);
-    } else {
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
       return res.status(401).json({
-        success: false,
-        error: 'Invalid access token format'
+        error: 'Invalid or missing access token',
+        requiresReauth: true
       });
     }
 
@@ -1735,20 +1729,12 @@ router.post('/multiply', authenticate, requireFacebookAuth, refreshFacebookToken
     }
 
     // Decrypt access token
-    let decryptedToken;
-    if (facebookAuth.accessToken.startsWith('{')) {
-      decryptedToken = decryptToken(facebookAuth.accessToken);
-      if (!decryptedToken) {
-        return res.status(401).json({
-          success: false,
-          error: 'Failed to decrypt access token',
-          requiresReauth: true
-        });
-      }
-    } else {
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
       return res.status(401).json({
-        success: false,
-        error: 'Invalid access token format',
+        error: 'Invalid or missing access token',
         requiresReauth: true
       });
     }
