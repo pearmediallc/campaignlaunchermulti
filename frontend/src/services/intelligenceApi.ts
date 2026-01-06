@@ -508,6 +508,12 @@ export const intelligenceApi = {
     return response.data;
   },
 
+  // NEW: Cancel all incomplete (paused/error) backfills at once
+  cancelIncompleteBackfills: async (): Promise<{ success: boolean; message: string; cancelledCount: number }> => {
+    const response = await api.post('/intelligence/backfill/cancel-incomplete');
+    return response.data;
+  },
+
   cancelBackfill: async (adAccountId: string) => {
     const response = await api.delete(`/intelligence/backfill/${adAccountId}`);
     return response.data;

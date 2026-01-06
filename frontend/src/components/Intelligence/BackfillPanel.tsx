@@ -44,6 +44,7 @@ import {
   Storage,
   RestartAlt,
   StopCircle,
+  DeleteForever,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { intelligenceApi, BackfillStatus } from '../../services/intelligenceApi';
@@ -273,6 +274,25 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
     }
   };
 
+  // NEW: Cancel all incomplete backfills at once
+  const handleCancelIncompleteBackfills = async () => {
+    if (!window.confirm('Are you sure you want to cancel all incomplete (paused/error) backfills? This will permanently delete their progress.')) {
+      return;
+    }
+
+    try {
+      const response = await intelligenceApi.cancelIncompleteBackfills();
+      if (response.cancelledCount > 0) {
+        toast.success(response.message);
+      } else {
+        toast.info(response.message);
+      }
+      fetchStatus();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to cancel incomplete backfills');
+    }
+  };
+
   const handleCancelBackfill = async (adAccountId: string) => {
     if (!window.confirm('Are you sure you want to cancel this backfill?')) return;
 
@@ -382,17 +402,30 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
           </Box>
           <Box display="flex" gap={1}>
             {hasIncompleteBackfills && (
-              <Tooltip title="Resume all incomplete backfills from where they left off">
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  startIcon={resumingBackfills ? <CircularProgress size={20} /> : <RestartAlt />}
-                  onClick={handleResumeIncomplete}
-                  disabled={resumingBackfills}
-                >
-                  {resumingBackfills ? 'Resuming...' : 'Resume Incomplete'}
-                </Button>
-              </Tooltip>
+              <>
+                <Tooltip title="Resume all incomplete backfills from where they left off">
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    startIcon={resumingBackfills ? <CircularProgress size={20} /> : <RestartAlt />}
+                    onClick={handleResumeIncomplete}
+                    disabled={resumingBackfills}
+                  >
+                    {resumingBackfills ? 'Resuming...' : 'Resume Incomplete'}
+                  </Button>
+                </Tooltip>
+                {/* NEW: Cancel Incomplete button - deletes all paused/error backfills */}
+                <Tooltip title="Cancel and delete all incomplete backfills permanently">
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteForever />}
+                    onClick={handleCancelIncompleteBackfills}
+                  >
+                    Cancel Incomplete
+                  </Button>
+                </Tooltip>
+              </>
             )}
             {/* NEW: Pause All button - stops all active backfills at once */}
             {backfillStatus?.accounts?.some(a => a.status === 'in_progress') && (

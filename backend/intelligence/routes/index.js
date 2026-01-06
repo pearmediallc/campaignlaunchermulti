@@ -1200,6 +1200,52 @@ router.post('/backfill/pause-all', async (req, res) => {
 });
 
 /**
+ * POST /api/intelligence/backfill/cancel-incomplete
+ * Cancel and delete ALL incomplete (paused/error) backfills
+ * NEW ENDPOINT - allows canceling all resumable backfills at once
+ */
+router.post('/backfill/cancel-incomplete', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find all paused or error backfills for this user
+    const incompleteBackfills = await intelModels.IntelBackfillProgress.findAll({
+      where: {
+        user_id: userId,
+        status: ['paused', 'error']
+      }
+    });
+
+    if (incompleteBackfills.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No incomplete backfills to cancel',
+        cancelledCount: 0
+      });
+    }
+
+    // Delete all of them
+    await intelModels.IntelBackfillProgress.destroy({
+      where: {
+        user_id: userId,
+        status: ['paused', 'error']
+      }
+    });
+
+    console.log(`[Intelligence] Cancelled ${incompleteBackfills.length} incomplete backfills for user ${userId}`);
+
+    res.json({
+      success: true,
+      message: `Cancelled ${incompleteBackfills.length} incomplete backfill(s)`,
+      cancelledCount: incompleteBackfills.length
+    });
+  } catch (error) {
+    console.error('[Intelligence] Cancel incomplete backfills error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * DELETE /api/intelligence/backfill/:adAccountId
  * Cancel and delete backfill progress
  */
