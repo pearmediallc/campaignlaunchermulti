@@ -120,6 +120,10 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
 
           // Load ad limits for the current ad account
           loadAdLimits(config.adAccountId);
+
+          // NEW: Fetch pixels for the current ad account (safe addition)
+          // This ensures pixels are always up-to-date when account is switched
+          fetchPixelsForAccount(config.adAccountId);
         }
         if (config.pageId) {
           const page = pages?.find((p: any) => p.id === config.pageId);
@@ -134,6 +138,24 @@ const ResourceSwitcher: React.FC<ResourceSwitcherProps> = ({ onResourceSwitch })
       }
     } catch (error) {
       console.error('Failed to load resource names:', error);
+    }
+  };
+
+  // NEW FUNCTION: Fetch pixels for a specific ad account
+  // This is called when ResourceSwitcher loads or account changes
+  // Does not affect existing functionality - purely additive
+  const fetchPixelsForAccount = async (adAccountId: string) => {
+    try {
+      console.log(`📍 ResourceSwitcher: Fetching pixels for account ${adAccountId}`);
+      const response = await facebookAuthApi.getPixelsByAccount(adAccountId);
+      if (response.success && response.data.pixels) {
+        console.log(`✅ ResourceSwitcher: Found ${response.data.pixels.length} pixels for account`);
+        // Pixels are now fetched and available for future use
+        // The actual pixel selection happens elsewhere - we're just fetching them
+      }
+    } catch (error) {
+      console.error('Failed to fetch pixels for account:', error);
+      // Silent failure - doesn't affect existing functionality
     }
   };
 

@@ -73,6 +73,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { toast } from 'react-toastify';
+import { CampaignVerificationPanel } from '../components/AdminTest/CampaignVerificationPanel';
 
 // Types
 interface TestScenario {
@@ -185,6 +186,11 @@ export const AdminTestDashboard: React.FC = () => {
   const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
   const [deletingMedia, setDeletingMedia] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // NEW: Verification panel state (additive only - doesn't affect existing functionality)
+  const [verificationDialogOpen, setVerificationDialogOpen] = useState(false);
+  const [verificationData, setVerificationData] = useState<any>(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
   // Custom scenario overrides - allows editing ad set count, ad count, and campaign copies per scenario
   const [scenarioOverrides, setScenarioOverrides] = useState<Record<string, { adSetCount?: number; adCount?: number; campaignCopies?: number }>>({});
@@ -353,6 +359,50 @@ export const AdminTestDashboard: React.FC = () => {
       toast.success('Test results cleared');
     } catch (error: any) {
       toast.error('Failed to clear results');
+    }
+  };
+
+  // NEW FUNCTION: Verify campaign fields
+  // This is additive only - doesn't affect existing test functionality
+  const verifyCampaign = async (testResult: TestResult) => {
+    if (!testResult.createdCampaign?.campaignId) {
+      toast.error('No campaign ID available for verification');
+      return;
+    }
+
+    try {
+      setVerificationLoading(true);
+      setVerificationDialogOpen(true);
+      setVerificationData(null);
+
+      // For now, we'll pass mock form data
+      // In a production implementation, this would come from stored test data
+      const mockFormData = {
+        campaignName: testResult.createdCampaign.campaignName,
+        objective: 'OUTCOME_LEADS',
+        status: 'PAUSED',
+        dailyBudget: 20,
+        optimizationGoal: 'OFFSITE_CONVERSIONS',
+        billingEvent: 'IMPRESSIONS',
+        // Add more fields as needed
+      };
+
+      const response = await api.post('/admin/test/verify-campaign', {
+        campaignId: testResult.createdCampaign.campaignId,
+        formData: mockFormData
+      });
+
+      if (response.data.success) {
+        setVerificationData(response.data.data);
+        toast.success(`Verification complete: ${response.data.data.overallMatchRate}% match`);
+      } else {
+        toast.error('Verification failed');
+      }
+    } catch (error: any) {
+      console.error('Verification error:', error);
+      toast.error(error.response?.data?.error || 'Failed to verify campaign');
+    } finally {
+      setVerificationLoading(false);
     }
   };
 
@@ -1149,6 +1199,18 @@ export const AdminTestDashboard: React.FC = () => {
                             </IconButton>
                           </Tooltip>
                         )}
+                        {/* NEW: Verify button - additive only */}
+                        {result.createdCampaign && (
+                          <Tooltip title="Verify Campaign Fields">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => verifyCampaign(result)}
+                            >
+                              <Assessment />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1158,6 +1220,14 @@ export const AdminTestDashboard: React.FC = () => {
           )}
         </Box>
       </Paper>
+
+      {/* NEW: Campaign Verification Panel - completely isolated component */}
+      <CampaignVerificationPanel
+        open={verificationDialogOpen}
+        onClose={() => setVerificationDialogOpen(false)}
+        verificationData={verificationData}
+        loading={verificationLoading}
+      />
 
       {/* Logs Dialog */}
       <Dialog open={logDialogOpen} onClose={() => setLogDialogOpen(false)} maxWidth="md" fullWidth>

@@ -729,4 +729,88 @@ router.delete('/media', authenticate, adminOnly, async (req, res) => {
   }
 });
 
+/**
+ * NEW ENDPOINT: Verify campaign fields
+ * This is an additive feature - does not modify existing functionality
+ * Compares form data with actual Facebook campaign data
+ */
+router.post('/verify-campaign', authenticate, adminOnly, async (req, res) => {
+  try {
+    const { campaignId, formData } = req.body;
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Campaign ID is required'
+      });
+    }
+
+    if (!formData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Form data is required for verification'
+      });
+    }
+
+    // Get user's Facebook token
+    const userId = req.user?.id || req.userId;
+    const facebookAuth = await db.FacebookAuth.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!facebookAuth || !facebookAuth.accessToken) {
+      return res.status(404).json({
+        success: false,
+        error: 'No Facebook authentication found'
+      });
+    }
+
+    // Decrypt access token
+    let accessToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      accessToken = decryptToken(facebookAuth.accessToken);
+    } else {
+      accessToken = facebookAuth.accessToken;
+    }
+
+    if (!accessToken) {
+      return res.status(401).json({
+        success: false,
+        error: 'Failed to decrypt access token'
+      });
+    }
+
+    console.log(`🔍 Starting campaign verification for: ${campaignId}`);
+
+    // Create verification service instance
+    const CampaignVerificationService = require('../services/CampaignVerificationService');
+    const verificationService = new CampaignVerificationService(accessToken);
+
+    // Generate verification report
+    const report = await verificationService.generateVerificationReport(campaignId, formData);
+
+    if (!report.success) {
+      return res.status(500).json({
+        success: false,
+        error: report.error || 'Failed to generate verification report'
+      });
+    }
+
+    console.log(`✅ Verification complete: ${report.overallMatchRate}% match`);
+
+    res.json({
+      success: true,
+      data: report
+    });
+
+  } catch (error) {
+    console.error('Campaign verification error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to verify campaign',
+      message: error.message
+    });
+  }
+});
+
 module.exports = router;

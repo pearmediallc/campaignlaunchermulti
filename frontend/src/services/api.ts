@@ -257,6 +257,26 @@ export const facebookAuthApi = {
   }> => {
     const response = await api.get('/auth/facebook/ad-limits');
     return response.data;
+  },
+
+  // NEW METHOD: Get pixels for a specific ad account
+  // This is called by ResourceSwitcher when account is changed
+  getPixelsByAccount: async (adAccountId: string): Promise<{
+    success: boolean;
+    data: {
+      pixels: Array<{
+        id: string;
+        name: string;
+        code?: string;
+        creation_time?: string;
+        last_fired_time?: string;
+      }>;
+      adAccountId: string;
+      error?: string;
+    };
+  }> => {
+    const response = await api.get(`/auth/facebook/pixels/${adAccountId}`);
+    return response.data;
   }
 };
 

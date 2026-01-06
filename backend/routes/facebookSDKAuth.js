@@ -560,6 +560,88 @@ router.get('/ad-limits', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * NEW ENDPOINT: Fetch pixels for a specific ad account
+ * This is an additive feature - does not modify existing functionality
+ * Called by ResourceSwitcher when account is changed
+ */
+router.get('/pixels/:adAccountId', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { adAccountId } = req.params;
+
+    const facebookAuth = await db.FacebookAuth.findOne({
+      where: { userId, isActive: true }
+    });
+
+    if (!facebookAuth || !facebookAuth.accessToken) {
+      return res.status(404).json({
+        success: false,
+        message: 'No Facebook authentication found'
+      });
+    }
+
+    // Decrypt token
+    let accessToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      accessToken = decryptToken(facebookAuth.accessToken);
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
+    if (!accessToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Failed to decrypt access token'
+      });
+    }
+
+    // Format account ID with 'act_' prefix if needed
+    const accountId = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+
+    console.log(`📍 Fetching pixels for ad account: ${accountId}`);
+
+    // Fetch pixels from Facebook Graph API
+    const response = await axios.get(
+      `https://graph.facebook.com/v18.0/${accountId}/adspixels`,
+      {
+        params: {
+          fields: 'id,name,code,creation_time,last_fired_time,owner_business,owner_ad_account',
+          access_token: accessToken
+        }
+      }
+    );
+
+    const pixels = response.data.data || [];
+
+    console.log(`✅ Found ${pixels.length} pixels for account ${accountId}`);
+
+    res.json({
+      success: true,
+      data: {
+        pixels,
+        adAccountId: accountId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching pixels:', error.response?.data || error.message);
+
+    // Return empty array if API fails (graceful degradation)
+    res.json({
+      success: true,
+      data: {
+        pixels: [],
+        adAccountId: req.params.adAccountId,
+        error: error.response?.data?.error?.message || 'Could not fetch pixels'
+      }
+    });
+  }
+});
+
 // Helper functions
 function encryptToken(token) {
   const algorithm = 'aes-256-gcm';
