@@ -325,7 +325,7 @@ const TrainingAnalyticsPanel: React.FC<TrainingAnalyticsPanelProps> = ({ onRefre
                   <XAxis
                     dataKey="date"
                     tick={{ fontSize: 12 }}
-                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    tickFormatter={(value: any) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   />
                   <YAxis tick={{ fontSize: 12 }} />
                   <RechartsTooltip
