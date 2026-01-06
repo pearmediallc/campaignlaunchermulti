@@ -879,19 +879,13 @@ router.get('/pixels', authenticate, async (req, res) => {
 
     // If no pixels stored or we need to refresh, fetch from Facebook
     if (pixels.length === 0 || req.query.refresh === 'true') {
-      // Handle both encrypted and plain text tokens
-      let accessToken;
-      const rawToken = facebookAuth.accessToken;
+      // The model getter already decrypts the token (handles both encrypted and plain)
+      // So we use facebookAuth.accessToken directly without calling decryptToken()
+      const accessToken = facebookAuth.accessToken;
 
-      if (rawToken.startsWith('{')) {
-        // Token is encrypted (JSON format)
-        accessToken = decryptToken(rawToken);
-      } else if (rawToken.startsWith('EAA')) {
-        // Token is plain text
-        accessToken = rawToken;
-      } else {
-        console.error('Invalid token format - not encrypted JSON or plain EAA token');
-        return res.status(401).json({ error: 'Invalid token format' });
+      if (!accessToken || !accessToken.startsWith('EAA')) {
+        console.error('Invalid or missing access token');
+        return res.status(401).json({ error: 'Invalid access token. Please reconnect Facebook.' });
       }
 
       const db = require('../models');
@@ -977,24 +971,13 @@ router.get('/audiences', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'No ad account selected' });
     }
 
-    // Handle both encrypted and plain text tokens
-    let accessToken;
-    const rawToken = facebookAuth.accessToken;
+    // The model getter already decrypts the token (handles both encrypted and plain)
+    // So we use facebookAuth.accessToken directly without calling decryptToken()
+    const accessToken = facebookAuth.accessToken;
 
-    if (rawToken.startsWith('{')) {
-      // Token is encrypted (JSON format)
-      try {
-        accessToken = decryptToken(rawToken);
-      } catch (decryptError) {
-        console.error('Token decryption error:', decryptError);
-        return res.status(401).json({ error: 'Failed to decrypt access token. Please reconnect Facebook.' });
-      }
-    } else if (rawToken.startsWith('EAA')) {
-      // Token is plain text
-      accessToken = rawToken;
-    } else {
-      console.error('Invalid token format - not encrypted JSON or plain EAA token');
-      return res.status(401).json({ error: 'Invalid token format' });
+    if (!accessToken || !accessToken.startsWith('EAA')) {
+      console.error('Invalid or missing access token');
+      return res.status(401).json({ error: 'Invalid access token. Please reconnect Facebook.' });
     }
 
     const adAccountId = facebookAuth.selectedAdAccount.id;
