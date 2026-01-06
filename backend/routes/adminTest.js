@@ -222,12 +222,12 @@ router.post('/run', authenticate, adminOnly, async (req, res) => {
       });
     }
 
-    // Decrypt token
-    const decryptedToken = decryptToken(facebookAuth.accessToken);
-    if (!decryptedToken) {
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
       return res.status(401).json({
         success: false,
-        error: 'Failed to decrypt access token'
+        error: 'Invalid or missing access token'
       });
     }
 
@@ -332,11 +332,12 @@ router.post('/run-multiple', authenticate, adminOnly, async (req, res) => {
       });
     }
 
-    const decryptedToken = decryptToken(facebookAuth.accessToken);
-    if (!decryptedToken) {
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
       return res.status(401).json({
         success: false,
-        error: 'Failed to decrypt access token'
+        error: 'Invalid or missing access token'
       });
     }
 
@@ -527,7 +528,15 @@ router.post('/cleanup', authenticate, adminOnly, async (req, res) => {
       });
     }
 
-    const decryptedToken = decryptToken(facebookAuth.accessToken);
+    // Model getter already decrypts the token
+    const decryptedToken = facebookAuth.accessToken;
+    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or missing access token'
+      });
+    }
+
     const activeResources = await ResourceHelper.getActiveResourcesWithFallback(userId);
 
     const facebookApi = new FacebookAPI({
@@ -765,15 +774,10 @@ router.post('/verify-campaign', authenticate, adminOnly, async (req, res) => {
       });
     }
 
-    // Decrypt access token
-    let accessToken;
-    if (facebookAuth.accessToken.startsWith('{')) {
-      accessToken = decryptToken(facebookAuth.accessToken);
-    } else {
-      accessToken = facebookAuth.accessToken;
-    }
+    // Model getter already decrypts the token
+    const accessToken = facebookAuth.accessToken;
 
-    if (!accessToken) {
+    if (!accessToken || !accessToken.startsWith('EAA')) {
       return res.status(401).json({
         success: false,
         error: 'Failed to decrypt access token'
