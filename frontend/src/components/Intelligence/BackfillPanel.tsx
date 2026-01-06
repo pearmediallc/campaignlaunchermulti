@@ -43,6 +43,7 @@ import {
   Schedule,
   Storage,
   RestartAlt,
+  StopCircle,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { intelligenceApi, BackfillStatus } from '../../services/intelligenceApi';
@@ -257,6 +258,21 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
     }
   };
 
+  // NEW: Pause all active backfills at once
+  const handlePauseAllBackfills = async () => {
+    try {
+      const response = await intelligenceApi.pauseAllBackfills();
+      if (response.pausedCount > 0) {
+        toast.success(response.message);
+      } else {
+        toast.info(response.message);
+      }
+      fetchStatus();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to pause backfills');
+    }
+  };
+
   const handleCancelBackfill = async (adAccountId: string) => {
     if (!window.confirm('Are you sure you want to cancel this backfill?')) return;
 
@@ -375,6 +391,19 @@ const BackfillPanel: React.FC<BackfillPanelProps> = ({ onRefresh }) => {
                   disabled={resumingBackfills}
                 >
                   {resumingBackfills ? 'Resuming...' : 'Resume Incomplete'}
+                </Button>
+              </Tooltip>
+            )}
+            {/* NEW: Pause All button - stops all active backfills at once */}
+            {backfillStatus?.accounts?.some(a => a.status === 'in_progress') && (
+              <Tooltip title="Pause all active backfills immediately">
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<StopCircle />}
+                  onClick={handlePauseAllBackfills}
+                >
+                  Pause All
                 </Button>
               </Tooltip>
             )}

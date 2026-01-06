@@ -1151,6 +1151,55 @@ router.post('/backfill/pause', async (req, res) => {
 });
 
 /**
+ * POST /api/intelligence/backfill/pause-all
+ * Pause ALL active backfills for the current user
+ * NEW ENDPOINT - allows stopping all backfills at once
+ */
+router.post('/backfill/pause-all', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Find all in-progress backfills for this user
+    const activeBackfills = await intelModels.IntelBackfillProgress.findAll({
+      where: {
+        user_id: userId,
+        status: 'in_progress'
+      }
+    });
+
+    if (activeBackfills.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No active backfills to pause',
+        pausedCount: 0
+      });
+    }
+
+    // Pause all of them
+    await intelModels.IntelBackfillProgress.update(
+      { status: 'paused' },
+      {
+        where: {
+          user_id: userId,
+          status: 'in_progress'
+        }
+      }
+    );
+
+    console.log(`[Intelligence] Paused ${activeBackfills.length} backfills for user ${userId}`);
+
+    res.json({
+      success: true,
+      message: `Paused ${activeBackfills.length} active backfill(s)`,
+      pausedCount: activeBackfills.length
+    });
+  } catch (error) {
+    console.error('[Intelligence] Pause all backfills error for user', req.user?.id, ':', error.message, error.stack);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * DELETE /api/intelligence/backfill/:adAccountId
  * Cancel and delete backfill progress
  */

@@ -502,6 +502,12 @@ export const intelligenceApi = {
     return response.data;
   },
 
+  // NEW: Pause all active backfills at once
+  pauseAllBackfills: async (): Promise<{ success: boolean; message: string; pausedCount: number }> => {
+    const response = await api.post('/intelligence/backfill/pause-all');
+    return response.data;
+  },
+
   cancelBackfill: async (adAccountId: string) => {
     const response = await api.delete(`/intelligence/backfill/${adAccountId}`);
     return response.data;
