@@ -879,7 +879,21 @@ router.get('/pixels', authenticate, async (req, res) => {
 
     // If no pixels stored or we need to refresh, fetch from Facebook
     if (pixels.length === 0 || req.query.refresh === 'true') {
-      const accessToken = decryptToken(facebookAuth.accessToken);
+      // Handle both encrypted and plain text tokens
+      let accessToken;
+      const rawToken = facebookAuth.accessToken;
+
+      if (rawToken.startsWith('{')) {
+        // Token is encrypted (JSON format)
+        accessToken = decryptToken(rawToken);
+      } else if (rawToken.startsWith('EAA')) {
+        // Token is plain text
+        accessToken = rawToken;
+      } else {
+        console.error('Invalid token format - not encrypted JSON or plain EAA token');
+        return res.status(401).json({ error: 'Invalid token format' });
+      }
+
       const db = require('../models');
 
       // Get the selected ad account
@@ -963,12 +977,24 @@ router.get('/audiences', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'No ad account selected' });
     }
 
+    // Handle both encrypted and plain text tokens
     let accessToken;
-    try {
-      accessToken = decryptToken(facebookAuth.accessToken);
-    } catch (decryptError) {
-      console.error('Token decryption error:', decryptError);
-      return res.status(401).json({ error: 'Failed to decrypt access token. Please reconnect Facebook.' });
+    const rawToken = facebookAuth.accessToken;
+
+    if (rawToken.startsWith('{')) {
+      // Token is encrypted (JSON format)
+      try {
+        accessToken = decryptToken(rawToken);
+      } catch (decryptError) {
+        console.error('Token decryption error:', decryptError);
+        return res.status(401).json({ error: 'Failed to decrypt access token. Please reconnect Facebook.' });
+      }
+    } else if (rawToken.startsWith('EAA')) {
+      // Token is plain text
+      accessToken = rawToken;
+    } else {
+      console.error('Invalid token format - not encrypted JSON or plain EAA token');
+      return res.status(401).json({ error: 'Invalid token format' });
     }
 
     const adAccountId = facebookAuth.selectedAdAccount.id;
