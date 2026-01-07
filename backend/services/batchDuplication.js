@@ -861,10 +861,24 @@ class BatchDuplicationService {
       // Check if this uses an existing post
       if (creative.object_story_id || creative.effective_object_story_id) {
         // Use existing post - FIXED: Use same pattern as 1-50-1 strategy
-        body.creative = JSON.stringify({
+        const creativePayload = {
           object_story_id: creative.object_story_id || creative.effective_object_story_id,
           page_id: this.pageId  // ADDED: Include pageId like 1-50-1 does
-        });
+        };
+
+        // CRITICAL: Copy asset_feed_spec for dynamic creative with product catalog
+        if (creative.asset_feed_spec) {
+          creativePayload.asset_feed_spec = creative.asset_feed_spec;
+          console.log(`  📦 Copying asset_feed_spec for dynamic creative ad (existing post): ${ad.name}`);
+        }
+
+        // Copy degrees_of_freedom_spec for dynamic creative optimization
+        if (creative.degrees_of_freedom_spec) {
+          creativePayload.degrees_of_freedom_spec = creative.degrees_of_freedom_spec;
+          console.log(`  🎯 Copying degrees_of_freedom_spec for dynamic creative ad (existing post): ${ad.name}`);
+        }
+
+        body.creative = JSON.stringify(creativePayload);
       } else if (creative.object_story_spec) {
         // Use story spec directly
         const creativePayload = {
@@ -886,9 +900,23 @@ class BatchDuplicationService {
         body.creative = JSON.stringify(creativePayload);
       } else if (creative.id) {
         // Reference existing creative by ID - ADDED: new fallback option
-        body.creative = JSON.stringify({
+        const creativePayload = {
           creative_id: creative.id
-        });
+        };
+
+        // CRITICAL: Copy asset_feed_spec for dynamic creative with product catalog
+        if (creative.asset_feed_spec) {
+          creativePayload.asset_feed_spec = creative.asset_feed_spec;
+          console.log(`  📦 Copying asset_feed_spec for dynamic creative ad (creative ID): ${ad.name}`);
+        }
+
+        // Copy degrees_of_freedom_spec for dynamic creative optimization
+        if (creative.degrees_of_freedom_spec) {
+          creativePayload.degrees_of_freedom_spec = creative.degrees_of_freedom_spec;
+          console.log(`  🎯 Copying degrees_of_freedom_spec for dynamic creative ad (creative ID): ${ad.name}`);
+        }
+
+        body.creative = JSON.stringify(creativePayload);
       } else {
         // Full creative
         const newCreative = {
