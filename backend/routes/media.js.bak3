@@ -70,12 +70,20 @@ router.post('/upload', authenticate, upload.single('media'), async (req, res) =>
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const decryptedToken = facebookAuth.accessToken;
-    if (!decryptedToken) {
+    // Decrypt access token
+    let decryptedToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      decryptedToken = decryptToken(facebookAuth.accessToken);
+      if (!decryptedToken) {
+        return res.status(401).json({
+          success: false,
+          error: 'Failed to decrypt access token. Please reconnect your Facebook account.'
+        });
+      }
+    } else {
       return res.status(401).json({
         success: false,
-        error: 'Invalid access token. Please reconnect your Facebook account.'
+        error: 'Invalid access token format.'
       });
     }
 

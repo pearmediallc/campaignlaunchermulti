@@ -392,12 +392,21 @@ router.get('/ad-limits/:adAccountId', authenticate, async (req, res) => {
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const accessToken = facebookAuth.accessToken;
+    // Decrypt token
+    let accessToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      accessToken = decryptToken(facebookAuth.accessToken);
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
     if (!accessToken) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid access token'
+        message: 'Failed to decrypt access token'
       });
     }
 
@@ -471,12 +480,21 @@ router.get('/ad-limits', authenticate, async (req, res) => {
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const accessToken = facebookAuth.accessToken;
+    // Decrypt token
+    let accessToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      accessToken = decryptToken(facebookAuth.accessToken);
+    } else {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
+    }
+
     if (!accessToken) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid access token'
+        message: 'Failed to decrypt access token'
       });
     }
 

@@ -75,7 +75,8 @@ router.post(
       console.log('  ✓ Ad Account:', resources.selectedAdAccount?.name || resources.selectedAdAccountId);
       console.log('  ✓ Page:', resources.selectedPage?.name || resources.selectedPageId);
 
-      const accessToken = decryptToken(facebookAuth.accessToken);
+      // Model getter already decrypts the token - use it directly
+    const accessToken = facebookAuth.accessToken;
       if (!accessToken) {
         return res.status(401).json({
           success: false,

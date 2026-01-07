@@ -49,13 +49,13 @@ router.get('/saved-audiences', authenticate, async (req, res) => {
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const decryptedToken = facebookAuth.accessToken;
+    // Decrypt token
+    const decryptedToken = decryptToken(facebookAuth.accessToken);
 
     if (!decryptedToken) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid Facebook access token'
+        error: 'Failed to decrypt Facebook access token'
       });
     }
 
@@ -259,13 +259,13 @@ router.get('/search-locations', authenticate, async (req, res) => {
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const decryptedToken = facebookAuth.accessToken;
+    // Decrypt token
+    const decryptedToken = decryptToken(facebookAuth.accessToken);
 
     if (!decryptedToken) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid Facebook access token'
+        error: 'Failed to decrypt Facebook access token'
       });
     }
 

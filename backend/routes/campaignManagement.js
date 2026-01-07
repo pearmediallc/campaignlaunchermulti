@@ -127,7 +127,8 @@ router.get('/details/:campaignId', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Facebook authentication required' });
     }
 
-    const accessToken = decryptToken(facebookAuth.accessToken);
+    // Model getter already decrypts the token - use it directly
+    const accessToken = facebookAuth.accessToken;
     if (!accessToken) {
       return res.status(401).json({ error: 'Invalid Facebook access token' });
     }
@@ -355,7 +356,8 @@ router.get('/all', authenticate, async (req, res) => {
       });
     }
 
-    const accessToken = decryptToken(facebookAuth.accessToken);
+    // Model getter already decrypts the token - use it directly
+    const accessToken = facebookAuth.accessToken;
     if (!accessToken) {
       return res.status(401).json({ error: 'Invalid Facebook access token' });
     }
@@ -499,7 +501,8 @@ router.post('/status', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Facebook authentication required' });
     }
 
-    const accessToken = decryptToken(facebookAuth.accessToken);
+    // Model getter already decrypts the token - use it directly
+    const accessToken = facebookAuth.accessToken;
     if (!accessToken) {
       return res.status(401).json({ error: 'Invalid Facebook access token' });
     }
@@ -593,7 +596,8 @@ router.post('/track', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Facebook authentication required' });
     }
 
-    const accessToken = decryptToken(facebookAuth.accessToken);
+    // Model getter already decrypts the token - use it directly
+    const accessToken = facebookAuth.accessToken;
 
     // Fetch campaign info from Facebook to verify access
     const url = `https://graph.facebook.com/v19.0/${campaignId}`;
@@ -723,7 +727,8 @@ router.get('/adset/:adsetId/ads', authenticate, async (req, res) => {
       });
     }
 
-    const accessToken = decryptToken(facebookAuth.accessToken);
+    // Model getter already decrypts the token - use it directly
+    const accessToken = facebookAuth.accessToken;
     if (!accessToken) {
       return res.status(401).json({ error: 'Invalid Facebook access token' });
     }

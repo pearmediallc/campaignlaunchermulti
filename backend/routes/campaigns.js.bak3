@@ -90,10 +90,27 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       });
     }
     
-    // Model getter already decrypts the token - use it directly
-    const decryptedToken = facebookAuth.accessToken;
-    if (!decryptedToken) {
-      return res.status(401).json({
+    // Check if token is encrypted (starts with '{' for JSON)
+    let decryptedToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      // Token is encrypted, decrypt it
+      decryptedToken = decryptToken(facebookAuth.accessToken);
+      if (!decryptedToken) {
+        return res.status(401).json({ 
+          error: 'Failed to decrypt access token. Please reconnect your Facebook account.',
+          requiresReauth: true 
+        });
+      }
+    } else if (facebookAuth.accessToken.startsWith('EAA')) {
+      // Token is plain text (legacy) - clear it and require reauth
+      console.log('⚠️ Found legacy unencrypted token, clearing...');
+      await facebookAuth.update({ accessToken: null, isActive: false });
+      return res.status(401).json({ 
+        error: 'Invalid token format detected. Please reconnect your Facebook account.',
+        requiresReauth: true 
+      });
+    } else {
+      return res.status(401).json({ 
         error: 'Invalid access token. Please reconnect your Facebook account.',
         requiresReauth: true 
       });

@@ -163,13 +163,13 @@ router.post('/:id/retry', authenticate, async (req, res) => {
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const decryptedToken = facebookAuth.accessToken;
+    // FIX: Decrypt access token (field is 'accessToken', not 'encryptedAccessToken')
+    const decryptedToken = decryptToken(facebookAuth.accessToken);
 
     if (!decryptedToken) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid Facebook access token. Please reconnect your Facebook account.',
+        error: 'Failed to decrypt Facebook access token. Please reconnect your Facebook account.',
         requiresReauth: true
       });
     }
@@ -443,12 +443,12 @@ router.post('/verify', authenticate, async (req, res) => {
       });
     }
 
-    // Model getter already decrypts the token - use it directly
-    const decryptedToken = facebookAuth.accessToken;
+    // Decrypt access token
+    const decryptedToken = decryptToken(facebookAuth.accessToken);
     if (!decryptedToken) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid Facebook access token'
+        error: 'Failed to decrypt Facebook access token'
       });
     }
 
