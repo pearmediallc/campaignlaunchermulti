@@ -1481,6 +1481,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         console.log(`  ✅ 100% Root Effect: All ${result.totalAdSets} ads use same creative`);
       }
       console.log('========================================\n');
+      }
+      // ============================================================
+      // END DEFICIT RECOVERY PHASE
+      // ============================================================
 
     } catch (error) {
       console.error('❌ Strategy for-all Batch Campaign Creation Error:');
@@ -2069,6 +2073,17 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     res.status(error.status || 500).json({
       success: false,
       error: error.message
+    });
+  }
+  // ============================================================================
+  // END WEEK 3-6: COMPREHENSIVE ERROR HANDLING & ROLLBACK
+  // ============================================================================
+  } catch (outerError) {
+    // Handle any errors that occur outside the main safety system try block
+    console.error('❌ Fatal error in strategy-for-all route:', outerError);
+    res.status(500).json({
+      success: false,
+      error: outerError.message || 'An unexpected error occurred'
     });
   }
 });
