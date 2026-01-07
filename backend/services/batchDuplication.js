@@ -672,7 +672,7 @@ class BatchDuplicationService {
         'pacing_type,instagram_actor_id,destination_type,' +
         'ads.limit(100){' +
           'id,name,status,tracking_specs,conversion_specs,url_tags,' +
-          'creative{id,object_story_id,effective_object_story_id}' +
+          'creative{id,object_story_id,effective_object_story_id,object_story_spec,asset_feed_spec,degrees_of_freedom_spec}' +
         '}' +
       '}';
 
@@ -866,10 +866,24 @@ class BatchDuplicationService {
           page_id: this.pageId  // ADDED: Include pageId like 1-50-1 does
         });
       } else if (creative.object_story_spec) {
-        // Use story spec directly (no degrees_of_freedom_spec - it causes 400 errors)
-        body.creative = JSON.stringify({
+        // Use story spec directly
+        const creativePayload = {
           object_story_spec: creative.object_story_spec
-        });
+        };
+
+        // CRITICAL: Copy asset_feed_spec for dynamic creative with product catalog
+        if (creative.asset_feed_spec) {
+          creativePayload.asset_feed_spec = creative.asset_feed_spec;
+          console.log(`  📦 Copying asset_feed_spec for dynamic creative ad: ${ad.name}`);
+        }
+
+        // Copy degrees_of_freedom_spec for dynamic creative optimization
+        if (creative.degrees_of_freedom_spec) {
+          creativePayload.degrees_of_freedom_spec = creative.degrees_of_freedom_spec;
+          console.log(`  🎯 Copying degrees_of_freedom_spec for dynamic creative ad: ${ad.name}`);
+        }
+
+        body.creative = JSON.stringify(creativePayload);
       } else if (creative.id) {
         // Reference existing creative by ID - ADDED: new fallback option
         body.creative = JSON.stringify({
