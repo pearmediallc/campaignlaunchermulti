@@ -238,6 +238,35 @@ export interface StrategyForAllResponse {
     };
   };
   error?: string;
+  // Safety System Metadata (Week 1-6 Enhancements)
+  safetySystem?: {
+    jobId: number;
+    status?: 'completed' | 'rolled_back' | 'retrying' | 'in_progress';
+    action?: 'rollback' | 'retry' | 'complete';
+    verified?: number; // Number of entities verified on Facebook
+    retriesUsed?: number; // Number of retry attempts used
+    attempt?: number; // Current retry attempt (for retrying status)
+    remaining?: number; // Remaining retry attempts
+    reason?: string; // Reason for rollback or failure
+    rollback?: {
+      executed: boolean;
+      entitiesDeleted: number;
+      entitiesFailed: number;
+      details?: Array<{
+        slotId: number;
+        entityType: 'campaign' | 'ad_set' | 'ad';
+        facebookId: string;
+        entityName: string;
+        status: 'deleted' | 'delete_failed';
+        error?: string;
+      }>;
+    };
+    message?: string; // Human-readable safety system message
+    finalCounts?: {
+      adSets: number;
+      ads: number;
+    };
+  };
 }
 
 export interface PostIdResponse {

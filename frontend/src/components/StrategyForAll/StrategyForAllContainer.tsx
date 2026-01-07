@@ -10,7 +10,9 @@ import {
   Container,
   Alert,
   Tabs,
-  Tab
+  Tab,
+  Divider,
+  Button
 } from '@mui/material';
 import { StrategyForAllFormData, StrategyForAllPhase, StrategyForAllResponse } from '../../types/strategyForAll';
 import Phase1Setup from './Phase1Setup/Phase1Setup';
@@ -229,10 +231,113 @@ const StrategyForAllContainer: React.FC = () => {
         );
       case 'error':
         return (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            <Typography variant="h6">Error</Typography>
-            {error}
-          </Alert>
+          <Box sx={{ mb: 3 }}>
+            <Alert severity="error" sx={{ mb: 2 }}>
+              <Typography variant="h6" gutterBottom>Campaign Creation Failed</Typography>
+              <Typography variant="body1" sx={{ mb: 2 }}>{error}</Typography>
+
+              {/* Safety System Status */}
+              {campaignResult?.safetySystem && (
+                <Box sx={{ mt: 2 }}>
+                  <Divider sx={{ my: 2, borderColor: 'error.light' }} />
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    🛡️ Safety System Report
+                  </Typography>
+
+                  {/* Job ID */}
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Job ID:</strong> {campaignResult.safetySystem.jobId}
+                  </Typography>
+
+                  {/* Rollback Status */}
+                  {campaignResult.safetySystem.status === 'rolled_back' && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        ✅ Automatic Rollback Executed
+                      </Typography>
+                      <Typography variant="body2" gutterBottom>
+                        <strong>Reason:</strong> {campaignResult.safetySystem.reason || 'Safety system triggered rollback'}
+                      </Typography>
+                      {campaignResult.safetySystem.rollback && (
+                        <>
+                          <Typography variant="body2" gutterBottom>
+                            <strong>Entities Deleted:</strong> {campaignResult.safetySystem.rollback.entitiesDeleted}
+                          </Typography>
+                          <Typography variant="body2" gutterBottom>
+                            <strong>Delete Failures:</strong> {campaignResult.safetySystem.rollback.entitiesFailed}
+                          </Typography>
+                          <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+                            ✅ No incomplete campaign exists. All created entities have been automatically deleted.
+                          </Typography>
+
+                          {/* Rollback Details */}
+                          {campaignResult.safetySystem.rollback.details && campaignResult.safetySystem.rollback.details.length > 0 && (
+                            <Box sx={{ mt: 2 }}>
+                              <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                                Rollback Details:
+                              </Typography>
+                              <Box component="ul" sx={{ pl: 2, mt: 1 }}>
+                                {campaignResult.safetySystem.rollback.details.map((detail, idx) => (
+                                  <li key={idx}>
+                                    <Typography variant="body2">
+                                      {detail.status === 'deleted' ? '✅' : '❌'} {detail.entityType}: {detail.entityName} ({detail.facebookId})
+                                      {detail.error && ` - ${detail.error}`}
+                                    </Typography>
+                                  </li>
+                                ))}
+                              </Box>
+                            </Box>
+                          )}
+                        </>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Retry Status */}
+                  {campaignResult.safetySystem.status === 'retrying' && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        🔄 Automatic Retry in Progress
+                      </Typography>
+                      <Typography variant="body2" gutterBottom>
+                        The safety system is automatically retrying this operation.
+                      </Typography>
+                      <Typography variant="body2">
+                        <strong>Retry Attempt:</strong> {campaignResult.safetySystem.attempt} of {campaignResult.safetySystem.attempt! + campaignResult.safetySystem.remaining!}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        <strong>Remaining Attempts:</strong> {campaignResult.safetySystem.remaining}
+                      </Typography>
+                      <Typography variant="body2" color="info.main" sx={{ mt: 1 }}>
+                        ℹ️ The system will automatically retry with exponential backoff (1s, 2s, 4s, 8s, 16s).
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* No Safety Action - Raw Error */}
+                  {!campaignResult.safetySystem.status && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      ℹ️ Error occurred before safety system could engage (pre-creation verification or validation error).
+                    </Typography>
+                  )}
+                </Box>
+              )}
+
+              {/* No Safety System Data */}
+              {!campaignResult?.safetySystem && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  ℹ️ Error occurred during validation or before campaign creation started.
+                </Typography>
+              )}
+            </Alert>
+
+            {/* Action Button */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+              <Button variant="contained" onClick={handleCreateNew}>
+                Try Again
+              </Button>
+            </Box>
+          </Box>
         );
       default:
         return null;
@@ -763,7 +868,15 @@ const StrategyForAllContainer: React.FC = () => {
             id: 'unknown',
             name: `${data.campaignName} - Ad 1`
           }]
-        }
+        },
+        // Extract safety system metadata from backend response
+        safetySystem: primaryResult.data?.safetySystem ? {
+          jobId: primaryResult.data.safetySystem.jobId,
+          status: primaryResult.data.safetySystem.status,
+          verified: primaryResult.data.safetySystem.verification?.verified,
+          retriesUsed: primaryResult.data.safetySystem.retries?.used,
+          finalCounts: primaryResult.data.safetySystem.finalCounts
+        } : undefined
       };
 
       console.log('📝 Transformed response:', strategyForAllResult);
@@ -801,6 +914,7 @@ const StrategyForAllContainer: React.FC = () => {
 
       // Extract detailed error message
       let errorMessage = 'Unknown error occurred';
+      let safetySystemData = null;
 
       if (error.response?.data?.errors) {
         // Validation errors from backend
@@ -811,6 +925,18 @@ const StrategyForAllContainer: React.FC = () => {
         // General error message from backend
         errorMessage = error.response.data.error;
         console.error('📋 Backend error message:', errorMessage);
+
+        // Extract safety system metadata if present
+        if (error.response?.data?.safetySystem) {
+          safetySystemData = error.response.data.safetySystem;
+          console.log('🛡️ Safety System Response:', safetySystemData);
+
+          // Use safety system message if available (more detailed)
+          if (safetySystemData.message) {
+            errorMessage = safetySystemData.message;
+            console.log('📝 Using safety system message:', errorMessage);
+          }
+        }
 
         // Check for specific Facebook errors
         if (errorMessage.includes('promoted_object') || errorMessage.includes('custom_event_type')) {
@@ -825,6 +951,15 @@ const StrategyForAllContainer: React.FC = () => {
       console.error('📊 Full error object:', error);
       console.error('==========================================\n');
 
+      // Store error result with safety system metadata
+      const errorResult: StrategyForAllResponse = {
+        success: false,
+        message: errorMessage,
+        error: errorMessage,
+        safetySystem: safetySystemData
+      };
+
+      setCampaignResult(errorResult);
       setError(errorMessage);
       setPhase('error');
     }

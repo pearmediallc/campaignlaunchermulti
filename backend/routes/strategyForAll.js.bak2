@@ -381,8 +381,14 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     console.log('  - User selected pixel:', facebookAuth.selectedPixel?.id || 'NONE');
     console.log('  - Using pixel:', pixelId || 'NONE (no conversion tracking)');
 
-    // The model getter already decrypts the token (handles both encrypted and plain)
-    // So we use facebookAuth.accessToken directly without calling decryptToken()
+    // Check if token exists and decrypt it
+    if (!facebookAuth.accessToken) {
+      return res.status(401).json({
+        error: 'Facebook access token not found. Please reconnect your Facebook account.',
+        requiresReauth: true
+      });
+    }
+
     const decryptedToken = facebookAuth.accessToken;
 
     if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
@@ -443,97 +449,6 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       pageId: selectedPageId || facebookAuth.selectedPage.id,
       pixelId: pixelId
     });
-
-    // ============================================================================
-    // WEEK 1 ENHANCEMENT: PRE-CREATION VERIFICATION
-    // ============================================================================
-    // Verify environment safety BEFORE starting any Facebook API entity creation
-    // This check is read-only and does NOT modify existing functionality
-    // ============================================================================
-    const SafetyChecks = require('../services/SafetyChecks');
-
-    console.log('\n🔒 [Week 1 Safety] Running pre-creation verification...');
-
-    const verification = await SafetyChecks.verifyPreCreationState(
-      req.user.id,
-      userFacebookApi,
-      req.body.campaignName,
-      selectedAdAccountId
-    );
-
-    // Log verification result to database for audit trail
-    await SafetyChecks.logVerification(
-      req.user.id,
-      selectedAdAccountId,
-      req.body.campaignName,
-      verification,
-      null // jobId will be set in Week 2 when job tracking is implemented
-    );
-
-    // Block request if verification failed
-    if (!verification.canProceed) {
-      console.log('❌ [Week 1 Safety] Pre-creation verification FAILED - blocking request');
-
-      return res.status(400).json({
-        success: false,
-        error: 'Pre-creation verification failed',
-        reasons: verification.reasons,
-        details: verification.details,
-        verificationId: verification.id
-      });
-    }
-
-    // Show warnings if any (non-blocking)
-    if (verification.warnings && verification.warnings.length > 0) {
-      console.log('⚠️  [Week 1 Safety] Proceeding with warnings:');
-      verification.warnings.forEach(w => console.log(`   - ${w}`));
-    }
-
-    console.log('✅ [Week 1 Safety] Pre-creation verification PASSED - proceeding with creation\n');
-    // ============================================================================
-    // END WEEK 1 ENHANCEMENT
-    // ============================================================================
-
-    // ============================================================================
-    // WEEK 2-6 ENHANCEMENTS: JOB TRACKING + RETRY + VERIFICATION + ROLLBACK
-    // ============================================================================
-    const JobTracker = require('../services/JobTracker');
-    const RetryManager = require('../services/RetryManager');
-    const PostCreationVerification = require('../services/PostCreationVerification');
-    const RollbackManager = require('../services/RollbackManager');
-
-    // Calculate requested counts
-    const requestedAdSets = (campaignData.duplicationSettings?.adSetCount || 0) + 1;
-    const requestedAds = requestedAdSets; // 1 ad per ad set
-
-    console.log(`\n📋 [Week 2 Safety] Creating job for tracking...`);
-    console.log(`   Requested: ${requestedAdSets} ad sets, ${requestedAds} ads`);
-
-    // Create job and initialize slots
-    const job = await JobTracker.createJob({
-      userId: req.user.id,
-      adAccountId: selectedAdAccountId.replace('act_', ''),
-      campaignName: req.body.campaignName,
-      requestedAdSets,
-      requestedAds
-    });
-
-    console.log(`✅ [Week 2 Safety] Job created: ID ${job.id}`);
-
-    // Initialize slots (pre-allocate for idempotency protection)
-    await JobTracker.initializeSlots(job);
-    console.log(`✅ [Week 2 Safety] Slots initialized`);
-
-    // Mark job as started
-    await JobTracker.markJobStarted(job);
-    console.log(`✅ [Week 2 Safety] Job started\n`);
-
-    // Wrap entire creation in try-catch for comprehensive error handling
-    let safetySystemResult = null;
-    try {
-    // ============================================================================
-    // END WEEK 2-6 SETUP
-    // ============================================================================
 
     // Handle media files - uploadSingle uses .any() so files are in req.files array
     // Note: JSON field parsing is now done in parseFormDataJson middleware before validation
@@ -1100,39 +1015,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       console.log('  📦 dynamicCreativeEnabled:', templateData.dynamicCreativeEnabled);
       console.log('✅ Template data prepared');
 
-      // ============================================================================
-      // WEEK 3: WRAP BATCH CREATION WITH RETRY MANAGER
-      // ============================================================================
-      console.log(`\n🚀 Step 4: Executing batch creation with retry protection (${totalAdSets} ad sets)...`);
-
-      const batchResult = await RetryManager.executeWithRetry(
-        async () => {
-          return await batchService.createFromTemplateBatch(
-            templateData,
-            totalAdSets,
-            1
-          );
-        },
-        {
-          retryBudget: 5,
-          userId: req.user.id,
-          adAccountId: selectedAdAccountId.replace('act_', ''),
-          operationName: 'Batch Campaign Creation',
-          onRetry: async (retryInfo) => {
-            console.log(`🔄 [Week 3 Safety] Retry ${retryInfo.attempt}: ${retryInfo.error.message}`);
-            console.log(`   Next attempt in ${retryInfo.delay}ms`);
-
-            // Update job retry count
-            await job.update({
-              retryCount: retryInfo.attempt,
-              lastRetryAt: new Date(),
-              lastError: retryInfo.error.message
-            });
-          }
-        }
+      // Step 4: Execute batch creation (1 campaign + N ad sets + N ads)
+      console.log(`\n🚀 Step 4: Executing batch creation (${totalAdSets} ad sets)...`);
+      const batchResult = await batchService.createFromTemplateBatch(
+        templateData,
+        totalAdSets,  // Total ad sets user wants
+        1             // 1 ad per ad set
       );
-
-      console.log(`✅ [Week 3 Safety] Batch creation completed (with retry protection)`);
 
       // Step 5: Transform batch result to match existing response format
       console.log('\n🔄 Step 5: Transforming batch results...');
@@ -1142,89 +1031,6 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       const adsCreated = batchResult.adsCreated || 0;
 
       console.log(`📊 Batch results: Campaign=${campaignId}, AdSets=${adSetsCreated}/${totalAdSets}, Ads=${adsCreated}/${totalAdSets}`);
-
-      // ============================================================================
-      // WEEK 2 & 6: MARK ENTITIES CREATED IN SLOTS (TRACKING)
-      // ============================================================================
-      console.log(`\n📋 [Week 2 Safety] Updating slot tracking with created entities...`);
-
-      // Mark campaign slot as created
-      if (campaignId) {
-        await JobTracker.markEntityCreated(job, 'campaign', 1, {
-          id: campaignId,
-          name: campaignData.campaignName
-        });
-
-        // Update job with Facebook campaign ID
-        await job.update({ facebookCampaignId: campaignId });
-
-        console.log(`   ✅ Campaign slot marked (ID: ${campaignId})`);
-      }
-
-      // Mark ad set slots as created
-      // Note: Batch service doesn't return individual IDs, so we'll fetch from Facebook
-      if (adSetsCreated > 0) {
-        try {
-          const axios = require('axios');
-          const adSetsResponse = await axios.get(
-            `https://graph.facebook.com/v18.0/${campaignId}/adsets`,
-            {
-              params: {
-                access_token: decryptedToken,
-                fields: 'id,name',
-                limit: 100
-              }
-            }
-          );
-
-          const createdAdSets = adSetsResponse.data?.data || [];
-          console.log(`   📊 Fetched ${createdAdSets.length} ad sets from Facebook for tracking`);
-
-          // Mark each ad set slot
-          for (let i = 0; i < createdAdSets.length && i < adSetsCreated; i++) {
-            await JobTracker.markEntityCreated(job, 'ad_set', i + 1, {
-              id: createdAdSets[i].id,
-              name: createdAdSets[i].name
-            });
-          }
-
-          console.log(`   ✅ ${createdAdSets.length} ad set slots marked as created`);
-
-          // Mark ad slots (1 ad per ad set)
-          for (let i = 0; i < adsCreated; i++) {
-            const adSetId = createdAdSets[i]?.id;
-            if (adSetId) {
-              // Fetch ads for this ad set
-              const adsResponse = await axios.get(
-                `https://graph.facebook.com/v18.0/${adSetId}/ads`,
-                {
-                  params: {
-                    access_token: decryptedToken,
-                    fields: 'id,name',
-                    limit: 10
-                  }
-                }
-              );
-
-              const createdAds = adsResponse.data?.data || [];
-              if (createdAds.length > 0) {
-                await JobTracker.markEntityCreated(job, 'ad', i + 1, {
-                  id: createdAds[0].id,
-                  name: createdAds[0].name
-                });
-              }
-            }
-          }
-
-          console.log(`   ✅ ${adsCreated} ad slots marked as created`);
-
-        } catch (trackingError) {
-          console.warn(`   ⚠️  Could not fetch entity details for tracking: ${trackingError.message}`);
-          // Don't fail the request if tracking fails
-        }
-      }
-
-      console.log(`✅ [Week 2 Safety] Slot tracking updated\n`);
 
       // Build result format matching existing code expectations
       result = {
@@ -1272,46 +1078,42 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       console.log(`   API calls saved: ${batchResult.apiCallsSaved || 'N/A'}`);
 
       // ============================================================
-      // DEFICIT RECOVERY PHASE WITH IDEMPOTENCY PROTECTION
+      // DEFICIT RECOVERY PHASE - GUARANTEED COUNT DELIVERY
       // ============================================================
       if (adSetsCreated < totalAdSets) {
         console.log('\n🎯 ========== DEFICIT RECOVERY PHASE ==========');
 
-        // ============================================================================
-        // WEEK 6: IDEMPOTENCY CHECK - Verify actual count from Facebook
-        // ============================================================================
-        console.log(`\n🔒 [Week 6 Safety] Checking idempotency status...`);
+        // Query Facebook for ACTUAL ad set count
+        let actualCount = adSetsCreated;
+        try {
+          const axios = require('axios');
+          const actualAdSetsResponse = await axios.get(
+            `https://graph.facebook.com/v18.0/${campaignId}/adsets`,
+            {
+              params: {
+                access_token: decryptedToken,
+                fields: 'id,name',
+                limit: 100
+              }
+            }
+          );
+          actualCount = actualAdSetsResponse.data?.data?.length || actualCount;
+          console.log(`📊 Actual ad sets on Facebook: ${actualCount} (queried from API)`);
+        } catch (countError) {
+          console.warn(`⚠️ Could not query Facebook for ad set count, using batch result: ${actualCount}`);
+        }
 
-        const idempotencyStatus = await JobTracker.getIdempotencyStatus(job, userFacebookApi);
+        const deficit = totalAdSets - actualCount;
+        console.log(`📊 Target: ${totalAdSets} ad sets`);
+        console.log(`📊 Current: ${actualCount} ad sets`);
+        console.log(`📊 Deficit: ${deficit} ad sets`);
 
-        console.log(`📊 [Week 6 Safety] Idempotency Status:`);
-        console.log(`   Requested: ${idempotencyStatus.requested.adSets} ad sets`);
-        console.log(`   Tracked: ${idempotencyStatus.tracked.adSets} ad sets`);
-        console.log(`   Facebook Reality: ${idempotencyStatus.actual.adSets} ad sets`);
-        console.log(`   Remaining to create: ${idempotencyStatus.remaining.adSets} ad sets`);
+        if (deficit > 0) {
+          console.log(`\n🔄 Creating ${deficit} additional ad sets to reach target count...`);
 
-        if (idempotencyStatus.exceededLimit) {
-          console.log(`🚨 [Week 6 Safety] EXCEEDED LIMIT! Already have more than requested!`);
-          console.log(`   Requested: ${idempotencyStatus.requested.adSets}`);
-          console.log(`   Actual: ${idempotencyStatus.actual.adSets}`);
-          console.log(`   Skipping deficit recovery to prevent further excess`);
-        } else if (idempotencyStatus.atLimit) {
-          console.log(`✅ [Week 6 Safety] Already at requested limit - no deficit recovery needed`);
-        } else {
-          const deficit = idempotencyStatus.remaining.adSets;
-          const actualCount = idempotencyStatus.actual.adSets;
-
-          console.log(`\n📊 Deficit Recovery with Idempotency:`);
-          console.log(`   Target: ${totalAdSets} ad sets`);
-          console.log(`   Current (from Facebook): ${actualCount} ad sets`);
-          console.log(`   Deficit: ${deficit} ad sets (SAFE - won't exceed limit)`);
-
-          if (deficit > 0) {
-            console.log(`\n🔄 Creating ${deficit} additional ad sets to reach target count...`);
-
-            let recoveredCount = 0;
-            for (let d = 0; d < deficit; d++) {
-              const nextIndex = actualCount + d + 1;
+          let recoveredCount = 0;
+          for (let d = 0; d < deficit; d++) {
+            const nextIndex = actualCount + d + 1;
 
             try {
               console.log(`\n  📝 Creating deficit ad set ${d + 1}/${deficit} (Index: ${nextIndex})...`);
@@ -1338,37 +1140,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 delete adSetParams.adSetBudget;
               }
 
-              // 🔄 [Week 3 Safety] Wrap deficit ad set creation with retry
-              const newAdSet = await RetryManager.executeWithRetry(
-                async () => {
-                  return await userFacebookApi.createAdSet(adSetParams);
-                },
-                {
-                  retryBudget: 5,
-                  userId: req.user.id,
-                  adAccountId: selectedAdAccountId.replace('act_', ''),
-                  operationName: `Deficit Ad Set ${d + 1} Creation`,
-                  onRetry: async (retryInfo) => {
-                    console.log(`  🔄 [Week 3 Safety] Retry ${retryInfo.attempt} for deficit ad set ${d + 1}: ${retryInfo.error.message}`);
-                    await job.update({
-                      retryCount: job.retryCount + 1,
-                      lastRetryAt: new Date(),
-                      lastError: retryInfo.error.message
-                    });
-                  }
-                }
-              );
+              const newAdSet = await userFacebookApi.createAdSet(adSetParams);
 
               if (newAdSet) {
                 console.log(`  ✅ Deficit ad set ${d + 1} created: ${newAdSet.id}`);
-
-                // 📋 [Week 2 Safety] Track deficit ad set slot
-                const adSetSlotNumber = actualCount + d + 1; // Slot number for this deficit ad set
-                await JobTracker.markEntityCreated(job, 'ad_set', adSetSlotNumber, {
-                  id: newAdSet.id,
-                  name: adSetParams.adSetName
-                });
-                console.log(`  📋 [Week 2 Safety] Marked ad set slot ${adSetSlotNumber} as created`);
 
                 const adParams = {
                   ...campaignData,
@@ -1393,38 +1168,10 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                   headlineVariations: campaignData.headlineVariations
                 };
 
-                // 🔄 [Week 3 Safety] Wrap deficit ad creation with retry
-                const newAd = await RetryManager.executeWithRetry(
-                  async () => {
-                    return await userFacebookApi.createAd(adParams);
-                  },
-                  {
-                    retryBudget: 5,
-                    userId: req.user.id,
-                    adAccountId: selectedAdAccountId.replace('act_', ''),
-                    operationName: `Deficit Ad ${d + 1} Creation`,
-                    onRetry: async (retryInfo) => {
-                      console.log(`  🔄 [Week 3 Safety] Retry ${retryInfo.attempt} for deficit ad ${d + 1}: ${retryInfo.error.message}`);
-                      await job.update({
-                        retryCount: job.retryCount + 1,
-                        lastRetryAt: new Date(),
-                        lastError: retryInfo.error.message
-                      });
-                    }
-                  }
-                );
+                const newAd = await userFacebookApi.createAd(adParams);
 
                 if (newAd) {
                   console.log(`  ✅ Deficit ad ${d + 1} created: ${newAd.id}`);
-
-                  // 📋 [Week 2 Safety] Track deficit ad slot
-                  const adSlotNumber = actualCount + d + 1; // Slot number for this deficit ad
-                  await JobTracker.markEntityCreated(job, 'ad', adSlotNumber, {
-                    id: newAd.id,
-                    name: adParams.adName
-                  });
-                  console.log(`  📋 [Week 2 Safety] Marked ad slot ${adSlotNumber} as created`);
-
                   recoveredCount++;
                 }
               }
@@ -1819,48 +1566,6 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       result.totalAds = 1;
     }
 
-    // ============================================================================
-    // WEEK 2-6: POST-CREATION VERIFICATION & JOB COMPLETION
-    // ============================================================================
-
-    // Week 4: Post-creation verification
-    console.log(`\n🔍 [Week 4 Safety] Post-creation verification...`);
-    if (result.campaign?.id) {
-      const verificationResult = await PostCreationVerification.reconcileJobWithFacebook(job, userFacebookApi);
-
-      console.log(`✅ [Week 4 Safety] Verification complete:`);
-      console.log(`   Verified: ${verificationResult.verified}/${verificationResult.totalSlots}`);
-      console.log(`   Missing: ${verificationResult.missing}/${verificationResult.totalSlots}`);
-
-      if (verificationResult.discrepancies.length > 0) {
-        console.log(`⚠️  [Week 4 Safety] ${verificationResult.discrepancies.length} discrepancies detected`);
-      }
-
-      safetySystemResult = {
-        job,
-        verification: verificationResult,
-        finalCounts: {
-          adSets: result.totalAdSets,
-          ads: result.totalAds
-        }
-      };
-    }
-
-    // Week 6: Mark job as completed
-    console.log(`\n✅ [Week 6 Safety] Marking job ${job.id} as completed`);
-    await JobTracker.markJobCompleted(job);
-
-    // Get final progress summary
-    const progress = await JobTracker.getJobProgress(job);
-    console.log(`📊 [Week 6 Safety] Final progress:`);
-    console.log(`   Ad Sets: ${progress.adSets.created}/${progress.adSets.requested}`);
-    console.log(`   Ads: ${progress.ads.created}/${progress.ads.requested}`);
-    console.log(`   Retries used: ${progress.retries.count}/${progress.retries.budget}`);
-
-    // ============================================================================
-    // END WEEK 2-6 COMPLETION
-    // ============================================================================
-
     await AuditService.logRequest(req, 'strategyForAll.create', 'campaign', result.campaign?.id, 'success', null, {
       campaignId: result.campaign?.id,
       campaignName: campaignData.campaignName,
@@ -1868,13 +1573,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       strategyType: 'for-all',
       objective: campaignData.objective,
       budget: campaignData.dailyBudget || campaignData.lifetimeBudget,
-      adSetsCreated: result.totalAdSets || 1,
-      // Add safety system metadata
-      safetySystem: {
-        jobId: job.id,
-        verified: safetySystemResult?.verification?.verified || 0,
-        retriesUsed: progress.retries.count
-      }
+      adSetsCreated: result.totalAdSets || 1
     });
 
     // Store campaign in tracking table for management
@@ -1940,132 +1639,26 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     res.json({
       success: true,
-      message: 'Strategy for-all campaign created successfully with enterprise safety protections',
+      message: 'Strategy for-all initial campaign created successfully',
       data: {
         phase: 'initial',
         campaign: result.campaign,
         adSet: result.adSet,
         ads: result.ads,
-        adAccount: facebookAuth.selectedAdAccount,
-        page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' },
-        pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null,
-        postId: result.postId,
-        duplicationSettings: campaignData.duplicationSettings,
-        facebookPayload, // What was sent to Facebook for verification
-        // Add safety system info
-        safetySystem: {
-          jobId: job.id,
-          status: job.status,
-          verification: {
-            passed: true,
-            verified: safetySystemResult?.verification?.verified || 0,
-            discrepancies: safetySystemResult?.verification?.discrepancies?.length || 0
-          },
-          retries: {
-            used: progress.retries.count,
-            budget: progress.retries.budget
-          },
-          finalCounts: {
-            adSets: progress.adSets.created,
-            ads: progress.ads.created
-          }
-        }
+        adAccount: facebookAuth.selectedAdAccount, // Add ad account info
+        page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' }, // Add page info
+        pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null, // Add pixel info if used
+        postId: result.postId, // Include postId from result
+        duplicationSettings: campaignData.duplicationSettings, // Include duplication settings for frontend
+        facebookPayload // NEW: Include what was sent to Facebook for verification
       }
     });
-
-    // ============================================================================
-    // WEEK 3-6: COMPREHENSIVE ERROR HANDLING & ROLLBACK
-    // ============================================================================
   } catch (error) {
-    console.error('❌ [Safety System] Strategy for-all creation error:', error);
-    console.error('   Error type:', error.constructor.name);
-    console.error('   Error message:', error.message);
-
-    // Week 6: Handle job failure (decide retry vs rollback)
-    if (job) {
-      console.log(`\n🔄 [Week 6 Safety] Handling job failure...`);
-
-      const failureAction = await JobTracker.handleJobFailure(job, error, userFacebookApi);
-
-      console.log(`📋 [Week 6 Safety] Failure action: ${failureAction.action}`);
-
-      if (failureAction.action === 'rollback') {
-        console.log(`\n🔄 [Week 5 Safety] Initiating rollback...`);
-        console.log(`   Reason: ${failureAction.reason}`);
-
-        // Week 5: Execute rollback
-        const rollbackResult = await RollbackManager.executeRollback(job, userFacebookApi, {
-          userConfirmed: true,
-          reason: failureAction.reason
-        });
-
-        console.log(`✅ [Week 5 Safety] Rollback complete`);
-        console.log(`   Entities deleted: ${rollbackResult.entitiesDeleted}`);
-        console.log(`   Failed to delete: ${rollbackResult.entitiesFailed}`);
-
-        await AuditService.logRequest(req, 'strategyForAll.create', null, null, 'failure_rolled_back', error.message, {
-          adAccountId: selectedAdAccountId,
-          strategyType: 'for-all',
-          safetySystem: {
-            jobId: job.id,
-            action: 'rollback',
-            entitiesDeleted: rollbackResult.entitiesDeleted,
-            reason: failureAction.reason
-          }
-        });
-
-        return res.status(500).json({
-          success: false,
-          error: error.message,
-          safetySystem: {
-            jobId: job.id,
-            status: 'rolled_back',
-            action: failureAction.action,
-            reason: failureAction.reason,
-            rollback: {
-              executed: true,
-              entitiesDeleted: rollbackResult.entitiesDeleted,
-              entitiesFailed: rollbackResult.entitiesFailed
-            },
-            message: 'Campaign creation failed. All created entities have been rolled back to maintain clean state.'
-          }
-        });
-
-      } else if (failureAction.action === 'retry') {
-        console.log(`\n🔄 [Week 3 Safety] Will retry (attempt ${failureAction.attempt}/${failureAction.attempt + failureAction.remaining})`);
-
-        await AuditService.logRequest(req, 'strategyForAll.create', null, null, 'failure_will_retry', error.message, {
-          adAccountId: selectedAdAccountId,
-          strategyType: 'for-all',
-          safetySystem: {
-            jobId: job.id,
-            action: 'retry',
-            attempt: failureAction.attempt,
-            remaining: failureAction.remaining
-          }
-        });
-
-        return res.status(500).json({
-          success: false,
-          error: error.message,
-          safetySystem: {
-            jobId: job.id,
-            status: 'retrying',
-            action: failureAction.action,
-            attempt: failureAction.attempt,
-            remaining: failureAction.remaining,
-            message: `Campaign creation encountered an error. Retry ${failureAction.attempt} of ${failureAction.attempt + failureAction.remaining} will be attempted automatically.`
-          }
-        });
-      }
-    }
-
-    // Fallback error response (if no job or other error)
+    console.error('Strategy for-all creation error:', error);
     await AuditService.logRequest(req, 'strategyForAll.create', null, null, 'failure', error.message, {
       adAccountId: selectedAdAccountId,
       strategyType: 'for-all'
     });
-
     res.status(error.status || 500).json({
       success: false,
       error: error.message
@@ -2234,13 +1827,13 @@ router.get('/verify-post/:postId', authenticate, requireFacebookAuth, async (req
       where: { userId: req.user.id, isActive: true }
     });
 
-    // Model getter already decrypts the token
-    const decryptedToken = facebookAuth.accessToken;
-
-    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
+    let decryptedToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      decryptedToken = decryptToken(facebookAuth.accessToken);
+    } else {
       return res.status(401).json({
-        error: 'Invalid or missing access token',
-        requiresReauth: true
+        success: false,
+        error: 'Invalid access token format'
       });
     }
 
@@ -2477,12 +2070,20 @@ router.post('/multiply', authenticate, requireFacebookAuth, refreshFacebookToken
     }
 
     // Decrypt access token
-    // Model getter already decrypts the token
-    const decryptedToken = facebookAuth.accessToken;
-
-    if (!decryptedToken || !decryptedToken.startsWith('EAA')) {
+    let decryptedToken;
+    if (facebookAuth.accessToken.startsWith('{')) {
+      decryptedToken = decryptToken(facebookAuth.accessToken);
+      if (!decryptedToken) {
+        return res.status(401).json({
+          success: false,
+          error: 'Failed to decrypt access token',
+          requiresReauth: true
+        });
+      }
+    } else {
       return res.status(401).json({
-        error: 'Invalid or missing access token',
+        success: false,
+        error: 'Invalid access token format',
         requiresReauth: true
       });
     }
