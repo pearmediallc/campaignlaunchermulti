@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { verifyToken } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const FacebookAuth = require('../models/FacebookAuth');
 const axios = require('axios');
 const multer = require('multer');
@@ -41,7 +41,7 @@ const FACEBOOK_BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
  * GET /api/catalogs/list
  * Fetch all product catalogs for the user's business
  */
-router.get('/list', verifyToken, async (req, res) => {
+router.get('/list', authenticate, async (req, res) => {
   console.log('📋 [CATALOG] Fetching user catalogs...');
   console.log(`   User ID: ${req.user.id}`);
 
@@ -135,7 +135,7 @@ router.get('/list', verifyToken, async (req, res) => {
  * - vehicles: Automotive
  * - media_titles: Movies, TV shows, books
  */
-router.post('/create', verifyToken, async (req, res) => {
+router.post('/create', authenticate, async (req, res) => {
   console.log('🆕 [CATALOG] Creating new catalog...');
 
   try {
@@ -252,7 +252,7 @@ router.post('/create', verifyToken, async (req, res) => {
  * GET /api/catalogs/:catalogId/product-sets
  * Get all product sets for a catalog
  */
-router.get('/:catalogId/product-sets', verifyToken, async (req, res) => {
+router.get('/:catalogId/product-sets', authenticate, async (req, res) => {
   const { catalogId } = req.params;
   console.log(`📋 [CATALOG] Fetching product sets for catalog: ${catalogId}`);
 
@@ -314,7 +314,7 @@ router.get('/:catalogId/product-sets', verifyToken, async (req, res) => {
  * 1. Single product upload with image
  * 2. Bulk product upload via feed URL
  */
-router.post('/:catalogId/products', verifyToken, upload.single('image'), async (req, res) => {
+router.post('/:catalogId/products', authenticate, upload.single('image'), async (req, res) => {
   const { catalogId } = req.params;
   console.log(`🆕 [CATALOG] Adding products to catalog: ${catalogId}`);
 
