@@ -445,6 +445,51 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     });
 
     // ============================================================================
+    // FEATURE: CAMPAIGN NAME PREFIX CUSTOMIZATION
+    // ============================================================================
+    console.log('\n📝 [CAMPAIGN-NAME] Processing campaign name customization...');
+
+    const {
+      prefixOption = 'launcher', // 'launcher' | 'none' | 'custom'
+      customPrefix = '',
+      catalogId = null,
+      productSetId = null
+    } = req.body;
+
+    let baseCampaignName = req.body.campaignName;
+    let finalCampaignName = baseCampaignName;
+
+    console.log(`   Original campaign name: "${baseCampaignName}"`);
+    console.log(`   Prefix option: "${prefixOption}"`);
+
+    if (prefixOption === 'launcher') {
+      finalCampaignName = `[Launcher] ${baseCampaignName}`;
+      console.log(`   ✅ Applied [Launcher] prefix: "${finalCampaignName}"`);
+    } else if (prefixOption === 'custom' && customPrefix.trim()) {
+      finalCampaignName = `[${customPrefix.trim()}] ${baseCampaignName}`;
+      console.log(`   ✅ Applied custom prefix: "${finalCampaignName}"`);
+    } else if (prefixOption === 'none') {
+      finalCampaignName = baseCampaignName;
+      console.log(`   ✅ No prefix applied (exact name): "${finalCampaignName}"`);
+    }
+
+    // Override the campaign name in req.body for all downstream code
+    req.body.campaignName = finalCampaignName;
+
+    // Log catalog configuration if provided
+    if (catalogId) {
+      console.log(`   📦 Product Catalog ID: ${catalogId}`);
+      if (productSetId) {
+        console.log(`   📦 Product Set ID: ${productSetId}`);
+      }
+    }
+
+    console.log('✅ [CAMPAIGN-NAME] Campaign name customization complete\n');
+    // ============================================================================
+    // END CAMPAIGN NAME PREFIX CUSTOMIZATION
+    // ============================================================================
+
+    // ============================================================================
     // WEEK 1 ENHANCEMENT: PRE-CREATION VERIFICATION
     // ============================================================================
     // Verify environment safety BEFORE starting any Facebook API entity creation
@@ -771,6 +816,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       costCap: req.body.costCap,
       minRoas: req.body.minRoas,
       conversionLocation: req.body.conversionLocation,  // Required - user must select
+
+      // ============================================================================
+      // FEATURE: PRODUCT CATALOG SUPPORT
+      // ============================================================================
+      catalogId: catalogId,  // Facebook Product Catalog ID for dynamic product ads
+      productSetId: productSetId,  // Specific product set within catalog (optional)
+      // ============================================================================
 
       // Budget fields for createCampaignStructure (pass through both formats for compatibility)
       dailyBudget: req.body.budgetLevel === 'campaign'

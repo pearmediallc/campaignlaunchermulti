@@ -15,6 +15,8 @@ import { StrategyForAllFormData } from '../../../types/strategyForAll';
 import CampaignSection from './CampaignSection';
 import AdSetSection from './AdSetSection';
 import AdSection from './AdSection';
+import CampaignNamePrefix from '../CampaignNamePrefix';
+import ProductCatalogSelector from '../ProductCatalogSelector';
 import TemplateManager from '../../Templates/TemplateManager';
 import { TemplateData, templateApi } from '../../../services/templateApi';
 import { ConfirmationDialog } from '../ConfirmationDialog';
@@ -33,6 +35,15 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
   const [pendingFormData, setPendingFormData] = useState<StrategyForAllFormData | null>(null);
   const [loadedTemplateId, setLoadedTemplateId] = useState<number | null>(null);
   const { resources } = useFacebookResources();
+
+  // ============================================================================
+  // NEW FEATURES: Campaign Name Prefix & Product Catalog
+  // ============================================================================
+  const [prefixOption, setPrefixOption] = useState<'launcher' | 'none' | 'custom'>('launcher');
+  const [customPrefix, setCustomPrefix] = useState('');
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
+  const [selectedProductSetId, setSelectedProductSetId] = useState<string | null>(null);
+  // ============================================================================
 
   // System default values (fallback if no user template)
   const systemDefaults: StrategyForAllFormData = {
@@ -246,7 +257,26 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
       videoThumbnailFrameIndex: (data as any).videoThumbnailFrameIndex,
       mediaType: data.mediaType
     });
-    setPendingFormData(data);
+
+    // ============================================================================
+    // NEW FEATURES: Add prefix and catalog options to form data
+    // ============================================================================
+    const enhancedData: StrategyForAllFormData = {
+      ...data,
+      prefixOption,
+      customPrefix: prefixOption === 'custom' ? customPrefix : undefined,
+      catalogId: selectedCatalogId || undefined,
+      productSetId: selectedProductSetId || undefined
+    };
+    console.log('✅ [Phase1Setup] Enhanced with prefix and catalog:', {
+      prefixOption,
+      customPrefix: prefixOption === 'custom' ? customPrefix : undefined,
+      catalogId: selectedCatalogId,
+      productSetId: selectedProductSetId
+    });
+    // ============================================================================
+
+    setPendingFormData(enhancedData);
     setConfirmDialogOpen(true);
   });
 
@@ -385,6 +415,25 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
 
         {/* Ad Section */}
         <AdSection />
+
+        {/* ============================================================================
+            NEW FEATURES: Campaign Name Prefix & Product Catalog
+            ============================================================================ */}
+        <CampaignNamePrefix
+          campaignName={methods.watch('campaignName') || ''}
+          prefixOption={prefixOption}
+          customPrefix={customPrefix}
+          onPrefixOptionChange={setPrefixOption}
+          onCustomPrefixChange={setCustomPrefix}
+        />
+
+        <ProductCatalogSelector
+          onCatalogSelect={(catalogId, productSetId) => {
+            setSelectedCatalogId(catalogId);
+            setSelectedProductSetId(productSetId || null);
+          }}
+        />
+        {/* ============================================================================ */}
 
         {/* Submit Button */}
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>

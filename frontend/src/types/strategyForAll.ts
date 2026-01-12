@@ -179,6 +179,15 @@ export interface StrategyForAllFormData {
   bidAmount?: number;  // For LOWEST_COST_WITH_BID_CAP strategy
   campaignSpendingLimit?: number;
   manualPixelId?: string;
+
+  // ============================================================================
+  // NEW FEATURES: Campaign Name Prefix & Product Catalog
+  // ============================================================================
+  prefixOption?: 'launcher' | 'none' | 'custom';  // Campaign name prefix option
+  customPrefix?: string;  // Custom prefix text (when prefixOption is 'custom')
+  catalogId?: string;  // Facebook Product Catalog ID for dynamic product ads
+  productSetId?: string;  // Specific product set within catalog (optional)
+  // ============================================================================
 }
 
 export interface StrategyForAllResponse {
@@ -275,6 +284,57 @@ export interface PostIdResponse {
   error?: string;
   requiresManualInput?: boolean;
 }
+
+// ============================================================================
+// PRODUCT CATALOG TYPES
+// ============================================================================
+export type CatalogVertical =
+  | 'commerce'
+  | 'destinations'
+  | 'flights'
+  | 'home_listings'
+  | 'hotels'
+  | 'vehicles'
+  | 'media_titles';
+
+export interface ProductCatalog {
+  id: string;
+  name: string;
+  productCount: number;
+  vertical: CatalogVertical;
+}
+
+export interface ProductSet {
+  id: string;
+  name: string;
+  productCount: number;
+  filter?: any;
+}
+
+export interface CatalogListResponse {
+  success: boolean;
+  catalogs: ProductCatalog[];
+  message?: string;
+}
+
+export interface ProductSetsResponse {
+  success: boolean;
+  productSets: ProductSet[];
+}
+
+export interface CreateCatalogRequest {
+  name: string;
+  vertical: CatalogVertical;
+  flightCatalogSettings?: any;
+  daDisplaySettings?: any;
+}
+
+export interface CreateCatalogResponse {
+  success: boolean;
+  catalog: ProductCatalog;
+  error?: string;
+}
+// ============================================================================
 
 export interface DuplicationProgress {
   completed: number;

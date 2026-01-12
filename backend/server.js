@@ -153,6 +153,9 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/ads', adRoutes);
 app.use('/api/media', mediaRoutes);
 
+// Product Catalog management routes (for Strategy-For-All dynamic product ads)
+app.use('/api/catalogs', require('./routes/catalogs'));
+
 // New resource management routes (separate from existing auth)
 app.use('/api/resources', require('./routes/resourceManager'));
 
