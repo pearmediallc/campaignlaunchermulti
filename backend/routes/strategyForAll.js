@@ -548,7 +548,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     const RollbackManager = require('../services/RollbackManager');
 
     // Calculate requested counts (use req.body since campaignData isn't defined yet)
-    const requestedAdSets = (req.body.duplicationSettings?.adSetCount || 0) + 1;
+    const requestedAdSets = (parseInt(req.body.duplicationSettings?.adSetCount) || 0) + 1;
     const requestedAds = requestedAdSets; // 1 ad per ad set
 
     console.log(`\n📋 [Week 2 Safety] Creating job for tracking...`);
@@ -1019,7 +1019,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     // The method uses media hashes directly, ensuring all ads share the same creative
     // ============================================================================
 
-    const adSetCount = campaignData.duplicationSettings?.adSetCount || 0;
+    const adSetCount = parseInt(campaignData.duplicationSettings?.adSetCount) || 0;
     const totalAdSets = adSetCount + 1; // Total = user's requested count + 1 initial
 
     console.log(`\n🚀 ===============================================`);
