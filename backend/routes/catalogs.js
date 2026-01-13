@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
-const FacebookAuth = require('../models/FacebookAuth');
+const db = require('../models');
 const axios = require('axios');
 const multer = require('multer');
 const FormData = require('form-data');
@@ -49,7 +49,7 @@ router.get('/list', authenticate, async (req, res) => {
     const userId = req.user.id;
 
     // Get user's Facebook auth
-    const facebookAuth = await FacebookAuth.findOne({
+    const facebookAuth = await db.FacebookAuth.findOne({
       where: { userId, isActive: true }
     });
 
@@ -158,7 +158,7 @@ router.post('/create', authenticate, async (req, res) => {
     console.log(`📝 [CATALOG] Name: "${name}", Vertical: "${vertical}"`);
 
     // Get user's Facebook auth
-    const facebookAuth = await FacebookAuth.findOne({
+    const facebookAuth = await db.FacebookAuth.findOne({
       where: { userId, isActive: true }
     });
 
@@ -259,7 +259,7 @@ router.get('/:catalogId/product-sets', authenticate, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const facebookAuth = await FacebookAuth.findOne({
+    const facebookAuth = await db.FacebookAuth.findOne({
       where: { userId, isActive: true }
     });
 
@@ -339,7 +339,7 @@ router.post('/:catalogId/products', authenticate, upload.single('image'), async 
       feedSchedule
     } = req.body;
 
-    const facebookAuth = await FacebookAuth.findOne({
+    const facebookAuth = await db.FacebookAuth.findOne({
       where: { userId, isActive: true }
     });
 

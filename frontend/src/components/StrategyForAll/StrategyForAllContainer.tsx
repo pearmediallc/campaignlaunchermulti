@@ -629,6 +629,26 @@ const StrategyForAllContainer: React.FC = () => {
         console.log('✅ [Container] Added _multipleCampaigns to workingCampaignData');
       }
 
+      // CRITICAL: Include campaign name prefix customization
+      if (data.prefixOption) {
+        workingCampaignData.prefixOption = data.prefixOption;
+        console.log('✅ [Container] Added prefixOption:', data.prefixOption);
+      }
+      if (data.customPrefix) {
+        workingCampaignData.customPrefix = data.customPrefix;
+        console.log('✅ [Container] Added customPrefix:', data.customPrefix);
+      }
+
+      // CRITICAL: Include product catalog options
+      if (data.catalogId) {
+        workingCampaignData.catalogId = data.catalogId;
+        console.log('✅ [Container] Added catalogId:', data.catalogId);
+      }
+      if (data.productSetId) {
+        workingCampaignData.productSetId = data.productSetId;
+        console.log('✅ [Container] Added productSetId:', data.productSetId);
+      }
+
       // Log to verify budget is being set
       console.log('💰 Budget configuration:', {
         budgetType: workingCampaignData.budgetType,
