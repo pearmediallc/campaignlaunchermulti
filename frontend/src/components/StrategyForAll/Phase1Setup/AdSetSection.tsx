@@ -1278,7 +1278,7 @@ const AdSetSection: React.FC = () => {
                 inputProps={{ min: 0, max: 49, step: 1 }}
                 helperText={
                   error?.message ||
-                  "Enter 0 to create only 1-1-1 structure (1 campaign, 1 ad set, 1 ad). Enter 1-49 to duplicate ad sets."
+                  "Number of ad sets to duplicate AFTER the initial one. Total ad sets = (this number + 1). Example: Enter 5 → Creates 6 total (1 initial + 5 duplicates). Enter 0 → Creates 1-1-1 structure only."
                 }
                 error={!!error}
               />

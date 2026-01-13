@@ -1610,7 +1610,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             const adSetParams = {
               ...campaignData,
               campaignId: result.campaign.id,
-              adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+              // Use campaign name AS-IS (prefix already applied above)
+              adSetName: `${campaignData.campaignName} - AdSet ${i + 2}`,
             };
 
             // CRITICAL: Only set ad set budget if NOT using Campaign Budget Optimization
@@ -1633,7 +1634,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               const adParams = {
                 ...campaignData,
                 adsetId: newAdSet.id,
-                adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
+                // Use campaign name AS-IS (prefix already applied above)
+                adName: `${campaignData.campaignName} - Ad ${i + 2}`,
                 postId: result.postId,
                 // Explicitly ensure these creative fields are passed
                 displayLink: campaignData.displayLink,
@@ -1676,7 +1678,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               campaignId: result.campaign.id,
               campaignName: campaignData.campaignName,
               adsetId: null,
-              adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+              // Use campaign name AS-IS (prefix already applied above)
+              adsetName: `${campaignData.campaignName} - AdSet ${i + 2}`,
               entityType: 'adset',
               error: adSetError,
               strategyType: 'strategyForAll',
@@ -1745,7 +1748,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               const adSetParams = {
                 ...campaignData,
                 campaignId: result.campaign.id,
-                adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                // Use campaign name AS-IS (prefix already applied above)
+                adSetName: `${campaignData.campaignName} - AdSet ${nextIndex}`,
               };
 
               if (campaignData.budgetLevel === 'adset') {
@@ -1765,7 +1769,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 const adParams = {
                   ...campaignData,
                   adsetId: newAdSet.id,
-                  adName: `[Launcher] ${campaignData.campaignName} - Ad ${nextIndex}`,
+                  // Use campaign name AS-IS (prefix already applied above)
+                  adName: `${campaignData.campaignName} - Ad ${nextIndex}`,
                   postId: result.postId,
                   displayLink: campaignData.displayLink,
                   url: campaignData.url,
@@ -1803,7 +1808,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 campaignId: result.campaign.id,
                 campaignName: campaignData.campaignName,
                 adsetId: null,
-                adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                // Use campaign name AS-IS (prefix already applied above)
+                adsetName: `${campaignData.campaignName} - AdSet ${nextIndex}`,
                 entityType: 'adset',
                 error: deficitError,
                 strategyType: 'strategyForAll',

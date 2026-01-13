@@ -362,6 +362,13 @@ const Strategy150Container: React.FC = () => {
         headline: campaignData.headline,
         description: campaignData.description || '',
 
+        // ============================================================================
+        // NEW FEATURES: Campaign Name Prefix (Strategy-150)
+        // ============================================================================
+        prefixOption: (campaignData as any).prefixOption || 'launcher',
+        customPrefix: (campaignData as any).customPrefix || undefined,
+        // ============================================================================
+
         // CRITICAL: Include objective from Strategy150 data
         objective: campaignData.objective || 'OUTCOME_LEADS',
         buyingType: campaignData.buyingType || 'AUCTION',

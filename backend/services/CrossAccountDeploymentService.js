@@ -1654,7 +1654,8 @@ class CrossAccountDeploymentService {
                 const adSetParams = {
                   ...targetCampaignData,
                   campaignId: campaignId,
-                  adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${pairNumber + 1}`, // Use pairNumber for sequential numbering
+                  // Use campaign name AS-IS (prefix already applied in route if user chose one)
+                  adSetName: `${campaignData.campaignName} - AdSet ${pairNumber + 1}`, // Use pairNumber for sequential numbering
                 };
 
               // Budget handling (CBO vs ABO)
@@ -1676,7 +1677,8 @@ class CrossAccountDeploymentService {
                   const adParams = {
                     ...targetCampaignData,
                     adsetId: newAdSet.id,
-                    adName: `[Launcher] ${campaignData.campaignName} - Ad ${pairNumber + 1}`, // Use pairNumber for sequential numbering
+                    // Use campaign name AS-IS (prefix already applied in route if user chose one)
+                    adName: `${campaignData.campaignName} - Ad ${pairNumber + 1}`, // Use pairNumber for sequential numbering
                     postId: initialResult.postId,
                     displayLink: campaignData.displayLink,
                     url: campaignData.url,

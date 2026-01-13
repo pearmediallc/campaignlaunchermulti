@@ -352,8 +352,9 @@ class FacebookAPI {
       const url = `${this.baseURL}/act_${this.adAccountId}/campaigns`;
 
       // Use passed parameters instead of hardcoded values
+      // Note: campaignData.name already includes user's chosen prefix (if any)
       const params = {
-        name: `[Launcher] ${campaignData.name}`,
+        name: campaignData.name,
         objective: campaignData.objective || 'OUTCOME_LEADS',
         status: campaignData.status || 'ACTIVE',
         // Properly handle special ad categories
@@ -447,8 +448,9 @@ class FacebookAPI {
 
       // ✅ FIX: Use custom name if provided, otherwise default to "AdSet Main"
       // This allows duplicates to have "AdSet 2", "AdSet 3", etc. while initial keeps "AdSet Main"
+      // Note: campaignName already includes user's chosen prefix (if any)
       let params = {
-        name: adSetData.adSetName || adSetData.name || `[Launcher] ${adSetData.campaignName} - AdSet Main`,
+        name: adSetData.adSetName || adSetData.name || `${adSetData.campaignName} - AdSet Main`,
         campaign_id: adSetData.campaignId,
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
@@ -1484,7 +1486,8 @@ class FacebookAPI {
       let adName = adData.name;
       if (!adName) {
         // No custom name - auto-generate
-        // Format: [Launcher] Campaign Name - Ad MM/DD/YYYY - Editor Name
+        // Format: Campaign Name - Ad MM/DD/YYYY - Editor Name
+        // Note: campaignName already includes user's chosen prefix (if any)
         const now = new Date();
         const dateStr = `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}/${now.getFullYear()}`;
 
@@ -1494,10 +1497,10 @@ class FacebookAPI {
         const editorToUse = adData.dynamicEditorName || adData.editorName;
 
         if (editorToUse) {
-          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr} - ${editorToUse.toUpperCase()}`;
+          adName = `${adData.campaignName} - Ad ${dateStr} - ${editorToUse.toUpperCase()}`;
           console.log('✅ Ad name with editor:', adName);
         } else {
-          adName = `[Launcher] ${adData.campaignName} - Ad ${dateStr}`;
+          adName = `${adData.campaignName} - Ad ${dateStr}`;
           console.log('✅ Ad name without editor (local upload):', adName);
         }
       } else {
@@ -2794,10 +2797,10 @@ class FacebookAPI {
 
           let adName;
           if (variationEditorName) {
-            adName = `[Launcher] ${campaignData.campaignName} - Ad V${i + 1} - ${dateStr} - ${variationEditorName.toUpperCase()}`;
+            adName = `${campaignData.campaignName} - Ad V${i + 1} - ${dateStr} - ${variationEditorName.toUpperCase()}`;
             console.log(`✅ Variation ${i + 1} AD NAME WITH EDITOR: "${adName}"`);
           } else {
-            adName = `[Launcher] ${campaignData.campaignName} - Ad V${i + 1} - ${dateStr}`;
+            adName = `${campaignData.campaignName} - Ad V${i + 1} - ${dateStr}`;
             console.log(`⚠️  Variation ${i + 1} AD NAME WITHOUT EDITOR: "${adName}"`);
           }
           console.log('================================================\n');
@@ -4432,11 +4435,11 @@ class FacebookAPI {
 
             let adName;
             if (editorToUse) {
-              adName = `[Launcher] ${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr} - ${editorToUse.toUpperCase()}`;
-              console.log(`✅ Ad Copy ${i + 1} - Using [Launcher] prefix with date (${dateStr}) and editor: ${editorToUse.toUpperCase()}`);
+              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr} - ${editorToUse.toUpperCase()}`;
+              console.log(`✅ Ad Copy ${i + 1} - Using campaign name with date (${dateStr}) and editor: ${editorToUse.toUpperCase()}`);
             } else {
-              adName = `[Launcher] ${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr}`;
-              console.log(`ℹ️  Ad Copy ${i + 1} - Using [Launcher] prefix with date (${dateStr}) - No editor name`);
+              adName = `${formData.campaignName} - Ad Copy ${i + 1} - ${dateStr}`;
+              console.log(`ℹ️  Ad Copy ${i + 1} - Using campaign name with date (${dateStr}) - No editor name`);
             }
 
             // Check if we need to use asset_feed_spec (for dynamic creative OR text variations)

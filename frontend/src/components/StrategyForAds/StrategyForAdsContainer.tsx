@@ -410,6 +410,13 @@ const StrategyForAdsContainer: React.FC = () => {
         headline: campaignData.headline,
         description: campaignData.description || '',
 
+        // ============================================================================
+        // NEW FEATURES: Campaign Name Prefix (Strategy-For-Ads)
+        // ============================================================================
+        prefixOption: (campaignData as any).prefixOption || 'launcher',
+        customPrefix: (campaignData as any).customPrefix || undefined,
+        // ============================================================================
+
         // CRITICAL: Include objective from StrategyForAll data
         objective: campaignData.objective || 'OUTCOME_LEADS',
         buyingType: campaignData.buyingType || 'AUCTION',

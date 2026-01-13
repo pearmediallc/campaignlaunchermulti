@@ -19,6 +19,7 @@ import TemplateManager from '../../Templates/TemplateManager';
 import { TemplateData, templateApi } from '../../../services/templateApi';
 import { ConfirmationDialog } from '../ConfirmationDialog';
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
+import CampaignNamePrefix from '../../shared/CampaignNamePrefix';
 
 
 interface Phase1SetupProps {
@@ -33,6 +34,13 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
   const [pendingFormData, setPendingFormData] = useState<Strategy150FormData | null>(null);
   const [loadedTemplateId, setLoadedTemplateId] = useState<number | null>(null);
   const { resources } = useFacebookResources();
+
+  // ============================================================================
+  // NEW FEATURES: Campaign Name Prefix (Strategy-150)
+  // ============================================================================
+  const [prefixOption, setPrefixOption] = useState<'launcher' | 'none' | 'custom'>('launcher');
+  const [customPrefix, setCustomPrefix] = useState('');
+  // ============================================================================
 
   // System default values (fallback if no user template)
   const systemDefaults: Strategy150FormData = {
@@ -242,11 +250,26 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
     // Show confirmation dialog before submitting
     console.log('📋 [Phase1Setup] Form submitted with data:', {
       hasVideoThumbnail: !!(data as any).videoThumbnail,
-      videoThumbnailName: (data as any).videoThumbnail?.name,
+      videoThumbnailName: (data as any).videoThumbnailFrameIndex,
       videoThumbnailFrameIndex: (data as any).videoThumbnailFrameIndex,
       mediaType: data.mediaType
     });
-    setPendingFormData(data);
+
+    // ============================================================================
+    // NEW FEATURES: Add prefix options to form data (Strategy-150)
+    // ============================================================================
+    const enhancedData: Strategy150FormData = {
+      ...data,
+      prefixOption,
+      customPrefix: prefixOption === 'custom' ? customPrefix : undefined
+    };
+    console.log('✅ [Phase1Setup] Enhanced with prefix:', {
+      prefixOption,
+      customPrefix: prefixOption === 'custom' ? customPrefix : undefined
+    });
+    // ============================================================================
+
+    setPendingFormData(enhancedData);
     setConfirmDialogOpen(true);
   });
 
@@ -385,6 +408,18 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
 
         {/* Ad Section */}
         <AdSection />
+
+        {/* ============================================================================
+            NEW FEATURES: Campaign Name Prefix (Strategy-150)
+            ============================================================================ */}
+        <CampaignNamePrefix
+          campaignName={methods.watch('campaignName') || ''}
+          prefixOption={prefixOption}
+          customPrefix={customPrefix}
+          onPrefixOptionChange={setPrefixOption}
+          onCustomPrefixChange={setCustomPrefix}
+        />
+        {/* ============================================================================ */}
 
         {/* Submit Button */}
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>

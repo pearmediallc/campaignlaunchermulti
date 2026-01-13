@@ -4,6 +4,13 @@ export interface StrategyForAdsFormData {
   budgetType?: 'daily' | 'lifetime';
   conversionLocation?: 'website' | 'calls';
 
+  // ============================================================================
+  // NEW FEATURES: Campaign Name Prefix Customization (Strategy-For-Ads)
+  // ============================================================================
+  prefixOption?: 'launcher' | 'none' | 'custom';
+  customPrefix?: string;
+  // ============================================================================
+
   // Campaign Level Extensions
   buyingType: 'AUCTION' | 'RESERVED';
   objective: 'OUTCOME_LEADS' | 'PHONE_CALL' | 'OUTCOME_SALES';

@@ -455,6 +455,41 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       });
     }
 
+    // ============================================================================
+    // FEATURE: CAMPAIGN NAME PREFIX CUSTOMIZATION (Strategy-For-Ads)
+    // ============================================================================
+    console.log('\n📝 [CAMPAIGN-NAME] Processing campaign name customization...');
+
+    const {
+      prefixOption = 'launcher', // 'launcher' | 'none' | 'custom'
+      customPrefix = ''
+    } = req.body;
+
+    let baseCampaignName = req.body.campaignName;
+    let finalCampaignName = baseCampaignName;
+
+    console.log(`   Original campaign name: "${baseCampaignName}"`);
+    console.log(`   Prefix option: "${prefixOption}"`);
+
+    if (prefixOption === 'launcher') {
+      finalCampaignName = `[Launcher] ${baseCampaignName}`;
+      console.log(`   ✅ Applied [Launcher] prefix: "${finalCampaignName}"`);
+    } else if (prefixOption === 'custom' && customPrefix.trim()) {
+      finalCampaignName = `[${customPrefix.trim()}] ${baseCampaignName}`;
+      console.log(`   ✅ Applied custom prefix: "${finalCampaignName}"`);
+    } else if (prefixOption === 'none') {
+      finalCampaignName = baseCampaignName;
+      console.log(`   ✅ No prefix applied (exact name): "${finalCampaignName}"`);
+    }
+
+    // Override the campaign name in req.body for all downstream code
+    req.body.campaignName = finalCampaignName;
+
+    console.log('✅ [CAMPAIGN-NAME] Campaign name customization complete\n');
+    // ============================================================================
+    // END CAMPAIGN NAME PREFIX CUSTOMIZATION
+    // ============================================================================
+
     // Create FacebookAPI instance with SELECTED resources (switched or original)
     const userFacebookApi = new FacebookAPI({
       accessToken: decryptedToken,
@@ -1123,7 +1158,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
             const adSetParams = {
               ...campaignData,
               campaignId: result.campaign.id,
-              adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+              // Use campaign name AS-IS (prefix already applied above if user chose one)
+              adSetName: `${campaignData.campaignName} - AdSet ${i + 2}`,
             };
 
             // CRITICAL FIX: Only set ad set budget if NOT using Campaign Budget Optimization
@@ -1159,7 +1195,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               const adParams = {
                 ...campaignData,
                 adsetId: newAdSet.id,  // Note: lowercase 's' in adsetId to match Facebook API expectation
-                adName: `[Launcher] ${campaignData.campaignName} - Ad ${i + 2}`,
+                // Use campaign name AS-IS (prefix already applied above if user chose one)
+                adName: `${campaignData.campaignName} - Ad ${i + 2}`,
                 postId: result.postId,
                 // Explicitly ensure these creative fields are passed
                 displayLink: campaignData.displayLink,
@@ -1213,7 +1250,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               campaignId: result.campaign.id,
               campaignName: currentCampaignName,
               adsetId: null,
-              adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${i + 2}`,
+              // Use campaign name AS-IS (prefix already applied above if user chose one)
+              adsetName: `${campaignData.campaignName} - AdSet ${i + 2}`,
               adId: null,
               adName: null,
               entityType: 'adset',
@@ -1361,7 +1399,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               const adSetParams = {
                 ...campaignData,
                 campaignId: result.campaign.id,
-                adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                // Use campaign name AS-IS (prefix already applied above if user chose one)
+                adSetName: `${campaignData.campaignName} - AdSet ${nextIndex}`,
               };
 
               // Budget handling (CBO vs ABO)
@@ -1384,7 +1423,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 const adParams = {
                   ...campaignData,
                   adsetId: newAdSet.id,
-                  adName: `[Launcher] ${campaignData.campaignName} - Ad ${nextIndex}`,
+                  // Use campaign name AS-IS (prefix already applied above if user chose one)
+                  adName: `${campaignData.campaignName} - Ad ${nextIndex}`,
                   postId: result.postId,
                   displayLink: campaignData.displayLink,
                   url: campaignData.url,
@@ -1428,7 +1468,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 campaignId: result.campaign.id,
                 campaignName: currentCampaignName,
                 adsetId: null,
-                adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                // Use campaign name AS-IS (prefix already applied above if user chose one)
+                adsetName: `${campaignData.campaignName} - AdSet ${nextIndex}`,
                 adId: null,
                 adName: null,
                 entityType: 'adset',

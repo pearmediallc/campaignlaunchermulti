@@ -296,7 +296,8 @@ class Strategy150DuplicationService {
     // Create ad sets sequentially with delays to avoid rate limits
     for (let i = 1; i <= 50; i++) {
       const adSetData = {
-        name: `[Launcher] ${campaignName} - AdSet ${i}`,
+        // Use campaign name AS-IS (prefix already applied in route if user chose one)
+        name: `${campaignName} - AdSet ${i}`,
         campaign_id: campaignId,
         status: 'ACTIVE',
         billing_event: originalAdSetConfig?.billing_event || 'IMPRESSIONS',
@@ -397,11 +398,12 @@ class Strategy150DuplicationService {
       const adSet = adSets[i];
 
       // Generate ad name with proper naming convention
+      // Note: campaignName already includes user's chosen prefix (if any)
       let adName;
       if (editorName) {
-        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr} - ${editorName.toUpperCase()}`;
+        adName = `${campaignName} - Ad ${i + 1} - ${dateStr} - ${editorName.toUpperCase()}`;
       } else {
-        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr}`;
+        adName = `${campaignName} - Ad ${i + 1} - ${dateStr}`;
       }
 
       const adData = {

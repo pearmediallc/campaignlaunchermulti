@@ -21,6 +21,7 @@ import TemplateManager from '../../Templates/TemplateManager';
 import { TemplateData, templateApi } from '../../../services/templateApi';
 import { ConfirmationDialog } from '../ConfirmationDialog';
 import { useFacebookResources } from '../../../hooks/useFacebookResources';
+import CampaignNamePrefix from '../../shared/CampaignNamePrefix';
 
 
 interface Phase1SetupProps {
@@ -35,6 +36,13 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
   const [pendingFormData, setPendingFormData] = useState<StrategyForAdsFormData | null>(null);
   const [loadedTemplateId, setLoadedTemplateId] = useState<number | null>(null);
   const { resources } = useFacebookResources();
+
+  // ============================================================================
+  // NEW FEATURES: Campaign Name Prefix (Strategy-For-Ads)
+  // ============================================================================
+  const [prefixOption, setPrefixOption] = useState<'launcher' | 'none' | 'custom'>('launcher');
+  const [customPrefix, setCustomPrefix] = useState('');
+  // ============================================================================
 
   // System default values (fallback if no user template)
   const systemDefaults: StrategyForAdsFormData = {
@@ -304,7 +312,22 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
       videoThumbnailFrameIndex: (data as any).videoThumbnailFrameIndex,
       mediaType: data.mediaType
     });
-    setPendingFormData(data);
+
+    // ============================================================================
+    // NEW FEATURES: Add prefix options to form data (Strategy-For-Ads)
+    // ============================================================================
+    const enhancedData: StrategyForAdsFormData = {
+      ...data,
+      prefixOption,
+      customPrefix: prefixOption === 'custom' ? customPrefix : undefined
+    };
+    console.log('✅ [Phase1Setup] Enhanced with prefix:', {
+      prefixOption,
+      customPrefix: prefixOption === 'custom' ? customPrefix : undefined
+    });
+    // ============================================================================
+
+    setPendingFormData(enhancedData);
     setConfirmDialogOpen(true);
   });
 
@@ -474,6 +497,18 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
             )}
           </>
         )}
+
+        {/* ============================================================================
+            NEW FEATURES: Campaign Name Prefix (Strategy-For-Ads)
+            ============================================================================ */}
+        <CampaignNamePrefix
+          campaignName={methods.watch('campaignName') || ''}
+          prefixOption={prefixOption}
+          customPrefix={customPrefix}
+          onPrefixOptionChange={setPrefixOption}
+          onCustomPrefixChange={setCustomPrefix}
+        />
+        {/* ============================================================================ */}
 
         {/* Submit Button */}
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>

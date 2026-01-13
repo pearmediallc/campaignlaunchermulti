@@ -421,6 +421,41 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       });
     }
 
+    // ============================================================================
+    // FEATURE: CAMPAIGN NAME PREFIX CUSTOMIZATION (Strategy-150)
+    // ============================================================================
+    console.log('\n📝 [CAMPAIGN-NAME] Processing campaign name customization...');
+
+    const {
+      prefixOption = 'launcher', // 'launcher' | 'none' | 'custom'
+      customPrefix = ''
+    } = req.body;
+
+    let baseCampaignName = req.body.campaignName;
+    let finalCampaignName = baseCampaignName;
+
+    console.log(`   Original campaign name: "${baseCampaignName}"`);
+    console.log(`   Prefix option: "${prefixOption}"`);
+
+    if (prefixOption === 'launcher') {
+      finalCampaignName = `[Launcher] ${baseCampaignName}`;
+      console.log(`   ✅ Applied [Launcher] prefix: "${finalCampaignName}"`);
+    } else if (prefixOption === 'custom' && customPrefix.trim()) {
+      finalCampaignName = `[${customPrefix.trim()}] ${baseCampaignName}`;
+      console.log(`   ✅ Applied custom prefix: "${finalCampaignName}"`);
+    } else if (prefixOption === 'none') {
+      finalCampaignName = baseCampaignName;
+      console.log(`   ✅ No prefix applied (exact name): "${finalCampaignName}"`);
+    }
+
+    // Override the campaign name in req.body for all downstream code
+    req.body.campaignName = finalCampaignName;
+
+    console.log('✅ [CAMPAIGN-NAME] Campaign name customization complete\n');
+    // ============================================================================
+    // END CAMPAIGN NAME PREFIX CUSTOMIZATION
+    // ============================================================================
+
     // Create FacebookAPI instance with SELECTED resources (switched or original)
     const userFacebookApi = new FacebookAPI({
       accessToken: decryptedToken,

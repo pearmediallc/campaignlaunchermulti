@@ -4,6 +4,13 @@ export interface Strategy150FormData {
   budgetType?: 'daily' | 'lifetime';
   conversionLocation?: 'website' | 'calls';
 
+  // ============================================================================
+  // NEW FEATURES: Campaign Name Prefix Customization (Strategy-150)
+  // ============================================================================
+  prefixOption?: 'launcher' | 'none' | 'custom';
+  customPrefix?: string;
+  // ============================================================================
+
   // Campaign Level Extensions
   buyingType: 'AUCTION' | 'RESERVED';
   objective: 'OUTCOME_LEADS' | 'PHONE_CALL' | 'OUTCOME_SALES';
