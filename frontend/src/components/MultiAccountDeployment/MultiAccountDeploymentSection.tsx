@@ -57,6 +57,7 @@ interface DeploymentTarget {
   availablePixels?: Pixel[];
   isCurrent: boolean;
   status: string;
+  customCampaignName?: string;  // NEW: Custom campaign name for this target
 }
 
 interface MultiAccountDeploymentSectionProps {
@@ -177,6 +178,20 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
           ...t,
           pixelId: pixelId,
           pixelName: selectedPixel?.name || null
+        };
+      }
+      return t;
+    });
+    setTargets(updatedTargets);
+  };
+
+  const handleCampaignNameChange = (target: DeploymentTarget, campaignName: string) => {
+    // Update the target's custom campaign name in the targets array
+    const updatedTargets = targets.map(t => {
+      if (t.adAccountId === target.adAccountId && t.pageId === target.pageId) {
+        return {
+          ...t,
+          customCampaignName: campaignName
         };
       }
       return t;
@@ -449,6 +464,7 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
                     </TableCell>
                     <TableCell><strong>Ad Account</strong></TableCell>
                     <TableCell><strong>Page</strong></TableCell>
+                    <TableCell><strong>Campaign Name (Optional)</strong></TableCell>
                     <TableCell><strong>Pixel</strong></TableCell>
                     <TableCell><strong>Status</strong></TableCell>
                   </TableRow>
@@ -456,7 +472,7 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
                 <TableBody>
                   {filteredTargets.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                      <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                         <Typography variant="body2" color="text.secondary">
                           {hasActiveFilters
                             ? 'No targets match your search criteria. Try adjusting your filters.'
@@ -514,6 +530,27 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
                           <Typography variant="caption" color="text.secondary">
                             {target.pageId}
                           </Typography>
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            placeholder="Custom campaign name..."
+                            value={target.customCampaignName || ''}
+                            onChange={(e) => handleCampaignNameChange(target, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            sx={{
+                              '& .MuiInputBase-input': {
+                                fontSize: '0.875rem',
+                                padding: '6px 8px'
+                              }
+                            }}
+                            helperText={
+                              <Typography variant="caption" sx={{ fontSize: '0.7rem' }}>
+                                Leave blank to use default name
+                              </Typography>
+                            }
+                          />
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           {target.availablePixels && target.availablePixels.length > 0 ? (
