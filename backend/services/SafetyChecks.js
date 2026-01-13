@@ -1,4 +1,5 @@
 const db = require('../models');
+const axios = require('axios');
 
 /**
  * Safety Checks Service - Week 1 Enhancement
@@ -44,11 +45,19 @@ class SafetyChecks {
         console.log('  ✓ Check 1: Verifying ad account accessibility...');
 
         const accountId = adAccountId.replace('act_', '');
-        const accountInfo = await facebookApi.makeRequest(
-          `act_${accountId}`,
-          'GET',
-          { fields: 'id,name,account_status,disable_reason,capabilities' }
+        const accessToken = facebookApi.accessToken;
+
+        const response = await axios.get(
+          `https://graph.facebook.com/v18.0/act_${accountId}`,
+          {
+            params: {
+              fields: 'id,name,account_status,disable_reason,capabilities',
+              access_token: accessToken
+            }
+          }
         );
+
+        const accountInfo = response.data;
 
         verification.checks.accountAccessible = true;
         verification.details.accountInfo = {
@@ -108,17 +117,23 @@ class SafetyChecks {
           console.log('  ✓ Check 2: Checking for duplicate campaign names...');
 
           const accountId = adAccountId.replace('act_', '');
-          const existingCampaigns = await facebookApi.makeRequest(
-            `act_${accountId}/campaigns`,
-            'GET',
+          const accessToken = facebookApi.accessToken;
+
+          const response = await axios.get(
+            `https://graph.facebook.com/v18.0/act_${accountId}/campaigns`,
             {
-              fields: 'id,name,status',
-              limit: 100, // Check last 100 campaigns
-              filtering: JSON.stringify([
-                { field: 'name', operator: 'EQUAL', value: campaignName }
-              ])
+              params: {
+                fields: 'id,name,status',
+                limit: 100, // Check last 100 campaigns
+                filtering: JSON.stringify([
+                  { field: 'name', operator: 'EQUAL', value: campaignName }
+                ]),
+                access_token: accessToken
+              }
             }
           );
+
+          const existingCampaigns = response.data;
 
           const duplicates = existingCampaigns.data || [];
 
@@ -157,14 +172,21 @@ class SafetyChecks {
           console.log('  ✓ Check 3: Checking account limits...');
 
           const accountId = adAccountId.replace('act_', '');
+          const accessToken = facebookApi.accessToken;
 
           // Get current campaign count
-          const campaignCount = await facebookApi.makeRequest(
-            `act_${accountId}/campaigns`,
-            'GET',
-            { fields: 'id', summary: true }
+          const response = await axios.get(
+            `https://graph.facebook.com/v18.0/act_${accountId}/campaigns`,
+            {
+              params: {
+                fields: 'id',
+                summary: true,
+                access_token: accessToken
+              }
+            }
           );
 
+          const campaignCount = response.data;
           const currentCount = campaignCount.summary?.total_count || campaignCount.data?.length || 0;
           verification.currentState.currentCampaignCount = currentCount;
 
@@ -208,8 +230,20 @@ class SafetyChecks {
         try {
           console.log('  ✓ Check 4: Verifying access token validity...');
 
+          const accessToken = facebookApi.accessToken;
+
           // Test token with a simple /me call
-          const meInfo = await facebookApi.makeRequest('me', 'GET', { fields: 'id,name' });
+          const response = await axios.get(
+            'https://graph.facebook.com/v18.0/me',
+            {
+              params: {
+                fields: 'id,name',
+                access_token: accessToken
+              }
+            }
+          );
+
+          const meInfo = response.data;
 
           verification.checks.tokenValid = true;
           verification.details.tokenInfo = {
