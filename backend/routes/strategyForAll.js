@@ -1377,7 +1377,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               const adSetParams = {
                 ...campaignData,
                 campaignId: campaignId,
-                adSetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                adSetName: `${campaignData.campaignName} - AdSet ${nextIndex}`,
               };
 
               // CRITICAL: Only set ad set budget if NOT using Campaign Budget Optimization
@@ -1425,7 +1425,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 const adParams = {
                   ...campaignData,
                   adsetId: newAdSet.id,
-                  adName: `[Launcher] ${campaignData.campaignName} - Ad ${nextIndex}`,
+                  adName: `${campaignData.campaignName} - Ad ${nextIndex}`,
                   displayLink: campaignData.displayLink,
                   url: campaignData.url,
                   headline: campaignData.headline,
@@ -1489,7 +1489,7 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
                 campaignId: campaignId,
                 campaignName: campaignData.campaignName,
                 adsetId: null,
-                adsetName: `[Launcher] ${campaignData.campaignName} - AdSet ${nextIndex}`,
+                adsetName: `${campaignData.campaignName} - AdSet ${nextIndex}`,
                 entityType: 'adset',
                 error: deficitError,
                 strategyType: 'strategyForAll',

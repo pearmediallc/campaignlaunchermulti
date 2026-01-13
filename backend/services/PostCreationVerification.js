@@ -7,6 +7,8 @@
  * Different from VerificationService.js (which verifies field values match).
  * This service verifies EXISTENCE, not field accuracy.
  */
+const axios = require('axios');
+
 class PostCreationVerification {
   /**
    * Verify a single entity exists on Facebook
@@ -194,27 +196,40 @@ class PostCreationVerification {
     try {
       console.log(`🔍 [PostVerification] Getting current counts for campaign ${campaignId}...`);
 
-      const adSetsResponse = await facebookApi.makeRequest(
-        `${campaignId}/adsets`,
-        'GET',
-        { fields: 'id,name', limit: 1000 }
+      const accessToken = facebookApi.accessToken;
+
+      // Use direct axios call instead of facebookApi.makeRequest (which doesn't exist)
+      const adSetsResponse = await axios.get(
+        `https://graph.facebook.com/v18.0/${campaignId}/adsets`,
+        {
+          params: {
+            fields: 'id,name',
+            limit: 1000,
+            access_token: accessToken
+          }
+        }
       );
 
-      const adSets = adSetsResponse.data || [];
+      const adSets = adSetsResponse.data?.data || [];
       const adSetCount = adSets.length;
 
       let totalAds = 0;
       for (const adSet of adSets) {
-        const adsResponse = await facebookApi.makeRequest(
-          `${adSet.id}/ads`,
-          'GET',
-          { fields: 'id', limit: 1000 }
+        const adsResponse = await axios.get(
+          `https://graph.facebook.com/v18.0/${adSet.id}/ads`,
+          {
+            params: {
+              fields: 'id',
+              limit: 1000,
+              access_token: accessToken
+            }
+          }
         );
 
-        totalAds += (adsResponse.data || []).length;
+        totalAds += (adsResponse.data?.data || []).length;
       }
 
-      console.log(`   Found ${adSetCount} ad sets, ${totalAds} ads`);
+      console.log(`   ✅ Found ${adSetCount} ad sets, ${totalAds} ads`);
 
       return {
         campaignId,

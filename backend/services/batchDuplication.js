@@ -1651,11 +1651,8 @@ class BatchDuplicationService {
    * Prepare campaign body from template data
    */
   prepareCampaignBodyFromTemplate(templateData) {
-    // Add [Launcher] prefix if not already present
-    let campaignName = templateData.campaignName || 'New Campaign';
-    if (!campaignName.startsWith('[Launcher]')) {
-      campaignName = `[Launcher] ${campaignName}`;
-    }
+    // Use campaign name AS-IS (prefix already applied in route if user chose one)
+    const campaignName = templateData.campaignName || 'New Campaign';
 
     const body = {
       name: campaignName,
@@ -4943,10 +4940,8 @@ class BatchDuplicationService {
   async createCampaignForStrategy(templateData, accountId) {
     const axios = require('axios');
 
-    let campaignName = templateData.campaignName || 'New Campaign';
-    if (!campaignName.startsWith('[Launcher]')) {
-      campaignName = `[Launcher] ${campaignName}`;
-    }
+    // Use campaign name AS-IS (prefix already applied in route if user chose one)
+    const campaignName = templateData.campaignName || 'New Campaign';
 
     const params = {
       name: campaignName,
@@ -4988,7 +4983,7 @@ class BatchDuplicationService {
    */
   prepareAdSetBodyForStrategy(templateData, campaignId, adSetNumber) {
     const body = {
-      name: `[Launcher] ${templateData.campaignName || 'Campaign'} - Ad Set ${adSetNumber}`,
+      name: `${templateData.campaignName || 'Campaign'} - Ad Set ${adSetNumber}`,
       campaign_id: campaignId,
       status: 'ACTIVE',
       billing_event: 'IMPRESSIONS'
@@ -5081,7 +5076,7 @@ class BatchDuplicationService {
   async createFirstAdWithCreative(templateData, adSetId, accountId) {
     const axios = require('axios');
 
-    const adName = `[Launcher] ${templateData.campaignName || 'Campaign'} - Ad 1`;
+    const adName = `${templateData.campaignName || 'Campaign'} - Ad 1`;
     let postId = null;
     let mediaHashes = templateData.mediaHashes || null;
 

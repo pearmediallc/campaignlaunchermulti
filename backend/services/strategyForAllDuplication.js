@@ -595,11 +595,12 @@ class StrategyForAllDuplicationService {
       const adSet = adSets[i];
 
       // Generate ad name with proper naming convention matching Strategy for Ads
+      // Note: campaignName already includes user's chosen prefix (if any)
       let adName;
       if (editorName) {
-        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr} - ${editorName.toUpperCase()}`;
+        adName = `${campaignName} - Ad ${i + 1} - ${dateStr} - ${editorName.toUpperCase()}`;
       } else {
-        adName = `[Launcher] ${campaignName} - Ad ${i + 1} - ${dateStr}`;
+        adName = `${campaignName} - Ad ${i + 1} - ${dateStr}`;
       }
 
       const adData = {
