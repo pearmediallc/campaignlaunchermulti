@@ -1548,6 +1548,11 @@ class BatchDuplicationService {
             } catch (e) {
               adSetError = `HTTP ${adSetResult?.code || 'unknown'}`;
             }
+          } else if (adSetResult === null) {
+            // Facebook batch API sometimes returns null for successful operations
+            // Don't mark as error - let idempotency check verify actual state
+            adSetError = null;
+            console.log(`  ℹ️  Ad set result at index ${i} is null (may still have succeeded)`);
           } else {
             adSetError = `No result at index ${i}`;
           }
@@ -1576,6 +1581,11 @@ class BatchDuplicationService {
             } catch (e) {
               adError = `HTTP ${adResult?.code || 'unknown'}`;
             }
+          } else if (adResult === null) {
+            // Facebook batch API sometimes returns null for successful operations
+            // Don't mark as error - let idempotency check verify actual state
+            adError = null;
+            console.log(`  ℹ️  Ad result at index ${i + 1} is null (may still have succeeded)`);
           } else {
             adError = `No result at index ${i + 1}`;
           }
@@ -1590,8 +1600,10 @@ class BatchDuplicationService {
           }
 
           // Track actual results for this pair
+          // IMPORTANT: When both results are null, we can't determine success from batch response
+          // The idempotency check will verify the actual state from Facebook
           if (adSetSuccess && adSuccess) {
-            // SUCCESS: Complete pair
+            // SUCCESS: Complete pair with confirmed IDs
             successfulPairs.push({ pairIndex: globalPairIndex, adSetId, adId });
             adSetsCreated++;
             adsCreated++;
@@ -1607,16 +1619,21 @@ class BatchDuplicationService {
               message: adError || 'Unknown error',
               code: adResult?.code
             });
-          } else {
+          } else if (adSetError !== null || adError !== null) {
             // COMPLETE FAILURE: Both ad set and ad failed (or ad set failed)
+            // Only mark as failed if there's an actual error (not just null results)
             failedPairIndices.push(globalPairIndex);
 
             failedDetails.push({
               type: 'adset',
               name: `${templateData.campaignName || 'Campaign'} - Ad Set ${globalPairIndex + 1}`,
-              message: adSetError || 'Unknown error',
-              code: adSetResult?.code
+              message: adSetError || adError || 'Unknown error',
+              code: adSetResult?.code || adResult?.code
             });
+          } else {
+            // UNKNOWN STATE: Both results are null (no error, no success confirmation)
+            // Don't mark as failed - idempotency check will determine actual state
+            console.log(`  ℹ️  Pair ${globalPairIndex + 1}: Unknown state (null results), deferring to idempotency check`);
           }
         }
 
