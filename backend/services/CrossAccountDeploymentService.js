@@ -1075,9 +1075,16 @@ class CrossAccountDeploymentService {
       selectedPageId: target.pageId,
       selectedAdAccountId: target.adAccountId,
       selectedPixelId: targetPixelId || campaignData.selectedPixelId,
-      // Make campaign name unique for this page
-      campaignName: `${campaignData.campaignName} - Page ${target.pageId.toString().slice(-6)}`
+      // Use custom campaign name if provided, otherwise make it unique for this page
+      campaignName: target.customCampaignName || `${campaignData.campaignName} - Page ${target.pageId.toString().slice(-6)}`
     };
+
+    // Log custom campaign name usage
+    if (target.customCampaignName) {
+      console.log(`  ✏️  Using custom campaign name for ${target.pageName}: "${target.customCampaignName}"`);
+    } else {
+      console.log(`  📝 Using default name with page suffix: "${targetCampaignData.campaignName}"`);
+    }
 
     console.log(`  📝 Step 1: Creating initial 1-1-1 structure...`);
 
@@ -1229,8 +1236,16 @@ class CrossAccountDeploymentService {
       selectedPageId: target.pageId,
       selectedAdAccountId: target.adAccountId,
       selectedPixelId: targetPixelId || campaignData.selectedPixelId,
-      campaignName: `${campaignData.campaignName} - Page ${target.pageId.toString().slice(-6)}`
+      // Use custom campaign name if provided, otherwise make it unique for this page
+      campaignName: target.customCampaignName || `${campaignData.campaignName} - Page ${target.pageId.toString().slice(-6)}`
     };
+
+    // Log custom campaign name usage
+    if (target.customCampaignName) {
+      console.log(`  ✏️  Using custom campaign name for ${target.pageName}: "${target.customCampaignName}"`);
+    } else {
+      console.log(`  📝 Using default name with page suffix: "${targetCampaignData.campaignName}"`);
+    }
 
     console.log(`  📝 Step 1: Creating initial 1-1-1 structure...`);
 
@@ -1773,9 +1788,13 @@ class CrossAccountDeploymentService {
     console.log(`    Target Pixel: ${targetPixelId || 'none'}`);
 
     // CRITICAL: Make campaign name unique to avoid conflicts when deploying to same account with different pages
-    // Use page ID in name to ensure uniqueness
+    // Use custom campaign name if provided, otherwise use page ID in name to ensure uniqueness
     const pageIdLast6 = target.pageId.toString().slice(-6); // Last 6 digits of page ID
-    const newCampaignName = `${structure.campaign.name} - Page ${pageIdLast6}`;
+    const newCampaignName = target.customCampaignName || `${structure.campaign.name} - Page ${pageIdLast6}`;
+
+    if (target.customCampaignName) {
+      console.log(`  ✏️  Using custom campaign name: "${target.customCampaignName}"`);
+    }
 
     console.log(`  📝 Using unique campaign name for page ${target.pageId}: ${newCampaignName}`);
 
