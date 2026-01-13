@@ -547,8 +547,8 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
     const PostCreationVerification = require('../services/PostCreationVerification');
     const RollbackManager = require('../services/RollbackManager');
 
-    // Calculate requested counts
-    const requestedAdSets = (campaignData.duplicationSettings?.adSetCount || 0) + 1;
+    // Calculate requested counts (use req.body since campaignData isn't defined yet)
+    const requestedAdSets = (req.body.duplicationSettings?.adSetCount || 0) + 1;
     const requestedAds = requestedAdSets; // 1 ad per ad set
 
     console.log(`\n📋 [Week 2 Safety] Creating job for tracking...`);
