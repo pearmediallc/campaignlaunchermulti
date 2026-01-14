@@ -150,6 +150,7 @@ class CampaignSchedulerService {
 
   /**
    * Execute a scheduled action (start or pause campaign)
+   * Force rebuild: 2026-01-14
    */
   async executeScheduledAction(schedule, action) {
     console.log(`🎬 [SCHEDULER] Executing ${action.toUpperCase()} for campaign: ${schedule.campaign_name} (${schedule.campaign_id})`);
@@ -159,11 +160,13 @@ class CampaignSchedulerService {
       const targetStatus = action === 'start' ? 'ACTIVE' : 'PAUSED';
 
       // Execute the action via Facebook API
+      console.log(`   🔍 DEBUG: Calling facebookApi.updateCampaignStatus with status=${targetStatus}`);
       const result = await facebookApi.updateCampaignStatus(
         schedule.campaign_id,
         targetStatus,
         accessToken
       );
+      console.log(`   🔍 DEBUG: Result received:`, JSON.stringify(result));
 
       if (result.skipped) {
         // Campaign already in target state
