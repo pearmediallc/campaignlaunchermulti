@@ -55,8 +55,8 @@ interface CampaignDetails {
 }
 
 const CampaignManagement: React.FC = () => {
-  // Feature flag for Facebook-style UI
-  const [useFacebookStyle, setUseFacebookStyle] = useState(false);
+  // Feature flag for Facebook-style UI (default: true for better UX)
+  const [useFacebookStyle, setUseFacebookStyle] = useState(true);
 
   const [trackedCampaigns, setTrackedCampaigns] = useState<Campaign[]>([]);
   const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
@@ -84,6 +84,9 @@ const CampaignManagement: React.FC = () => {
   // Multi-select state for bulk scheduling
   const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([]);
   const [showBulkScheduleModal, setShowBulkScheduleModal] = useState(false);
+
+  // Pagination state for Classic View
+  const [visibleCount, setVisibleCount] = useState(20);
 
   // Define functions first before hooks use them
   const fetchTrackedCampaigns = async () => {
@@ -421,15 +424,32 @@ const CampaignManagement: React.FC = () => {
     return namesMap;
   };
 
+  // Get filtered campaigns for display
+  const getFilteredCampaigns = () => {
+    if (viewMode === 'tracked') {
+      return trackedCampaigns.filter(campaign =>
+        !campaignSearch ||
+        campaign.campaign_name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+        campaign.campaign_id.includes(campaignSearch)
+      );
+    } else {
+      return allCampaigns.filter((campaign: any) =>
+        !campaignSearch ||
+        campaign.name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+        campaign.id.includes(campaignSearch)
+      );
+    }
+  };
+
   return (
     <div className="container campaign-management mt-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2>Campaign Management</h2>
         <button
-          className="btn btn-primary btn-sm"
+          className="btn btn-outline-secondary btn-sm"
           onClick={() => setUseFacebookStyle(true)}
         >
-          🚀 Try New Facebook-Style View
+          Switch to Facebook-Style View
         </button>
       </div>
 
@@ -547,6 +567,35 @@ const CampaignManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Sticky Bulk Action Bar */}
+      {selectedCampaigns.length > 0 && (
+        <div
+          className="alert alert-primary d-flex justify-content-between align-items-center shadow-sm"
+          style={{
+            position: 'sticky',
+            top: '60px',
+            zIndex: 1000,
+            marginBottom: '1rem',
+            borderRadius: '8px'
+          }}
+        >
+          <div>
+            <strong>{selectedCampaigns.length}</strong> campaign{selectedCampaigns.length !== 1 ? 's' : ''} selected
+          </div>
+          <div>
+            <button className="btn btn-primary me-2" onClick={handleBulkSchedule}>
+              📅 Schedule All
+            </button>
+            <button
+              className="btn btn-outline-secondary"
+              onClick={() => setSelectedCampaigns([])}
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Campaigns Table with Multi-select */}
       <div className="card mb-4">
         <div className="card-header d-flex justify-content-between align-items-center">
@@ -556,21 +605,13 @@ const CampaignManagement: React.FC = () => {
               <span className="badge bg-secondary ms-2">{currentAccountName}</span>
             )}
           </h5>
-          {selectedCampaigns.length > 0 && (
-            <button
-              className="btn btn-primary"
-              onClick={handleBulkSchedule}
-            >
-              📅 Schedule {selectedCampaigns.length} Campaign{selectedCampaigns.length !== 1 ? 's' : ''}
-            </button>
-          )}
         </div>
         <div className="card-body">
           <div className="table-responsive">
             <table className="table table-hover">
               <thead>
                 <tr>
-                  <th style={{ width: '40px' }}>
+                  <th style={{ width: '50px', textAlign: 'center' }}>
                     <input
                       type="checkbox"
                       className="form-check-input"
@@ -588,7 +629,12 @@ const CampaignManagement: React.FC = () => {
                             ).length
                       )}
                       onChange={handleSelectAll}
-                      style={{ cursor: 'pointer' }}
+                      style={{
+                        cursor: 'pointer',
+                        width: '18px',
+                        height: '18px',
+                        marginTop: '0'
+                      }}
                     />
                   </th>
                   <th>Campaign Name</th>
@@ -606,19 +652,30 @@ const CampaignManagement: React.FC = () => {
                       campaign.campaign_name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
                       campaign.campaign_id.includes(campaignSearch)
                     )
+                    .slice(0, visibleCount)
                     .map(campaign => (
                       <tr
                         key={campaign.campaign_id}
                         onClick={() => handleSelectCampaign(campaign.campaign_id)}
-                        style={{ cursor: 'pointer' }}
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
                       >
-                        <td onClick={(e) => e.stopPropagation()}>
+                        <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
                             className="form-check-input"
                             checked={selectedCampaigns.includes(campaign.campaign_id)}
                             onChange={() => handleSelectCampaign(campaign.campaign_id)}
-                            style={{ cursor: 'pointer' }}
+                            style={{
+                              cursor: 'pointer',
+                              width: '18px',
+                              height: '18px',
+                              marginTop: '0'
+                            }}
                           />
                         </td>
                         <td>{campaign.campaign_name}</td>
@@ -651,19 +708,30 @@ const CampaignManagement: React.FC = () => {
                       campaign.name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
                       campaign.id.includes(campaignSearch)
                     )
+                    .slice(0, visibleCount)
                     .map((campaign: any) => (
                       <tr
                         key={campaign.id}
                         onClick={() => handleSelectCampaign(campaign.id)}
-                        style={{ cursor: 'pointer' }}
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
                       >
-                        <td onClick={(e) => e.stopPropagation()}>
+                        <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
                             className="form-check-input"
                             checked={selectedCampaigns.includes(campaign.id)}
                             onChange={() => handleSelectCampaign(campaign.id)}
-                            style={{ cursor: 'pointer' }}
+                            style={{
+                              cursor: 'pointer',
+                              width: '18px',
+                              height: '18px',
+                              marginTop: '0'
+                            }}
                           />
                         </td>
                         <td>{campaign.name}</td>
@@ -694,7 +762,22 @@ const CampaignManagement: React.FC = () => {
             </table>
           </div>
 
-          {/* Load More button for All Campaigns */}
+          {/* Load More button for paginated view */}
+          {(() => {
+            const filteredCampaigns = getFilteredCampaigns();
+            return visibleCount < filteredCampaigns.length && (
+              <div className="d-flex justify-content-center mt-3 mb-2">
+                <button
+                  className="btn btn-outline-primary w-100"
+                  onClick={() => setVisibleCount(prev => prev + 20)}
+                >
+                  Load More ({visibleCount} of {filteredCampaigns.length} shown)
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Load More button for All Campaigns from API */}
           {viewMode === 'all' && paging?.next && (
             <div className="d-flex justify-content-center mt-3">
               <button
