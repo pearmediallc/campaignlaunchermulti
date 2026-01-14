@@ -23,6 +23,15 @@ class CampaignSchedulerService {
     console.log('🚀 [SCHEDULER] Initializing campaign scheduler...');
 
     try {
+      // Debug: Check database state at startup
+      const allSchedules = await db.CampaignSchedule.findAll({
+        attributes: ['id', 'campaign_id', 'campaign_name', 'is_enabled', 'user_id', 'facebook_auth_id']
+      });
+      console.log(`   🔍 STARTUP DEBUG: Found ${allSchedules.length} schedules in database (enabled + disabled)`);
+      allSchedules.forEach(s => {
+        console.log(`      - ID:${s.id}, Campaign:${s.campaign_name}, Enabled:${s.is_enabled}, User:${s.user_id}, FBAuth:${s.facebook_auth_id}`);
+      });
+
       // Recover any missed schedules from server downtime
       await this.recoverMissedSchedules();
 

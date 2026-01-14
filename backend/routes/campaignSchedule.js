@@ -111,6 +111,7 @@ router.post('/:campaignId/schedule', authenticate, async (req, res) => {
     console.log(`   ✅ Schedule saved successfully`);
     console.log(`   📅 Next start: ${nextStart ? nextStart.toISOString() : 'N/A'}`);
     console.log(`   📅 Next pause: ${nextPause ? nextPause.toISOString() : 'N/A'}`);
+    console.log(`   🔍 DEBUG: Schedule ID: ${schedule.id}, is_enabled: ${schedule.is_enabled}, user_id: ${schedule.user_id}, fb_auth_id: ${schedule.facebook_auth_id}`);
 
     res.json({
       success: true,
