@@ -34,7 +34,7 @@ module.exports = {
         type: Sequelize.BIGINT,
         allowNull: false,
         references: {
-          model: 'facebook_auths',
+          model: 'facebook_auth',
           key: 'id'
         },
         onUpdate: 'CASCADE',
