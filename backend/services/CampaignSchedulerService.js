@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { DateTime } = require('luxon');
 const db = require('../models');
-const facebookApi = require('./facebookApi');
+const FacebookAPI = require('./facebookApi');
 
 class CampaignSchedulerService {
   constructor() {
@@ -158,6 +158,9 @@ class CampaignSchedulerService {
     try {
       const accessToken = schedule.facebookAuth.accessToken;
       const targetStatus = action === 'start' ? 'ACTIVE' : 'PAUSED';
+
+      // Create FacebookAPI instance with access token
+      const facebookApi = new FacebookAPI({ accessToken });
 
       // Execute the action via Facebook API
       console.log(`   🔍 DEBUG: Calling facebookApi.updateCampaignStatus with status=${targetStatus}`);
