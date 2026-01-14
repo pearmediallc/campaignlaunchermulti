@@ -114,7 +114,7 @@ class CampaignSchedulerService {
       };
     }
 
-    return await db.CampaignSchedule.findAll({
+    const results = await db.CampaignSchedule.findAll({
       where: whereClause,
       include: [{
         model: db.FacebookAuth,
@@ -122,6 +122,21 @@ class CampaignSchedulerService {
         required: true
       }]
     });
+
+    // Debug logging
+    if (results.length === 0) {
+      const allSchedules = await db.CampaignSchedule.findAll({
+        where: { is_enabled: true },
+        attributes: ['id', 'campaign_name', 'next_scheduled_start', 'next_scheduled_pause', 'is_enabled']
+      });
+      console.log(`   🔍 DEBUG: Current time: ${now.toISOString()}`);
+      console.log(`   🔍 DEBUG: Found ${allSchedules.length} enabled schedules total:`);
+      allSchedules.forEach(s => {
+        console.log(`      - ${s.campaign_name}: start=${s.next_scheduled_start ? s.next_scheduled_start.toISOString() : 'NULL'}, pause=${s.next_scheduled_pause ? s.next_scheduled_pause.toISOString() : 'NULL'}`);
+      });
+    }
+
+    return results;
   }
 
   /**
