@@ -171,6 +171,9 @@ app.use('/api/data-deletion', dataDeletionRoutes);
 // Campaign templates routes
 app.use('/api/templates', require('./routes/templates'));
 
+// Campaign scheduling routes (for automated start/pause)
+app.use('/api/campaigns', require('./routes/campaignSchedule'));
+
 // Failed entities routes (for campaign creation failure tracking and recovery)
 app.use('/api/failures', require('./routes/failures'));
 
@@ -434,6 +437,16 @@ async function startServer() {
     } catch (intelError) {
       console.error('Failed to start intelligence engine:', intelError.message);
       // Don't fail server startup if intelligence fails
+    }
+
+    // Initialize Campaign Scheduler (for automated campaign start/pause)
+    try {
+      const schedulerService = require('./services/CampaignSchedulerService');
+      await schedulerService.initialize();
+      console.log('📅 Campaign Scheduler initialized successfully.');
+    } catch (schedulerError) {
+      console.error('Failed to start campaign scheduler:', schedulerError.message);
+      // Don't fail server startup if scheduler fails
     }
 
     app.listen(PORT, () => {

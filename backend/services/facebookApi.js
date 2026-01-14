@@ -8059,6 +8059,128 @@ class FacebookAPI {
       // Silently ignore
     }
   }
+
+  /**
+   * Get current campaign status
+   * Used to check if campaign is already in target state (avoid redundant updates)
+   *
+   * @param {String} campaignId - Facebook Campaign ID
+   * @param {String} accessToken - User's access token (optional, uses instance token if not provided)
+   * @returns {Promise<Object>} Campaign data including status
+   */
+  async getCampaignStatus(campaignId, accessToken = null) {
+    const token = accessToken || this.accessToken;
+
+    console.log(`🔍 [FB_API] Getting status for campaign: ${campaignId}`);
+
+    try {
+      const response = await this.makeApiCallWithRotation(
+        'GET',
+        `${this.baseURL}/${campaignId}`,
+        {
+          params: {
+            fields: 'id,name,status,effective_status',
+            access_token: token
+          }
+        }
+      );
+
+      console.log(`   ✅ Current status: ${response.data.status} (effective: ${response.data.effective_status})`);
+
+      return {
+        id: response.data.id,
+        name: response.data.name,
+        status: response.data.status,
+        effectiveStatus: response.data.effective_status
+      };
+    } catch (error) {
+      console.error(`   ❌ Failed to get campaign status:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update campaign status (ACTIVE or PAUSED)
+   * Used by scheduler to start/pause campaigns
+   *
+   * @param {String} campaignId - Facebook Campaign ID
+   * @param {String} status - Target status ('ACTIVE' or 'PAUSED')
+   * @param {String} accessToken - User's access token (optional, uses instance token if not provided)
+   * @returns {Promise<Object>} Result object with success/skip status
+   */
+  async updateCampaignStatus(campaignId, status, accessToken = null) {
+    const token = accessToken || this.accessToken;
+
+    // Validate status
+    if (!['ACTIVE', 'PAUSED'].includes(status)) {
+      throw new Error(`Invalid status: ${status}. Must be 'ACTIVE' or 'PAUSED'`);
+    }
+
+    console.log(`📝 [FB_API] Updating campaign ${campaignId} to ${status}`);
+
+    try {
+      // STEP 1: Get current status to avoid redundant updates
+      const current = await this.getCampaignStatus(campaignId, token);
+
+      if (current.status === status) {
+        console.log(`   ⏭️  Campaign already ${status}, skipping update`);
+        return {
+          skipped: true,
+          reason: `Campaign already ${status}`,
+          currentStatus: current.status
+        };
+      }
+
+      // STEP 2: Update status
+      console.log(`   🔄 Changing status from ${current.status} to ${status}`);
+
+      const response = await this.makeApiCallWithRotation(
+        'POST',
+        `${this.baseURL}/${campaignId}`,
+        {
+          data: {
+            status
+          },
+          params: {
+            access_token: token
+          }
+        }
+      );
+
+      console.log(`   ✅ Successfully updated campaign status to ${status}`);
+
+      return {
+        success: true,
+        data: response.data,
+        previousStatus: current.status,
+        newStatus: status
+      };
+    } catch (error) {
+      console.error(`   ❌ Failed to update campaign status:`, error.response?.data || error.message);
+
+      // Enhance error message for common issues
+      if (error.response?.data?.error) {
+        const fbError = error.response.data.error;
+
+        // Campaign deleted
+        if (fbError.code === 100 || fbError.message?.includes('does not exist')) {
+          throw new Error('Campaign no longer exists on Facebook');
+        }
+
+        // Permission error
+        if (fbError.code === 200 || fbError.message?.includes('permission')) {
+          throw new Error('Insufficient permissions to update campaign. Please reconnect your Facebook account.');
+        }
+
+        // Token expired
+        if (fbError.code === 190) {
+          throw new Error('Access token expired. Please reconnect your Facebook account.');
+        }
+      }
+
+      throw error;
+    }
+  }
 }
 
 module.exports = FacebookAPI;

@@ -28,7 +28,8 @@ import {
   ContentCopy as DuplicateIcon,
   Delete as DeleteIcon,
   Pause as PauseIcon,
-  PlayArrow as PlayIcon
+  PlayArrow as PlayIcon,
+  Schedule as ScheduleIcon
 } from '@mui/icons-material';
 import InlineEdit from './InlineEdit';
 import EnhancedStatusChip from './EnhancedStatusChip';
@@ -40,6 +41,7 @@ import {
   formatBudget,
   formatFrequency
 } from '../../../utils/formatters';
+import ScheduleModal from '../../CampaignScheduler/ScheduleModal';
 
 interface ExpandableRowProps {
   item: CampaignData | AdSetData | AdData;
@@ -76,6 +78,7 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
   const [editingField, setEditingField] = useState<string | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const menuOpen = Boolean(anchorEl);
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -162,6 +165,16 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
             body = { status: 'ACTIVE' };
           }
           break;
+
+        case 'schedule':
+          // Only available for campaigns
+          if (level === 'campaigns') {
+            setScheduleModalOpen(true);
+            setActionLoading(false);
+            return; // Don't make API call, just open modal
+          }
+          setActionLoading(false);
+          return;
 
         case 'delete':
           const confirmDelete = window.confirm(`Are you sure you want to delete this ${level.slice(0, -1)}? This action cannot be undone.`);
@@ -346,6 +359,14 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
               </ListItemIcon>
               <ListItemText>Duplicate</ListItemText>
             </MenuItem>
+            {level === 'campaigns' && (
+              <MenuItem onClick={() => handleAction('schedule')}>
+                <ListItemIcon>
+                  <ScheduleIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Schedule</ListItemText>
+              </MenuItem>
+            )}
             {item.status === 'ACTIVE' ? (
               <MenuItem onClick={() => handleAction('pause')}>
                 <ListItemIcon>
@@ -530,6 +551,21 @@ const ExpandableRow: React.FC<ExpandableRowProps> = ({
             </Collapse>
           </TableCell>
         </TableRow>
+      )}
+
+      {/* Schedule Modal (only for campaigns) */}
+      {level === 'campaigns' && (
+        <ScheduleModal
+          open={scheduleModalOpen}
+          onClose={() => setScheduleModalOpen(false)}
+          campaignId={item.id}
+          campaignName={item.name}
+          onScheduleSaved={() => {
+            if (onRefresh) {
+              onRefresh();
+            }
+          }}
+        />
       )}
     </>
   );
