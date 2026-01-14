@@ -3,6 +3,7 @@ import axios from 'axios';
 import './CampaignManagement.css';
 import CampaignActions from './CampaignActions';
 import FacebookCampaignManager from './FacebookStyleManager/FacebookCampaignManager';
+import BulkScheduleModal from '../CampaignScheduler/BulkScheduleModal';
 
 interface Campaign {
   campaign_id: string;
@@ -79,6 +80,10 @@ const CampaignManagement: React.FC = () => {
   const [accountsOffset, setAccountsOffset] = useState(0);
   const [hasMoreAccounts, setHasMoreAccounts] = useState(true);
   const [currentAccountName, setCurrentAccountName] = useState<string>('');
+
+  // Multi-select state for bulk scheduling
+  const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([]);
+  const [showBulkScheduleModal, setShowBulkScheduleModal] = useState(false);
 
   // Define functions first before hooks use them
   const fetchTrackedCampaigns = async () => {
@@ -350,6 +355,72 @@ const CampaignManagement: React.FC = () => {
     return numValue.toLocaleString();
   };
 
+  // Multi-select handlers
+  const handleSelectCampaign = (campaignId: string) => {
+    setSelectedCampaigns(prev => {
+      if (prev.includes(campaignId)) {
+        return prev.filter(id => id !== campaignId);
+      } else {
+        return [...prev, campaignId];
+      }
+    });
+  };
+
+  const handleSelectAll = () => {
+    const currentCampaigns = viewMode === 'tracked'
+      ? trackedCampaigns.map(c => c.campaign_id)
+      : allCampaigns.map((c: any) => c.id);
+
+    const filteredCampaigns = currentCampaigns.filter(id => {
+      const campaign = viewMode === 'tracked'
+        ? trackedCampaigns.find(c => c.campaign_id === id)
+        : allCampaigns.find((c: any) => c.id === id);
+
+      if (!campaign) return false;
+
+      const name = viewMode === 'tracked' ? (campaign as Campaign).campaign_name : (campaign as any).name;
+      const campaignId = viewMode === 'tracked' ? (campaign as Campaign).campaign_id : (campaign as any).id;
+
+      return !campaignSearch ||
+        name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+        campaignId.includes(campaignSearch);
+    });
+
+    if (selectedCampaigns.length === filteredCampaigns.length) {
+      setSelectedCampaigns([]);
+    } else {
+      setSelectedCampaigns(filteredCampaigns);
+    }
+  };
+
+  const handleBulkSchedule = () => {
+    if (selectedCampaigns.length === 0) {
+      setError('Please select at least one campaign');
+      return;
+    }
+    setShowBulkScheduleModal(true);
+  };
+
+  const getCampaignNamesMap = (): { [key: string]: string } => {
+    const namesMap: { [key: string]: string } = {};
+
+    if (viewMode === 'tracked') {
+      trackedCampaigns.forEach(c => {
+        if (selectedCampaigns.includes(c.campaign_id)) {
+          namesMap[c.campaign_id] = c.campaign_name;
+        }
+      });
+    } else {
+      allCampaigns.forEach((c: any) => {
+        if (selectedCampaigns.includes(c.id)) {
+          namesMap[c.id] = c.name;
+        }
+      });
+    }
+
+    return namesMap;
+  };
+
   return (
     <div className="container campaign-management mt-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
@@ -473,6 +544,180 @@ const CampaignManagement: React.FC = () => {
             value={campaignSearch}
             onChange={(e) => setCampaignSearch(e.target.value)}
           />
+        </div>
+      </div>
+
+      {/* Campaigns Table with Multi-select */}
+      <div className="card mb-4">
+        <div className="card-header d-flex justify-content-between align-items-center">
+          <h5 className="mb-0">
+            {viewMode === 'tracked' ? 'My Launched Campaigns' : 'All Campaigns'}
+            {currentAccountName && viewMode === 'all' && (
+              <span className="badge bg-secondary ms-2">{currentAccountName}</span>
+            )}
+          </h5>
+          {selectedCampaigns.length > 0 && (
+            <button
+              className="btn btn-primary"
+              onClick={handleBulkSchedule}
+            >
+              📅 Schedule {selectedCampaigns.length} Campaign{selectedCampaigns.length !== 1 ? 's' : ''}
+            </button>
+          )}
+        </div>
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th style={{ width: '40px' }}>
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={selectedCampaigns.length > 0 && selectedCampaigns.length === (
+                        viewMode === 'tracked'
+                          ? trackedCampaigns.filter(c =>
+                              !campaignSearch ||
+                              c.campaign_name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+                              c.campaign_id.includes(campaignSearch)
+                            ).length
+                          : allCampaigns.filter((c: any) =>
+                              !campaignSearch ||
+                              c.name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+                              c.id.includes(campaignSearch)
+                            ).length
+                      )}
+                      onChange={handleSelectAll}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
+                  <th>Campaign Name</th>
+                  <th>Campaign ID</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th style={{ width: '80px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {viewMode === 'tracked' ? (
+                  trackedCampaigns
+                    .filter(campaign =>
+                      !campaignSearch ||
+                      campaign.campaign_name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+                      campaign.campaign_id.includes(campaignSearch)
+                    )
+                    .map(campaign => (
+                      <tr
+                        key={campaign.campaign_id}
+                        onClick={() => handleSelectCampaign(campaign.campaign_id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={selectedCampaigns.includes(campaign.campaign_id)}
+                            onChange={() => handleSelectCampaign(campaign.campaign_id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
+                        <td>{campaign.campaign_name}</td>
+                        <td>
+                          <small className="text-muted">{campaign.campaign_id}</small>
+                        </td>
+                        <td>
+                          <span className={`badge ${campaign.status === 'ACTIVE' ? 'bg-success' : 'bg-warning'}`}>
+                            {campaign.status}
+                          </span>
+                        </td>
+                        <td>
+                          <small>{new Date(campaign.created_at).toLocaleDateString()}</small>
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => fetchCampaignDetails(campaign.campaign_id)}
+                            title="View Details"
+                          >
+                            👁️
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                ) : (
+                  allCampaigns
+                    .filter((campaign: any) =>
+                      !campaignSearch ||
+                      campaign.name.toLowerCase().includes(campaignSearch.toLowerCase()) ||
+                      campaign.id.includes(campaignSearch)
+                    )
+                    .map((campaign: any) => (
+                      <tr
+                        key={campaign.id}
+                        onClick={() => handleSelectCampaign(campaign.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={selectedCampaigns.includes(campaign.id)}
+                            onChange={() => handleSelectCampaign(campaign.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
+                        <td>{campaign.name}</td>
+                        <td>
+                          <small className="text-muted">{campaign.id}</small>
+                        </td>
+                        <td>
+                          <span className={`badge ${campaign.status === 'ACTIVE' ? 'bg-success' : 'bg-warning'}`}>
+                            {campaign.status}
+                          </span>
+                        </td>
+                        <td>
+                          <small>{new Date(campaign.created_time).toLocaleDateString()}</small>
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => fetchCampaignDetails(campaign.id)}
+                            title="View Details"
+                          >
+                            👁️
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Load More button for All Campaigns */}
+          {viewMode === 'all' && paging?.next && (
+            <div className="d-flex justify-content-center mt-3">
+              <button
+                className="btn btn-outline-primary"
+                onClick={() => fetchAllCampaigns(datePreset, paging.cursors.after, selectedAccount)}
+                disabled={loading}
+              >
+                {loading ? 'Loading...' : `Load More Campaigns (${allCampaigns.length} shown)`}
+              </button>
+            </div>
+          )}
+
+          {viewMode === 'tracked' && trackedCampaigns.length === 0 && (
+            <div className="alert alert-info mb-0">
+              No tracked campaigns yet. Use the "All Account Campaigns" tab to find and track campaigns.
+            </div>
+          )}
+
+          {viewMode === 'all' && allCampaigns.length === 0 && !loading && (
+            <div className="alert alert-info mb-0">
+              No campaigns found. Try selecting a different ad account or date range.
+            </div>
+          )}
         </div>
       </div>
 
@@ -735,6 +980,20 @@ const CampaignManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Bulk Schedule Modal */}
+      <BulkScheduleModal
+        open={showBulkScheduleModal}
+        onClose={() => {
+          setShowBulkScheduleModal(false);
+          setSelectedCampaigns([]);
+        }}
+        campaignIds={selectedCampaigns}
+        campaignNames={getCampaignNamesMap()}
+        onScheduleSaved={() => {
+          setSuccess(`Successfully scheduled ${selectedCampaigns.length} campaign${selectedCampaigns.length !== 1 ? 's' : ''}`);
+        }}
+      />
     </div>
   );
 };

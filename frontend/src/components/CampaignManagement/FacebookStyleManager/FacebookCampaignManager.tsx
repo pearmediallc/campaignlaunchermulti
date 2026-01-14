@@ -6,6 +6,7 @@ import DataTable from './DataTable';
 import FilterBar, { FilterOptions } from './FilterBar';
 import { useFacebookData } from './hooks/useFacebookData';
 import { CampaignData, AdSetData, AdData } from './types';
+import BulkScheduleModal from '../../CampaignScheduler/BulkScheduleModal';
 
 /**
  * Facebook-Style Campaign Manager
@@ -23,6 +24,7 @@ const FacebookCampaignManager: React.FC = () => {
     learningStatus: [],
     issuesStatus: []
   });
+  const [showBulkScheduleModal, setShowBulkScheduleModal] = useState(false);
 
   // Fetch data based on active level
   const { data, loading, error, refetch, hasMore, loadMore } = useFacebookData({
@@ -127,6 +129,25 @@ const FacebookCampaignManager: React.FC = () => {
     setLoadingRows(newLoading);
   };
 
+  const handleBulkSchedule = () => {
+    if (selectedItems.size === 0 || activeLevel !== 'campaigns') {
+      return;
+    }
+    setShowBulkScheduleModal(true);
+  };
+
+  const getCampaignNamesMap = (): { [key: string]: string } => {
+    const namesMap: { [key: string]: string } = {};
+
+    filteredData.forEach((campaign: any) => {
+      if (selectedItems.has(campaign.id)) {
+        namesMap[campaign.id] = campaign.name;
+      }
+    });
+
+    return namesMap;
+  };
+
   return (
     <Box sx={{ width: '100%', bgcolor: '#f5f6f7', minHeight: '100vh', pb: 4 }}>
       {/* Tab Navigation */}
@@ -200,6 +221,21 @@ const FacebookCampaignManager: React.FC = () => {
         hasMore={hasMore}
         onLoadMore={loadMore}
         searchQuery={searchQuery}
+        onBulkSchedule={handleBulkSchedule}
+      />
+
+      {/* Bulk Schedule Modal */}
+      <BulkScheduleModal
+        open={showBulkScheduleModal}
+        onClose={() => {
+          setShowBulkScheduleModal(false);
+          setSelectedItems(new Set());
+        }}
+        campaignIds={Array.from(selectedItems)}
+        campaignNames={getCampaignNamesMap()}
+        onScheduleSaved={() => {
+          refetch();
+        }}
       />
     </Box>
   );

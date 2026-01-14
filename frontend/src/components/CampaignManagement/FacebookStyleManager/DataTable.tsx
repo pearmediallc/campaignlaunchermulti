@@ -34,6 +34,7 @@ interface DataTableProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   searchQuery?: string;
+  onBulkSchedule?: () => void;
 }
 
 /**
@@ -53,7 +54,8 @@ const DataTable: React.FC<DataTableProps> = ({
   onRefresh,
   hasMore = false,
   onLoadMore,
-  searchQuery = ''
+  searchQuery = '',
+  onBulkSchedule
 }) => {
   const allIds = data.map((item) => item.id);
   const allSelected = selectedItems.size > 0 && selectedItems.size === data.length;
@@ -110,6 +112,7 @@ const DataTable: React.FC<DataTableProps> = ({
           selectedItems={selectedItems}
           data={data}
           onRefresh={onRefresh}
+          onBulkSchedule={onBulkSchedule}
         />
       )}
 

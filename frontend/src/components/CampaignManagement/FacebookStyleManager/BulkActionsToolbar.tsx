@@ -16,7 +16,8 @@ import {
   Delete as DeleteIcon,
   ContentCopy as DuplicateIcon,
   Edit as EditIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Schedule as ScheduleIcon
 } from '@mui/icons-material';
 import { CampaignData, AdSetData, AdData } from './types';
 
@@ -27,6 +28,7 @@ interface BulkActionsToolbarProps {
   selectedItems: Set<string>;
   data: (CampaignData | AdSetData | AdData)[];
   onRefresh: () => void;
+  onBulkSchedule?: () => void;
 }
 
 /**
@@ -38,7 +40,8 @@ const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
   level,
   selectedItems,
   data,
-  onRefresh
+  onRefresh,
+  onBulkSchedule
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [actionType, setActionType] = useState<string | null>(null);
@@ -307,6 +310,19 @@ const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
             >
               Pause
             </Button>
+
+            {/* Schedule (only for campaigns) */}
+            {level === 'campaigns' && onBulkSchedule && (
+              <Button
+                variant="text"
+                startIcon={<ScheduleIcon />}
+                onClick={onBulkSchedule}
+                disabled={loading}
+                sx={{ color: 'white', textTransform: 'none' }}
+              >
+                Schedule
+              </Button>
+            )}
 
             {/* Duplicate */}
             <Button
