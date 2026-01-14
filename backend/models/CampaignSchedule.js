@@ -208,17 +208,17 @@ module.exports = (sequelize, DataTypes) => {
 
     if (action === 'start') {
       whereClause.next_scheduled_start = {
-        [Op.lte]: now
-      };
-      whereClause.next_scheduled_start = {
-        [Op.ne]: null
+        [Op.and]: [
+          { [Op.lte]: now },
+          { [Op.ne]: null }
+        ]
       };
     } else if (action === 'pause') {
       whereClause.next_scheduled_pause = {
-        [Op.lte]: now
-      };
-      whereClause.next_scheduled_pause = {
-        [Op.ne]: null
+        [Op.and]: [
+          { [Op.lte]: now },
+          { [Op.ne]: null }
+        ]
       };
     }
 
