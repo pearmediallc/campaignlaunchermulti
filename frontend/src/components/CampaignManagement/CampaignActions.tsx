@@ -17,11 +17,13 @@ import {
   Pause as PauseIcon,
   PlayArrow as PlayIcon,
   Delete as DeleteIcon,
-  MoreVert as MoreIcon
+  MoreVert as MoreIcon,
+  Schedule as ScheduleIcon
 } from '@mui/icons-material';
 import EditCampaignModal from './modals/EditCampaignModal';
 import DuplicateCampaignModal from './modals/DuplicateCampaignModal';
 import BudgetManagementModal from './modals/BudgetManagementModal';
+import ScheduleModal from '../CampaignScheduler/ScheduleModal';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
@@ -46,6 +48,7 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [budgetModalOpen, setBudgetModalOpen] = useState(false);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [loading, setLoading] = useState(false);
 
@@ -124,6 +127,10 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
             <ListItemIcon><BudgetIcon fontSize="small" /></ListItemIcon>
             <ListItemText>Manage Budget</ListItemText>
           </MenuItem>
+          <MenuItem onClick={() => { setScheduleModalOpen(true); handleMenuClose(); }}>
+            <ListItemIcon><ScheduleIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Schedule</ListItemText>
+          </MenuItem>
           <MenuItem onClick={handlePauseResume}>
             <ListItemIcon>
               {campaign.status === 'ACTIVE' ? <PauseIcon fontSize="small" /> : <PlayIcon fontSize="small" />}
@@ -155,6 +162,13 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
           campaign={campaign}
           onSuccess={onRefresh}
         />
+        <ScheduleModal
+          open={scheduleModalOpen}
+          onClose={() => setScheduleModalOpen(false)}
+          campaignId={campaign.id}
+          campaignName={campaign.name}
+          onScheduleSaved={onRefresh}
+        />
       </>
     );
   }
@@ -171,6 +185,9 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
           </Button>
           <Button startIcon={<BudgetIcon />} onClick={() => setBudgetModalOpen(true)}>
             Budget
+          </Button>
+          <Button startIcon={<ScheduleIcon />} onClick={() => setScheduleModalOpen(true)}>
+            Schedule
           </Button>
           <Button
             startIcon={campaign.status === 'ACTIVE' ? <PauseIcon /> : <PlayIcon />}
@@ -199,6 +216,13 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
           campaign={campaign}
           onSuccess={onRefresh}
         />
+        <ScheduleModal
+          open={scheduleModalOpen}
+          onClose={() => setScheduleModalOpen(false)}
+          campaignId={campaign.id}
+          campaignName={campaign.name}
+          onScheduleSaved={onRefresh}
+        />
       </Box>
     );
   }
@@ -219,6 +243,11 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
       <Tooltip title="Manage Budget">
         <IconButton size="small" onClick={() => setBudgetModalOpen(true)} disabled={loading}>
           <BudgetIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Schedule Campaign">
+        <IconButton size="small" onClick={() => setScheduleModalOpen(true)} disabled={loading}>
+          <ScheduleIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Tooltip title={campaign.status === 'ACTIVE' ? 'Pause Campaign' : 'Activate Campaign'}>
@@ -245,6 +274,13 @@ const CampaignActions: React.FC<CampaignActionsProps> = ({
         onClose={() => setBudgetModalOpen(false)}
         campaign={campaign}
         onSuccess={onRefresh}
+      />
+      <ScheduleModal
+        open={scheduleModalOpen}
+        onClose={() => setScheduleModalOpen(false)}
+        campaignId={campaign.id}
+        campaignName={campaign.name}
+        onScheduleSaved={onRefresh}
       />
     </Box>
   );
