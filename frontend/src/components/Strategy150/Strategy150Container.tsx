@@ -365,8 +365,8 @@ const Strategy150Container: React.FC = () => {
         // ============================================================================
         // NEW FEATURES: Campaign Name Prefix (Strategy-150)
         // ============================================================================
-        prefixOption: (campaignData as any).prefixOption || 'launcher',
-        customPrefix: (campaignData as any).customPrefix || undefined,
+        prefixOption: (data as any).prefixOption || 'launcher',
+        customPrefix: (data as any).customPrefix || undefined,
         // ============================================================================
 
         // CRITICAL: Include objective from Strategy150 data
