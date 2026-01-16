@@ -604,12 +604,17 @@ router.post('/:campaignId/duplicate', authenticate, requireFacebookAuth, refresh
     console.log(`📊 Config: AdAccount=${cleanAdAccountId}, Page=${cleanPageId}`);
 
     const BatchDuplicationService = require('../services/batchDuplication');
+
+    // Get user preferences for duplication
+    const removeCopySuffix = req.body.remove_copy_suffix || false; // User can opt to remove " - Copy" suffix
+
     const batchService = new BatchDuplicationService(
       accessToken,
       cleanAdAccountId,
       cleanPageId,
       selectedPixelId,
-      userId // For FailureTracker integration
+      userId, // For FailureTracker integration
+      { removeCopySuffix } // Pass preferences
     );
 
     // Use the efficient batch duplication method

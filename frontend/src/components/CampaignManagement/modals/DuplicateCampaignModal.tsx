@@ -18,7 +18,9 @@ import {
   AlertTitle,
   Divider,
   Collapse,
-  IconButton
+  IconButton,
+  FormControlLabel,
+  Checkbox
 } from '@mui/material';
 import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import axios from 'axios';
@@ -46,6 +48,7 @@ const DuplicateCampaignModal: React.FC<DuplicateCampaignModalProps> = ({
   const [numberOfCopies, setNumberOfCopies] = useState(1);
   const [budgetMultiplier, setBudgetMultiplier] = useState(1);
   const [status, setStatus] = useState('PAUSED');
+  const [removeCopySuffix, setRemoveCopySuffix] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [duplicationResult, setDuplicationResult] = useState<any>(null);
@@ -69,7 +72,8 @@ const DuplicateCampaignModal: React.FC<DuplicateCampaignModalProps> = ({
         new_name: newName,
         number_of_copies: numberOfCopies,
         budget_multiplier: budgetMultiplier,
-        status
+        status,
+        remove_copy_suffix: removeCopySuffix
       });
 
       // Store the complete result for error display
@@ -267,6 +271,30 @@ const DuplicateCampaignModal: React.FC<DuplicateCampaignModalProps> = ({
             <MenuItem value="ACTIVE">Active</MenuItem>
           </Select>
         </FormControl>
+
+        <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={removeCopySuffix}
+                onChange={(e) => setRemoveCopySuffix(e.target.checked)}
+                color="primary"
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body2" fontWeight={500}>
+                  Remove " - Copy" suffix from ad sets and ads
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {removeCopySuffix
+                    ? 'Ad sets and ads will keep their original names (exact copies)'
+                    : 'Ad sets and ads will have " - Copy" added to their names (default)'}
+                </Typography>
+              </Box>
+            }
+          />
+        </Box>
 
         <Alert severity="warning" sx={{ mt: 2 }}>
           <Typography variant="caption">

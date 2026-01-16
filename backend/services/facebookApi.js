@@ -449,8 +449,31 @@ class FacebookAPI {
       // ✅ FIX: Use custom name if provided, otherwise default to "AdSet Main"
       // This allows duplicates to have "AdSet 2", "AdSet 3", etc. while initial keeps "AdSet Main"
       // Note: campaignName already includes user's chosen prefix (if any)
+
+      // CRITICAL FIX: Apply prefix option to ad set names
+      let adSetBaseName = adSetData.adSetName || adSetData.name || `${adSetData.campaignName} - AdSet Main`;
+
+      // Remove campaign name prefix from ad set name if it starts with it (to avoid double prefixing)
+      const campaignNameWithoutPrefix = adSetData.campaignName?.replace(/^\[.*?\]\s*/, '') || '';
+      if (adSetBaseName.includes(adSetData.campaignName) && campaignNameWithoutPrefix) {
+        adSetBaseName = adSetBaseName.replace(adSetData.campaignName, campaignNameWithoutPrefix);
+      }
+
+      // Apply prefix logic
+      let finalAdSetName = adSetBaseName;
+      if (adSetData.prefixOption === 'launcher') {
+        finalAdSetName = `[Launcher] ${adSetBaseName}`;
+      } else if (adSetData.prefixOption === 'custom' && adSetData.customPrefix?.trim()) {
+        finalAdSetName = `[${adSetData.customPrefix.trim()}] ${adSetBaseName}`;
+      } else if (adSetData.prefixOption === 'none') {
+        finalAdSetName = adSetBaseName;
+      } else {
+        // Default: keep original name (which may or may not have prefix from campaignName)
+        finalAdSetName = adSetData.adSetName || adSetData.name || `${adSetData.campaignName} - AdSet Main`;
+      }
+
       let params = {
-        name: adSetData.adSetName || adSetData.name || `${adSetData.campaignName} - AdSet Main`,
+        name: finalAdSetName,
         campaign_id: adSetData.campaignId,
         billing_event: adSetData.billingEvent || 'IMPRESSIONS',  // Use provided or fallback to IMPRESSIONS
         optimization_goal: this.getOptimizationGoal(adSetData),
@@ -1496,13 +1519,31 @@ class FacebookAPI {
         // For Dynamic Creative ads, prioritize dynamicEditorName over regular editorName
         const editorToUse = adData.dynamicEditorName || adData.editorName;
 
+        // CRITICAL FIX: Apply prefix option to ad names
+        const campaignNameWithoutPrefix = adData.campaignName?.replace(/^\[.*?\]\s*/, '') || adData.campaignName;
+        let baseAdName;
+
         if (editorToUse) {
-          adName = `${adData.campaignName} - Ad ${dateStr} - ${editorToUse.toUpperCase()}`;
-          console.log('✅ Ad name with editor:', adName);
+          baseAdName = `${campaignNameWithoutPrefix} - Ad ${dateStr} - ${editorToUse.toUpperCase()}`;
         } else {
-          adName = `${adData.campaignName} - Ad ${dateStr}`;
-          console.log('✅ Ad name without editor (local upload):', adName);
+          baseAdName = `${campaignNameWithoutPrefix} - Ad ${dateStr}`;
         }
+
+        // Apply prefix logic
+        if (adData.prefixOption === 'launcher') {
+          adName = `[Launcher] ${baseAdName}`;
+        } else if (adData.prefixOption === 'custom' && adData.customPrefix?.trim()) {
+          adName = `[${adData.customPrefix.trim()}] ${baseAdName}`;
+        } else if (adData.prefixOption === 'none') {
+          adName = baseAdName;
+        } else {
+          // Default: use full campaign name (may have prefix)
+          adName = editorToUse
+            ? `${adData.campaignName} - Ad ${dateStr} - ${editorToUse.toUpperCase()}`
+            : `${adData.campaignName} - Ad ${dateStr}`;
+        }
+
+        console.log('✅ Generated ad name:', adName);
       } else {
         // Custom name provided
         // Check if this came from library with editor selected
@@ -2459,7 +2500,10 @@ class FacebookAPI {
         spendingLimits: campaignData.spendingLimits || campaignData.adSetBudget?.spendingLimits,
         adSetBudget: campaignData.adSetBudget,
         // Dynamic Text Variations (Facebook's Multiple Text Options) - Enable Dynamic Creative on Ad Set
-        dynamicTextEnabled: campaignData.dynamicTextEnabled
+        dynamicTextEnabled: campaignData.dynamicTextEnabled,
+        // Prefix customization
+        prefixOption: campaignData.prefixOption,
+        customPrefix: campaignData.customPrefix
       });
 
       // Handle media upload based on type
@@ -2852,6 +2896,9 @@ class FacebookAPI {
           editorName: campaignData.editorName, // Pass editor name for ad naming
           dynamicEditorName: campaignData.dynamicEditorName, // Pass dynamic creative editor name for ad naming
           fromLibrary: campaignData.fromLibrary, // Pass library flag so createAd knows to use editorName
+          // Prefix customization
+          prefixOption: campaignData.prefixOption,
+          customPrefix: campaignData.customPrefix,
           // Dynamic Text Variations (Facebook's Multiple Text Options)
           dynamicTextEnabled: campaignData.dynamicTextEnabled,
           primaryTextVariations: campaignData.primaryTextVariations,

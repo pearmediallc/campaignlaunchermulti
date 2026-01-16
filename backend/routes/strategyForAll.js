@@ -824,6 +824,13 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       productSetId: productSetId,  // Specific product set within catalog (optional)
       // ============================================================================
 
+      // ============================================================================
+      // FEATURE: CAMPAIGN NAME PREFIX CUSTOMIZATION (for ad sets and ads)
+      // ============================================================================
+      prefixOption: prefixOption,  // 'launcher' | 'none' | 'custom'
+      customPrefix: customPrefix,  // Custom prefix text if prefixOption is 'custom'
+      // ============================================================================
+
       // Budget fields for createCampaignStructure (pass through both formats for compatibility)
       dailyBudget: req.body.budgetLevel === 'campaign'
         ? (req.body.campaignBudget?.dailyBudget || req.body.dailyBudget)

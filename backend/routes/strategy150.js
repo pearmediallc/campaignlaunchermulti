@@ -719,7 +719,14 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // Additional Meta options
       costCap: req.body.costCap,
       minRoas: req.body.minRoas,
-      conversionLocation: req.body.conversionLocation || 'website'
+      conversionLocation: req.body.conversionLocation || 'website',
+
+      // ============================================================================
+      // FEATURE: CAMPAIGN NAME PREFIX CUSTOMIZATION (for ad sets and ads)
+      // ============================================================================
+      prefixOption: prefixOption,  // 'launcher' | 'none' | 'custom'
+      customPrefix: customPrefix  // Custom prefix text if prefixOption is 'custom'
+      // ============================================================================
     };
 
     console.log('🟢 Creating Strategy 1-50-1 campaign with data:', {

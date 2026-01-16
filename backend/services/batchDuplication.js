@@ -12,7 +12,7 @@ const FailureTracker = require('./FailureTracker');
  * 4. Retry mechanism for failed entities
  */
 class BatchDuplicationService {
-  constructor(accessToken, adAccountId, pageId, pixelId, userId = null) {
+  constructor(accessToken, adAccountId, pageId, pixelId, userId = null, options = {}) {
     this.accessToken = accessToken;
     this.adAccountId = adAccountId;
     this.userId = userId; // For FailureTracker integration
@@ -24,6 +24,8 @@ class BatchDuplicationService {
     // Using 10 operations per batch to avoid timeouts while keeping ad set + ad pairs together
     // 10 ops = 5 pairs (5 ad sets + 5 ads) - safe for large payloads
     this.maxBatchSize = 10; // Reduced to prevent socket hang up with large payloads
+    // User preferences for duplication
+    this.removeCopySuffix = options.removeCopySuffix || false; // If true, don't add " - Copy" suffix to ad sets and ads
 
     // Facebook region IDs for US states (MUST match facebookApi.js exactly)
     // DC is 3851, which shifts all states after DE forward by 1
@@ -782,7 +784,7 @@ class BatchDuplicationService {
    */
   prepareAdSetBody(adSet, campaignIdRef) {
     const body = {
-      name: `${adSet.name} - Copy`,
+      name: this.removeCopySuffix ? adSet.name : `${adSet.name} - Copy`,
       campaign_id: campaignIdRef,
       status: adSet.status || 'ACTIVE', // Create as ACTIVE by default
       targeting: JSON.stringify(adSet.targeting),
@@ -849,7 +851,7 @@ class BatchDuplicationService {
    */
   prepareAdBody(ad, adSetIdRef) {
     const body = {
-      name: `${ad.name} - Copy`,
+      name: this.removeCopySuffix ? ad.name : `${ad.name} - Copy`,
       adset_id: adSetIdRef,
       status: 'ACTIVE' // Create as ACTIVE by default
     };
@@ -964,50 +966,68 @@ class BatchDuplicationService {
     for (let i = 0; i < batches.length; i++) {
       console.log(`  📤 Sending batch ${i + 1}/${batches.length} (${batches[i].length} operations)`);
 
-      try {
-        // CRITICAL FIX: Remove Content-Type header to let axios use default form-encoding
-        // When we explicitly set Content-Type: application/json, axios sends the data as JSON
-        // But Facebook Batch API with JSON.stringify(batch) expects form-encoding
-        // The URL double-encoding bug was caused by this mismatch:
-        // - JSON content-type means the body is parsed as JSON
-        // - But our body field inside operations is URL-encoded
-        // - This caused the URL encoding to not be decoded properly
-        const response = await axios.post(
-          this.baseURL,
-          {
-            batch: JSON.stringify(batches[i]),
-            access_token: this.accessToken
-          },
-          {
-            timeout: 120000 // 2 minute timeout for complex batch operations
-            // No Content-Type header - let axios use default (application/x-www-form-urlencoded)
+      let batchSuccess = false;
+      let retryCount = 0;
+      const maxRetries = 1; // Retry once if batch fails
+
+      while (!batchSuccess && retryCount <= maxRetries) {
+        try {
+          if (retryCount > 0) {
+            console.log(`  🔄 Retrying batch ${i + 1} (attempt ${retryCount + 1}/${maxRetries + 1})...`);
+            // Wait 5 seconds before retry
+            await new Promise(resolve => setTimeout(resolve, 5000));
           }
-        );
 
-        results.push(...response.data);
+          // CRITICAL FIX: Remove Content-Type header to let axios use default form-encoding
+          // When we explicitly set Content-Type: application/json, axios sends the data as JSON
+          // But Facebook Batch API with JSON.stringify(batch) expects form-encoding
+          // The URL double-encoding bug was caused by this mismatch:
+          // - JSON content-type means the body is parsed as JSON
+          // - But our body field inside operations is URL-encoded
+          // - This caused the URL encoding to not be decoded properly
+          const response = await axios.post(
+            this.baseURL,
+            {
+              batch: JSON.stringify(batches[i]),
+              access_token: this.accessToken
+            },
+            {
+              timeout: 120000 // 2 minute timeout for complex batch operations
+              // No Content-Type header - let axios use default (application/x-www-form-urlencoded)
+            }
+          );
 
-        // Log success/failure counts for this batch
-        const successCount = response.data.filter(r => r && r.code === 200).length;
-        const failCount = response.data.filter(r => r && r.code !== 200).length;
-        console.log(`  ✅ Batch ${i + 1} complete: ${successCount} succeeded, ${failCount} failed`);
+          results.push(...response.data);
+          batchSuccess = true;
 
-        // Log first error if any failed
-        if (failCount > 0) {
-          const firstError = response.data.find(r => r && r.code !== 200);
-          if (firstError) {
-            console.log(`  ⚠️ First error (code ${firstError.code}):`, firstError.body);
+          // Log success/failure counts for this batch
+          const successCount = response.data.filter(r => r && r.code === 200).length;
+          const failCount = response.data.filter(r => r && r.code !== 200).length;
+          console.log(`  ✅ Batch ${i + 1} complete: ${successCount} succeeded, ${failCount} failed`);
+
+          // Log first error if any failed
+          if (failCount > 0) {
+            const firstError = response.data.find(r => r && r.code !== 200);
+            if (firstError) {
+              console.log(`  ⚠️ First error (code ${firstError.code}):`, firstError.body);
+            }
+          }
+
+          // Process results to extract IDs
+          const campaignId = this.extractIdFromBatchResponse(response.data[0]);
+          if (campaignId) {
+            console.log(`  📋 New campaign created: ${campaignId}`);
+          }
+
+        } catch (error) {
+          retryCount++;
+          if (retryCount > maxRetries) {
+            console.error(`  ❌ Batch ${i + 1} failed after ${maxRetries + 1} attempts:`, error.response?.data || error.message);
+            throw error;
+          } else {
+            console.error(`  ⚠️ Batch ${i + 1} failed (will retry):`, error.response?.data || error.message);
           }
         }
-
-        // Process results to extract IDs
-        const campaignId = this.extractIdFromBatchResponse(response.data[0]);
-        if (campaignId) {
-          console.log(`  📋 New campaign created: ${campaignId}`);
-        }
-
-      } catch (error) {
-        console.error(`  ❌ Batch ${i + 1} failed:`, error.response?.data || error.message);
-        throw error;
       }
 
       // Delay between batches to prevent socket hang up
