@@ -742,7 +742,11 @@ const Strategy150Container: React.FC = () => {
         setPhase('completed');
         setActiveStep(3); // Go directly to step 4 (Completion)
 
-        // === VERIFICATION: Check created entities against original request (batch path) ===
+        // === VERIFICATION: DISABLED TO REDUCE API CALLS ===
+        // Verification service makes 50+ API calls to check all ad sets
+        // This causes rate limiting and campaign deletion during testing
+        // DISABLED TEMPORARILY - Uncomment to re-enable verification
+        /*
         if (strategy150Result?.data?.campaign?.id && data) {
           try {
             // Collect all ad set IDs from batch result
@@ -791,6 +795,8 @@ const Strategy150Container: React.FC = () => {
             console.error('[Strategy150-Batch] Verification setup error:', verifyError.message);
           }
         }
+        */
+        console.log('⏸️  [Strategy150-Batch] Verification DISABLED (to reduce API calls)');
 
         return;
       }
@@ -945,7 +951,11 @@ const Strategy150Container: React.FC = () => {
     setPhase('completed');
     setActiveStep(3);
 
-    // === VERIFICATION: Check created entities against original request ===
+    // === VERIFICATION: DISABLED TO REDUCE API CALLS ===
+    // Verification service makes 50+ API calls to check all ad sets
+    // This causes rate limiting and campaign deletion during testing
+    // DISABLED TEMPORARILY - Uncomment to re-enable verification
+    /*
     if (campaignResult?.data?.campaign?.id && formData) {
       try {
         // Collect all ad set IDs from the campaign result
@@ -993,6 +1003,8 @@ const Strategy150Container: React.FC = () => {
         // Don't fail the completion - verification is supplementary
       }
     }
+    */
+    console.log('⏸️  [Strategy150] Verification DISABLED (to reduce API calls)');
   };
 
   const handleCreateNew = () => {

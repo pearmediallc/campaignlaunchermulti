@@ -757,8 +757,11 @@ class VerificationService {
         `${m.field}: expected "${m.expected}", got "${m.actual}"`
       ).join('; ');
 
+      // Fix: Database enum expects 'adset' not 'ad set'
+      const normalizedEntityType = item.entity.toLowerCase().replace(/\s+/g, ''); // Remove all spaces
+
       displayItems.push({
-        entityType: item.entity.toLowerCase(),
+        entityType: normalizedEntityType,
         entityId: item.entityId,
         entityName: item.entityName,
         failureReason: `Verification mismatch: ${mismatchDetails}`,
