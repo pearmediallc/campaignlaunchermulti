@@ -424,8 +424,16 @@ async function startServer() {
       // Don't fail server startup if queue processor fails
     }
 
+    // ============================================================================
+    // TEMPORARILY DISABLED: Campaign Intelligence Engine & Scheduler
+    // Reason: Reduce Facebook API calls to prevent rate limiting during testing
+    // These services consume significant API quota with background processes
+    // ============================================================================
+
     // Initialize Campaign Intelligence Engine (if enabled)
     // This module is completely isolated from campaign management
+    // DISABLED FOR TESTING - Uncomment to re-enable
+    /*
     try {
       if (intelligence.enabled) {
         const initialized = await intelligence.initialize();
@@ -438,8 +446,12 @@ async function startServer() {
       console.error('Failed to start intelligence engine:', intelError.message);
       // Don't fail server startup if intelligence fails
     }
+    */
+    console.log('⏸️  Campaign Intelligence Engine DISABLED (to reduce API calls)');
 
     // Initialize Campaign Scheduler (for automated campaign start/pause)
+    // DISABLED FOR TESTING - Uncomment to re-enable
+    /*
     try {
       const schedulerService = require('./services/CampaignSchedulerService');
       await schedulerService.initialize();
@@ -448,6 +460,8 @@ async function startServer() {
       console.error('Failed to start campaign scheduler:', schedulerError.message);
       // Don't fail server startup if scheduler fails
     }
+    */
+    console.log('⏸️  Campaign Scheduler DISABLED (to reduce API calls)');
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
