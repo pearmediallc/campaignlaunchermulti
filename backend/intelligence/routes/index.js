@@ -42,8 +42,62 @@ const checkEnabled = (req, res, next) => {
   next();
 };
 
+// ⚠️ ADMIN-ONLY MIDDLEWARE: Intelligence Engine is restricted to admin users
+// This prevents excessive API calls from regular users and limits access to advanced features
+const requireAdmin = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    // Fetch user with roles
+    const db = require('../../models');
+    const user = await db.User.findByPk(userId, {
+      include: [{
+        model: db.Role,
+        as: 'roles',
+        through: { attributes: [] }
+      }]
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // Check if user has admin or super_admin role
+    const isAdmin = user.roles?.some(role =>
+      ['admin', 'super_admin', 'superadmin'].includes(role.name?.toLowerCase())
+    );
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin access required',
+        message: 'Intelligence Engine features are only available to administrators'
+      });
+    }
+
+    // User is admin, proceed
+    next();
+  } catch (error) {
+    console.error('[Intelligence] Admin check error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to verify admin status'
+    });
+  }
+};
+
 // Apply to all routes
 router.use(checkEnabled);
+router.use(requireAdmin); // ⚠️ ALL intelligence routes require admin access
 
 // ============================================
 // Health & Status Endpoints

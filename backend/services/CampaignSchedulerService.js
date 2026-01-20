@@ -8,6 +8,10 @@ class CampaignSchedulerService {
     this.cronJob = null;
     this.isRunning = false;
     this.isInitialized = false;
+    // ⚡ OPTIMIZATION: Campaign status cache to reduce redundant API calls
+    // Cache structure: { campaignId: { status: 'ACTIVE'|'PAUSED', timestamp: Date } }
+    this.statusCache = new Map();
+    this.cacheTTL = 5 * 60 * 1000; // 5 minutes cache TTL
   }
 
   /**
@@ -98,10 +102,18 @@ class CampaignSchedulerService {
 
   /**
    * Find schedules that are due for execution
+   *
+   * OPTIMIZATION: Only returns schedules within a 5-minute window to avoid
+   * unnecessary processing of schedules that aren't due yet.
    */
   async findDueSchedules(action) {
     const { Op } = require('sequelize');
     const now = new Date();
+
+    // ⚡ OPTIMIZATION: 5-minute window to reduce unnecessary queries
+    // Only process schedules due within current minute ± 5min buffer
+    const windowStart = new Date(now.getTime() - 5 * 60 * 1000); // 5 min ago
+    const windowEnd = new Date(now.getTime() + 1 * 60 * 1000);   // 1 min future
 
     const whereClause = {
       is_enabled: true
@@ -110,14 +122,16 @@ class CampaignSchedulerService {
     if (action === 'start') {
       whereClause.next_scheduled_start = {
         [Op.and]: [
-          { [Op.lte]: now },
+          { [Op.gte]: windowStart },  // Not older than 5 min ago
+          { [Op.lte]: windowEnd },     // Not more than 1 min in future
           { [Op.ne]: null }
         ]
       };
     } else if (action === 'pause') {
       whereClause.next_scheduled_pause = {
         [Op.and]: [
-          { [Op.lte]: now },
+          { [Op.gte]: windowStart },  // Not older than 5 min ago
+          { [Op.lte]: windowEnd },     // Not more than 1 min in future
           { [Op.ne]: null }
         ]
       };
@@ -132,17 +146,9 @@ class CampaignSchedulerService {
       }]
     });
 
-    // Debug logging
-    if (results.length === 0) {
-      const allSchedules = await db.CampaignSchedule.findAll({
-        where: { is_enabled: true },
-        attributes: ['id', 'campaign_name', 'next_scheduled_start', 'next_scheduled_pause', 'is_enabled']
-      });
-      console.log(`   🔍 DEBUG: Current time: ${now.toISOString()}`);
-      console.log(`   🔍 DEBUG: Found ${allSchedules.length} enabled schedules total:`);
-      allSchedules.forEach(s => {
-        console.log(`      - ${s.campaign_name}: start=${s.next_scheduled_start ? s.next_scheduled_start.toISOString() : 'NULL'}, pause=${s.next_scheduled_pause ? s.next_scheduled_pause.toISOString() : 'NULL'}`);
-      });
+    // Minimal debug logging (only when schedules found)
+    if (results.length > 0) {
+      console.log(`   ✅ Found ${results.length} schedules due for ${action} (window: ${windowStart.toISOString()} to ${windowEnd.toISOString()})`);
     }
 
     return results;
@@ -151,6 +157,8 @@ class CampaignSchedulerService {
   /**
    * Execute a scheduled action (start or pause campaign)
    * Force rebuild: 2026-01-14
+   *
+   * OPTIMIZATION: Uses status cache to skip API calls if campaign is already in target state
    */
   async executeScheduledAction(schedule, action) {
     console.log(`🎬 [SCHEDULER] Executing ${action.toUpperCase()} for campaign: ${schedule.campaign_name} (${schedule.campaign_id})`);
@@ -159,17 +167,41 @@ class CampaignSchedulerService {
       const accessToken = schedule.facebookAuth.accessToken;
       const targetStatus = action === 'start' ? 'ACTIVE' : 'PAUSED';
 
+      // ⚡ OPTIMIZATION: Check cache first to avoid unnecessary API calls
+      const cached = this.statusCache.get(schedule.campaign_id);
+      const now = Date.now();
+
+      if (cached && (now - cached.timestamp) < this.cacheTTL) {
+        // Cache is valid
+        if (cached.status === targetStatus) {
+          console.log(`   ⚡ CACHE HIT: Campaign already ${targetStatus} (cached ${Math.floor((now - cached.timestamp) / 1000)}s ago) - skipping API call`);
+          await db.CampaignScheduleLog.createLog(
+            schedule.id,
+            action,
+            'skipped',
+            `Campaign already ${targetStatus} (cached)`,
+            null
+          );
+          await this.updateNextExecutionTimes(schedule);
+          return;
+        } else {
+          console.log(`   ⚡ CACHE HIT: Status changed from ${cached.status} to ${targetStatus} - updating via API`);
+        }
+      } else if (cached) {
+        console.log(`   ⏰ Cache expired (${Math.floor((now - cached.timestamp) / 1000)}s old) - refreshing`);
+      }
+
       // Create FacebookAPI instance with access token
       const facebookApi = new FacebookAPI({ accessToken });
 
       // Execute the action via Facebook API
-      console.log(`   🔍 DEBUG: Calling facebookApi.updateCampaignStatus with status=${targetStatus}`);
+      console.log(`   📤 API CALL: Calling facebookApi.updateCampaignStatus with status=${targetStatus}`);
       const result = await facebookApi.updateCampaignStatus(
         schedule.campaign_id,
         targetStatus,
         accessToken
       );
-      console.log(`   🔍 DEBUG: Result received:`, JSON.stringify(result));
+      console.log(`   📥 API RESPONSE: Result received:`, JSON.stringify(result));
 
       if (result.skipped) {
         // Campaign already in target state
@@ -181,6 +213,11 @@ class CampaignSchedulerService {
           result.reason,
           null
         );
+        // Update cache with current status
+        this.statusCache.set(schedule.campaign_id, {
+          status: targetStatus,
+          timestamp: Date.now()
+        });
       } else {
         // Success
         console.log(`   ✅ Successfully ${action === 'start' ? 'started' : 'paused'} campaign`);
@@ -192,6 +229,12 @@ class CampaignSchedulerService {
           null,
           result.data
         );
+        // Update cache with new status
+        this.statusCache.set(schedule.campaign_id, {
+          status: targetStatus,
+          timestamp: Date.now()
+        });
+        console.log(`   💾 Cache updated: ${schedule.campaign_id} → ${targetStatus}`);
       }
 
       // Calculate and update next execution times

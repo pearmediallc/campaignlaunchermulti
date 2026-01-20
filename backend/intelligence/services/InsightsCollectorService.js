@@ -25,6 +25,8 @@ class InsightsCollectorService {
   /**
    * Collect insights for all tracked accounts
    * @param {Object} options - Collection options
+   *
+   * ⚠️ ADMIN-ONLY: Only collects insights for admin users to reduce API calls
    */
   async collectAll(options = {}) {
     const { forceRefresh = false } = options;
@@ -34,13 +36,39 @@ class InsightsCollectorService {
     try {
       // Get all unique ad accounts from existing tracking data
       const mainDb = require('../../models');
+
+      // ⚠️ OPTIMIZATION: Only collect insights for ADMIN users
+      // This prevents excessive API calls for regular users
+      const adminUsers = await mainDb.User.findAll({
+        include: [{
+          model: mainDb.Role,
+          as: 'roles',
+          where: {
+            name: ['admin', 'super_admin', 'superadmin']
+          },
+          through: { attributes: [] }
+        }],
+        attributes: ['id']
+      });
+
+      const adminUserIds = adminUsers.map(u => u.id);
+      console.log(`👥 Found ${adminUserIds.length} admin user(s) - only collecting insights for them`);
+
+      if (adminUserIds.length === 0) {
+        console.log('⚠️ No admin users found - skipping insights collection');
+        return { success: 0, failed: 0, errors: [], skipped: 'No admin users' };
+      }
+
       const trackedCampaigns = await mainDb.CampaignTracking.findAll({
         attributes: ['ad_account_id', 'user_id'],
+        where: {
+          user_id: adminUserIds  // ⚠️ Filter to only admin users
+        },
         group: ['ad_account_id', 'user_id'],
         raw: true
       });
 
-      console.log(`📊 Found ${trackedCampaigns.length} unique accounts to collect data from`);
+      console.log(`📊 Found ${trackedCampaigns.length} admin-owned accounts to collect data from`);
 
       const results = {
         success: 0,
