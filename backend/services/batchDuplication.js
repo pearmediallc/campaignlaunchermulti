@@ -321,10 +321,7 @@ class BatchDuplicationService {
   /**
    * Fix orphan ad sets in campaign duplication
    * Orphans occur when ad set is created but ad fails due to transient errors (500/503)
-   * This method detects orphans and creates ads for them WITH RETRY LOGIC
-   *
-   * CRITICAL SAFETY: Before creating ANY ad, we verify the ad set doesn't already have ads
-   * to prevent creating more ads than requested by the user.
+   * This method detects orphans and creates ads for them
    *
    * @param {string} campaignId - The new campaign ID
    * @param {Array} batchResults - Raw batch results from executeBatch
@@ -420,137 +417,62 @@ class BatchDuplicationService {
         continue;
       }
 
-      // RETRY LOGIC: Try up to 3 times with exponential backoff
-      let retryAttempt = 0;
-      let maxRetries = 3;
-      let adCreated = false;
-      let createdAdId = null;
+      try {
+        console.log(`   📤 Creating ad for orphan pair ${orphan.pairIndex} (ad set ${orphan.adSetId})...`);
 
-      while (retryAttempt < maxRetries && !adCreated) {
-        try {
-          // SAFETY CHECK: Verify ad set doesn't already have ads before creating
-          console.log(`   🔍 [Attempt ${retryAttempt + 1}/${maxRetries}] Checking ad set ${orphan.adSetId} for existing ads...`);
-          const existingAdsCheck = await axios.get(
-            `${this.baseURL}/${orphan.adSetId}/ads`,
-            {
-              params: {
-                fields: 'id',
-                limit: 5,
-                access_token: this.accessToken
-              },
-              timeout: 30000
-            }
-          );
+        // Prepare ad body using the existing prepareAdBody method
+        const adBody = this.prepareAdBody(sourceAd, orphan.adSetId);
 
-          const existingAdsCount = existingAdsCheck.data?.data?.length || 0;
-          if (existingAdsCount > 0) {
-            console.log(`   ✅ Ad set ${orphan.adSetId} already has ${existingAdsCount} ad(s) - skipping creation to prevent duplicates`);
-            // Update result to reflect existing ad
-            updatedResults[orphan.adResultIndex] = {
-              code: 200,
-              body: JSON.stringify({ id: existingAdsCheck.data.data[0].id, note: 'Already existed' })
-            };
-            adCreated = true;
-            fixedCount++;
-            break;
-          }
+        // Decode the URL-encoded body to params
+        const adParams = {};
+        adBody.split('&').forEach(pair => {
+          const [key, value] = pair.split('=');
+          adParams[key] = decodeURIComponent(value);
+        });
+        adParams.access_token = this.accessToken;
 
-          console.log(`   📤 [Attempt ${retryAttempt + 1}/${maxRetries}] Creating ad for orphan pair ${orphan.pairIndex} (ad set ${orphan.adSetId})...`);
+        const response = await axios.post(
+          `${this.baseURL}/act_${accountId}/ads`,
+          null,
+          { params: adParams, timeout: 60000 }
+        );
 
-          // Prepare ad body using the existing prepareAdBody method
-          const adBody = this.prepareAdBody(sourceAd, orphan.adSetId);
+        if (response.data?.id) {
+          console.log(`   ✅ Ad created for orphan pair ${orphan.pairIndex}: ${response.data.id}`);
 
-          // Decode the URL-encoded body to params
-          const adParams = {};
-          adBody.split('&').forEach(pair => {
-            const [key, value] = pair.split('=');
-            adParams[key] = decodeURIComponent(value);
-          });
-          adParams.access_token = this.accessToken;
-
-          const response = await axios.post(
-            `${this.baseURL}/act_${accountId}/ads`,
-            null,
-            { params: adParams, timeout: 60000 }
-          );
-
-          if (response.data?.id) {
-            createdAdId = response.data.id;
-            console.log(`   ✅ [Attempt ${retryAttempt + 1}/${maxRetries}] Ad created successfully: ${createdAdId}`);
-
-            // Update the batch results to reflect the successful ad creation
-            updatedResults[orphan.adResultIndex] = {
-              code: 200,
-              body: JSON.stringify({ id: createdAdId })
-            };
-            adCreated = true;
-            fixedCount++;
-          } else {
-            console.log(`   ❌ [Attempt ${retryAttempt + 1}/${maxRetries}] Ad creation returned no ID`);
-            throw new Error('No ad ID returned');
-          }
-
-        } catch (error) {
-          const fbError = error.response?.data?.error?.message || error.message;
-          const isRateLimit = fbError.includes('User request limit') || fbError.includes('rate limit') || error.response?.status === 429;
-
-          console.log(`   ❌ [Attempt ${retryAttempt + 1}/${maxRetries}] Failed to create ad: ${fbError}`);
-
-          retryAttempt++;
-
-          if (retryAttempt < maxRetries) {
-            // Exponential backoff: 2s, 5s, 10s
-            const delayMs = retryAttempt === 1 ? 2000 : (retryAttempt === 2 ? 5000 : 10000);
-            console.log(`   ⏳ Waiting ${delayMs / 1000}s before retry...`);
-            await this.delay(delayMs);
-          } else {
-            // All retries exhausted
-            console.log(`   ❌ All ${maxRetries} retry attempts exhausted for orphan pair ${orphan.pairIndex}`);
-
-            // If we can't create the ad after retries, delete the orphan ad set to keep counts consistent
-            try {
-              console.log(`   🗑️ Deleting orphan ad set ${orphan.adSetId} to maintain count accuracy...`);
-              await axios.delete(`${this.baseURL}/${orphan.adSetId}`, {
-                params: { access_token: this.accessToken }
-              });
-
-              // Mark the ad set as failed in the results
-              updatedResults[orphan.adSetResultIndex] = {
-                code: 500,
-                body: JSON.stringify({ error: { message: 'Deleted orphan - ad creation failed after retries' } })
-              };
-              console.log(`   ✅ Orphan ad set deleted to prevent count mismatch`);
-
-              // Track this failure for user visibility
-              if (this.userId) {
-                await FailureTracker.safeTrackFailedEntity({
-                  userId: this.userId,
-                  campaignId: campaignId,
-                  campaignName: copyName,
-                  entityType: 'ad',
-                  adsetId: orphan.adSetId,
-                  adsetName: sourceAdSet?.name || 'Unknown',
-                  adId: null,
-                  adName: sourceAd?.name || 'Unknown',
-                  error: new Error(`Failed to create ad after ${maxRetries} retries: ${fbError}`),
-                  strategyType: 'duplication',
-                  metadata: {
-                    reason: 'orphan_fix_failed',
-                    retries: maxRetries,
-                    lastError: fbError
-                  }
-                });
-              }
-            } catch (delError) {
-              console.log(`   ⚠️ Failed to delete orphan ad set: ${delError.message}`);
-            }
-          }
+          // Update the batch results to reflect the successful ad creation
+          updatedResults[orphan.adResultIndex] = {
+            code: 200,
+            body: JSON.stringify({ id: response.data.id })
+          };
+          fixedCount++;
+        } else {
+          console.log(`   ❌ Ad creation returned no ID for pair ${orphan.pairIndex}`);
         }
-      }
 
-      // Small delay between orphan fixes to avoid rate limits
-      if (adCreated) {
+        // Small delay to avoid rate limits
         await this.delay(500);
+
+      } catch (error) {
+        const fbError = error.response?.data?.error?.message || error.message;
+        console.log(`   ❌ Failed to create ad for orphan pair ${orphan.pairIndex}: ${fbError}`);
+
+        // If we can't create the ad, delete the orphan ad set to keep counts consistent
+        try {
+          console.log(`   🗑️ Deleting orphan ad set ${orphan.adSetId}...`);
+          await axios.delete(`${this.baseURL}/${orphan.adSetId}`, {
+            params: { access_token: this.accessToken }
+          });
+
+          // Mark the ad set as failed in the results
+          updatedResults[orphan.adSetResultIndex] = {
+            code: 500,
+            body: JSON.stringify({ error: { message: 'Deleted orphan - ad creation failed' } })
+          };
+          console.log(`   ✅ Orphan ad set deleted`);
+        } catch (delError) {
+          console.log(`   ⚠️ Failed to delete orphan ad set: ${delError.message}`);
+        }
       }
     }
 
