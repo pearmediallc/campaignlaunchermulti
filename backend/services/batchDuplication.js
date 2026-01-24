@@ -3157,7 +3157,8 @@ class BatchDuplicationService {
                   adSetSuccess = true;
                   console.log(`       ✅ Ad set ${pairNumber} parsed: ${adSetId}`);
                 } else if (body.error) {
-                  console.log(`       ❌ Ad set ${pairNumber} error: ${body.error?.message || JSON.stringify(body.error)}`);
+                  console.log(`       ❌ Ad set ${pairNumber} error: ${body.error?.message || 'Unknown error'}`);
+                  console.log(`       📋 Full error details:`, JSON.stringify(body.error, null, 2));
                 }
               } catch (e) {
                 console.error(`       ❌ Failed to parse ad set result: ${e.message}, body: ${adSetResult.body?.substring(0, 100)}`);
@@ -3176,7 +3177,8 @@ class BatchDuplicationService {
                   adSuccess = true;
                   console.log(`       ✅ Ad ${pairNumber} parsed: ${adId}`);
                 } else if (body.error) {
-                  console.log(`       ❌ Ad ${pairNumber} error: ${body.error?.message || JSON.stringify(body.error)}`);
+                  console.log(`       ❌ Ad ${pairNumber} error: ${body.error?.message || 'Unknown error'}`);
+                  console.log(`       📋 Full error details:`, JSON.stringify(body.error, null, 2));
                 }
               } catch (e) {
                 console.error(`       ❌ Failed to parse ad result: ${e.message}, body: ${adResult.body?.substring(0, 100)}`);
