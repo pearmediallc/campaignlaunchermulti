@@ -1957,15 +1957,70 @@ router.post('/duplicate', authenticate, requireFacebookAuth, refreshFacebookToke
       }
     };
 
-    userFacebookApi.duplicateAdSetsWithExistingPost(duplicateData);
+    // ============================================================================
+    // USE BATCH SERVICE instead of old sequential method
+    // ============================================================================
+    // Create batch service instance
+    const BatchDuplicationService = require('../services/batchDuplication');
+    const batchService = new BatchDuplicationService(
+      decryptedToken,
+      activeResources.selectedAdAccountId.replace('act_', ''),
+      activeResources.selectedPageId,
+      activeResources.selectedPixelId
+    );
+
+    // Use batch duplication (same as campaign creation)
+    (async () => {
+      try {
+        console.log(`\n🚀 Starting BATCH duplication for ${count} ad sets...`);
+        const batchResult = await batchService.duplicateAdSetsBatch(
+          originalAdSetId,
+          campaignId,
+          postId,
+          count,
+          {
+            ...formData,
+            customBudgets: duplicateData.customBudgets,
+            adVariationConfig,
+            editorName
+          }
+        );
+
+        // Update job with final results
+        const job = duplicationJobs.get(campaignId);
+        if (job) {
+          Object.assign(job, {
+            status: 'completed',
+            completed: count,
+            total: count,
+            currentOperation: 'Duplication complete',
+            adSets: batchResult.adSets || [],
+            ads: batchResult.ads || []
+          });
+        }
+
+        console.log(`✅ Batch duplication complete: ${batchResult.adSets?.length || 0}/${count} ad sets created`);
+      } catch (error) {
+        console.error('❌ Batch duplication error:', error.message);
+        const job = duplicationJobs.get(campaignId);
+        if (job) {
+          Object.assign(job, {
+            status: 'error',
+            currentOperation: `Error: ${error.message}`,
+            errors: [{ message: error.message }]
+          });
+        }
+      }
+    })();
 
     res.json({
       success: true,
-      message: 'Duplication process started',
+      message: 'Duplication process started (using batch API)',
       data: {
         campaignId,
         count,
         status: 'in_progress',
+        method: 'BATCH_API',
         adAccount: activeResources.selectedAdAccount, // Add ad account info from active resources
         postId: postId || 'Will be fetched from original ad' // Include postId status
       }
