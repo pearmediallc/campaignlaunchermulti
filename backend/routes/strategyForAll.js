@@ -1102,7 +1102,16 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // - Media upload (videoPath → videoId)
       // - 1-1-1 creation (campaign + ad set + ad)
       // - Post ID extraction (6 retries + 3 fallback methods)
-      const initialResult = await userFacebookApi.createStrategy150Campaign(campaignData);
+      //
+      // IMPORTANT: Remove displayLink for initial ad creation to avoid permission errors
+      // The batch duplication will add display links properly
+      const initialCampaignData = {
+        ...campaignData,
+        displayLink: undefined  // Remove to avoid "(#10) Application does not have permission" error
+      };
+
+      console.log(`  ℹ️  Creating initial ad WITHOUT display link (batch will add it)`);
+      const initialResult = await userFacebookApi.createStrategy150Campaign(initialCampaignData);
 
       console.log(`✅ Initial 1-1-1 structure created successfully!`);
       console.log(`  Campaign ID: ${initialResult.campaign.id}`);
