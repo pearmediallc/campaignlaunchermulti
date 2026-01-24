@@ -1269,20 +1269,25 @@ const AdSetSection: React.FC = () => {
               min: { value: 0, message: 'Minimum 0 ad sets' },
               max: { value: 49, message: 'Maximum 49 ad sets' }
             }}
-            render={({ field, fieldState: { error } }) => (
-              <TextField
-                {...field}
-                fullWidth
-                type="number"
-                label="Number of Ad Sets to Duplicate"
-                inputProps={{ min: 0, max: 49, step: 1 }}
-                helperText={
-                  error?.message ||
-                  "Number of ad sets to duplicate AFTER the initial one. Total ad sets = (this number + 1). Example: Enter 5 → Creates 6 total (1 initial + 5 duplicates). Enter 0 → Creates 1-1-1 structure only."
-                }
-                error={!!error}
-              />
-            )}
+            render={({ field, fieldState: { error } }) => {
+              const duplicateCount = Number(field.value) || 49;
+              const totalCount = duplicateCount + 1;
+
+              return (
+                <TextField
+                  {...field}
+                  fullWidth
+                  type="number"
+                  label={`Number of Ad Sets to Duplicate (Creates ${totalCount} total ad sets)`}
+                  inputProps={{ min: 0, max: 49, step: 1 }}
+                  helperText={
+                    error?.message ||
+                    `📊 You selected ${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''} → System will create ${totalCount} total ad set${totalCount !== 1 ? 's' : ''} (1 initial + ${duplicateCount} duplicate${duplicateCount !== 1 ? 's' : ''}). Example: Enter 48 → Creates 49 total. Enter 0 → Creates 1-1-1 structure only.`
+                  }
+                  error={!!error}
+                />
+              );
+            }}
           />
         </Box>
 
