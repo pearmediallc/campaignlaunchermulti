@@ -1164,9 +1164,12 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       // ============================================================================
       console.log(`\n🚀 Step 4: Creating initial 1-1-1 structure (SAME AS STRATEGY 150)...`);
       console.log(`  ℹ️  This creates 1 campaign + 1 ad set + 1 ad to capture Post ID`);
+      console.log(`  ℹ️  Using createStrategy150Campaign() for robust Post ID extraction`);
+      console.log(`  ℹ️  Includes: 6 retries + 3 fallback methods + progressive delays`);
 
-      // Step 4A: Create initial structure
-      const initialResult = await userFacebookApi.createCampaignStructure(templateData);
+      // Step 4A: Create initial structure using Strategy 150's method
+      // This includes the 6-retry Post ID extraction with 3 fallback methods
+      const initialResult = await userFacebookApi.createStrategy150Campaign(templateData);
 
       console.log(`✅ Initial 1-1-1 structure created successfully!`);
       console.log(`  Campaign ID: ${initialResult.campaign.id}`);
