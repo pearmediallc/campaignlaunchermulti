@@ -1160,47 +1160,91 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       console.log('✅ Template data prepared');
 
       // ============================================================================
-      // WEEK 3: WRAP BATCH CREATION WITH RETRY MANAGER
+      // STRATEGY 150 PATTERN: Create 1-1-1 first, then batch duplicate
       // ============================================================================
-      console.log(`\n🚀 Step 4: Executing batch creation with retry protection (${totalAdSets} ad sets)...`);
+      console.log(`\n🚀 Step 4: Creating initial 1-1-1 structure (SAME AS STRATEGY 150)...`);
+      console.log(`  ℹ️  This creates 1 campaign + 1 ad set + 1 ad to capture Post ID`);
 
-      const batchResult = await RetryManager.executeWithRetry(
-        async () => {
-          return await batchService.createFromTemplateBatch(
-            templateData,
-            totalAdSets,
-            1
-          );
-        },
-        {
-          retryBudget: 5,
-          userId: req.user.id,
-          adAccountId: selectedAdAccountId.replace('act_', ''),
-          operationName: 'Batch Campaign Creation',
-          onRetry: async (retryInfo) => {
-            console.log(`🔄 [Week 3 Safety] Retry ${retryInfo.attempt}: ${retryInfo.error.message}`);
-            console.log(`   Next attempt in ${retryInfo.delay}ms`);
+      // Step 4A: Create initial structure
+      const initialResult = await userFacebookApi.createCampaignStructure(templateData);
 
-            // Update job retry count
-            await job.update({
-              retryCount: retryInfo.attempt,
-              lastRetryAt: new Date(),
-              lastError: retryInfo.error.message
-            });
-          }
+      console.log(`✅ Initial 1-1-1 structure created successfully!`);
+      console.log(`  Campaign ID: ${initialResult.campaign.id}`);
+      console.log(`  Ad Set ID: ${initialResult.adSet.id}`);
+      console.log(`  Ad ID: ${initialResult.ads[0].id}`);
+      console.log(`  Post ID: ${initialResult.postId || 'Not captured'}`);
+
+      // Step 4B: Batch duplicate remaining ad sets (if totalAdSets > 1)
+      let batchResult = null;
+      const adSetsToCreate = totalAdSets - 1; // Minus the initial one
+
+      if (adSetsToCreate > 0) {
+        if (!initialResult.postId) {
+          throw new Error('⚠️ Post ID not captured - cannot proceed with batch duplication');
         }
-      );
 
-      console.log(`✅ [Week 3 Safety] Batch creation completed (with retry protection)`);
+        console.log(`\n🚀 Step 5: Batch duplicating ${adSetsToCreate} additional ad sets...`);
+        console.log(`  ℹ️  All duplicates will use the same Post ID: ${initialResult.postId}`);
+        console.log(`  ℹ️  This ensures 100% root effect (identical social proof)`);
 
-      // Step 5: Transform batch result to match existing response format
-      console.log('\n🔄 Step 5: Transforming batch results...');
+        batchResult = await RetryManager.executeWithRetry(
+          async () => {
+            return await batchService.duplicateAdSetsBatch(
+              initialResult.adSet.id,      // Original ad set to copy
+              initialResult.campaign.id,   // Campaign to add to
+              initialResult.postId,        // Post ID to reuse (100% ROOT EFFECT!)
+              adSetsToCreate,              // Number of duplicates (variable!)
+              {
+                ...templateData,
+                mediaHashes: initialResult.mediaHashes,
+                dynamicCreativeEnabled: templateData.dynamicCreativeEnabled,
+                dynamicTextEnabled: templateData.dynamicTextEnabled,
+                primaryTextVariations: templateData.primaryTextVariations,
+                headlineVariations: templateData.headlineVariations,
+                primaryText: templateData.primaryText,
+                headline: templateData.headline,
+                description: templateData.description,
+                url: templateData.url,
+                displayLink: templateData.displayLink,
+                callToAction: templateData.callToAction
+              }
+            );
+          },
+          {
+            retryBudget: 5,
+            userId: req.user.id,
+            adAccountId: selectedAdAccountId.replace('act_', ''),
+            operationName: 'Batch Ad Set Duplication',
+            onRetry: async (retryInfo) => {
+              console.log(`🔄 [Week 3 Safety] Retry ${retryInfo.attempt}: ${retryInfo.error.message}`);
+              console.log(`   Next attempt in ${retryInfo.delay}ms`);
 
-      const campaignId = batchResult.campaignId;
-      const adSetsCreated = batchResult.adSetsCreated || 0;
-      const adsCreated = batchResult.adsCreated || 0;
+              // Update job retry count
+              await job.update({
+                retryCount: retryInfo.attempt,
+                lastRetryAt: new Date(),
+                lastError: retryInfo.error.message
+              });
+            }
+          }
+        );
 
-      console.log(`📊 Batch results: Campaign=${campaignId}, AdSets=${adSetsCreated}/${totalAdSets}, Ads=${adsCreated}/${totalAdSets}`);
+        console.log(`✅ Batch duplication complete!`);
+        console.log(`  Ad Sets Created: ${batchResult.adSets?.length || 0}/${adSetsToCreate}`);
+        console.log(`  Ads Created: ${batchResult.ads?.length || 0}/${adSetsToCreate}`);
+        console.log(`  Success Rate: ${batchResult.summary?.successRate || 0}%`);
+      } else {
+        console.log(`\n⏭️  Step 5: Skipping batch duplication (only 1 ad set requested)`);
+      }
+
+      // Step 6: Calculate final totals
+      console.log('\n🔄 Step 6: Calculating final totals...');
+
+      const campaignId = initialResult.campaign.id;
+      const adSetsCreated = 1 + (batchResult?.adSets?.length || 0); // 1 initial + duplicates
+      const adsCreated = 1 + (batchResult?.ads?.length || 0); // 1 initial + duplicates
+
+      console.log(`📊 Final totals: Campaign=${campaignId}, AdSets=${adSetsCreated}/${totalAdSets}, Ads=${adsCreated}/${totalAdSets}`);
 
       // ============================================================================
       // WEEK 2 & 6: MARK ENTITIES CREATED IN SLOTS (TRACKING)
@@ -1287,68 +1331,60 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
       // Build result format matching existing code expectations
       result = {
-        campaign: {
-          id: campaignId,
-          name: campaignData.campaignName
-        },
-        adSet: {
-          id: `batch-adset-${campaignId}`,
-          name: `${campaignData.campaignName} - Ad Set 1`
-        },
-        ads: [{
-          id: `batch-ad-${campaignId}`
-        }],
-        campaignId: campaignId,
-        adSetId: `batch-adset-${campaignId}`,
-        adId: `batch-ad-${campaignId}`,
-        postId: null, // Batch method doesn't use postId
-        mediaHashes: {
-          imageHash: uploadedImageHash,
-          videoId: uploadedVideoId,
-          videoThumbnail: uploadedVideoThumbnail,
-          dynamicImages: dynamicImageHashes,
-          dynamicVideos: dynamicVideoIds
-        },
+        campaign: initialResult.campaign,
+        adSet: initialResult.adSet,
+        ads: initialResult.ads,
+        campaignId: initialResult.campaign.id,
+        adSetId: initialResult.adSet.id,
+        adId: initialResult.ads[0].id,
+        postId: initialResult.postId, // ✅ POST ID CAPTURED (100% ROOT EFFECT!)
+        mediaHashes: initialResult.mediaHashes,
+        // Combine initial + batch results
+        allAdSets: [initialResult.adSet.id, ...(batchResult?.adSets?.map(as => as.id) || [])],
+        allAds: [initialResult.ads[0].id, ...(batchResult?.ads?.map(ad => ad.id) || [])],
         // Summary statistics
         totalAdSets: adSetsCreated,
         totalAds: adsCreated,
-        duplicationMethod: 'BATCH_API',
-        batchStats: {
-          method: 'BATCH_API',
-          operations: batchResult.operations || (totalAdSets * 2),
+        duplicationMethod: batchResult ? 'STRATEGY_150_PATTERN' : 'SINGLE_ADSET',
+        batchStats: batchResult ? {
+          method: 'STRATEGY_150_PATTERN',
+          operations: batchResult.operations || (adSetsToCreate * 2),
           batchesExecuted: batchResult.batchesExecuted || 0,
           apiCallsSaved: batchResult.apiCallsSaved || 0,
-          success: batchResult.success,
+          successRate: batchResult.summary?.successRate || 100,
           adSetsCreated: adSetsCreated,
           adsCreated: adsCreated
-        }
+        } : null
       };
 
-      console.log(`\n✅ BATCH CREATION COMPLETE!`);
+      console.log(`\n✅ CAMPAIGN CREATION COMPLETE (STRATEGY 150 PATTERN)!`);
       console.log(`   Campaign: ${result.campaign.id}`);
+      console.log(`   Post ID: ${result.postId} (100% root effect)`);
       console.log(`   Ad Sets: ${result.totalAdSets}/${totalAdSets}`);
       console.log(`   Ads: ${result.totalAds}/${totalAdSets}`);
-      console.log(`   API calls saved: ${batchResult.apiCallsSaved || 'N/A'}`);
+      if (batchResult) {
+        console.log(`   API calls saved: ${batchResult.apiCallsSaved || 0}`);
+      }
 
       // ============================================================
       // TRUST BATCH SERVICE'S BUILT-IN VERIFICATION (100% ROOT EFFECT)
       // ============================================================
-      // The batch service now has:
+      // The batch service (duplicateAdSetsBatch) now has:
       // - Step 4A: Orphan retry (ad-only)
       // - Step 4B: Failed pair retry (ad set + ad)
-      // - Step 5: Final verification (guarantees exact count)
-      // - Step 7: Final cleanup (deletes extras, ensures N requested = N created)
+      // - Step 7: Final verification (guarantees exact count)
       // No manual deficit recovery needed - batch service handles everything!
 
-      console.log('\n🔒 ========== BATCH SERVICE VERIFICATION COMPLETE ==========');
-      console.log(`   Final Count: ${batchResult.verification?.actualAdSets || result.totalAdSets} ad sets`);
-      console.log(`   Expected: ${totalAdSets} ad sets`);
-      console.log(`   Exact Match: ${batchResult.verification?.exactMatch ? '✅ YES' : '⚠️ NO'}`);
+      if (batchResult && batchResult.verification) {
+        console.log('\n🔒 ========== BATCH SERVICE VERIFICATION COMPLETE ==========');
+        console.log(`   Final Count: ${batchResult.verification.actualAdSets} ad sets (duplicated)`);
+        console.log(`   Expected: ${adSetsToCreate} ad sets (duplicated)`);
+        console.log(`   Total (including initial): ${1 + batchResult.verification.actualAdSets}/${totalAdSets}`);
+        console.log(`   Exact Match: ${batchResult.verification.exactMatch ? '✅ YES' : '⚠️ NO'}`);
 
-      // Update result with verified counts from batch service
-      if (batchResult.verification) {
-        result.totalAdSets = batchResult.verification.actualAdSets;
-        result.totalAds = batchResult.verification.actualAds;
+        // Update result with verified counts from batch service
+        result.totalAdSets = 1 + batchResult.verification.actualAdSets;
+        result.totalAds = 1 + batchResult.verification.actualAds;
       }
 
       // ============================================================
