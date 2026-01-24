@@ -1386,9 +1386,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         console.log(`  ✅ 100% Root Effect: All ${result.totalAdSets} ads use same creative`);
       }
       console.log('========================================\n');
-      }
+
       // ============================================================
-      // END DEFICIT RECOVERY PHASE
+      // END BATCH CREATION PHASE
       // ============================================================
 
     } catch (error) {
