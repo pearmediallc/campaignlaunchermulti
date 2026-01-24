@@ -168,10 +168,9 @@ const AdSection: React.FC = () => {
       console.log('✅ [Strategy For All] Synced headline variations to form:', validHeadlineVariations.length);
     }
 
-    if (enableDynamicVariations) {
-      setValue('dynamicTextEnabled', true, { shouldDirty: true, shouldValidate: false });
-      console.log('✅ [Strategy For All] Enabled dynamicTextEnabled in form');
-    }
+    // Sync dynamicTextEnabled to match checkbox state
+    setValue('dynamicTextEnabled', enableDynamicVariations, { shouldDirty: true, shouldValidate: false });
+    console.log('✅ [Strategy For All] Synced dynamicTextEnabled to form:', enableDynamicVariations);
 
     // Reset sync flag after a delay
     setTimeout(() => {
