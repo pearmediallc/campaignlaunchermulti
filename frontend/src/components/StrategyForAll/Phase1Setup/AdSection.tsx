@@ -137,22 +137,31 @@ const AdSection: React.FC = () => {
     const validPrimaryVariations = primaryTextVariations.filter(v => v && v.trim());
     const validHeadlineVariations = headlineVariations.filter(v => v && v.trim());
 
-    if (validPrimaryVariations.length > 0) {
-      setValue('primaryTextVariations', validPrimaryVariations);
+    // Get current form values to compare (avoid infinite loop)
+    const currentPrimaryVariations = watch('primaryTextVariations') || [];
+    const currentHeadlineVariations = watch('headlineVariations') || [];
+    const currentDynamicTextEnabled = watch('dynamicTextEnabled') || false;
+
+    // Only update if values actually changed (prevent infinite loop)
+    if (validPrimaryVariations.length > 0 &&
+        JSON.stringify(validPrimaryVariations) !== JSON.stringify(currentPrimaryVariations)) {
+      setValue('primaryTextVariations', validPrimaryVariations, { shouldDirty: true });
       console.log('✅ [Strategy For All] Synced primary text variations to form:', validPrimaryVariations.length);
     }
 
-    if (validHeadlineVariations.length > 0) {
-      setValue('headlineVariations', validHeadlineVariations);
+    if (validHeadlineVariations.length > 0 &&
+        JSON.stringify(validHeadlineVariations) !== JSON.stringify(currentHeadlineVariations)) {
+      setValue('headlineVariations', validHeadlineVariations, { shouldDirty: true });
       console.log('✅ [Strategy For All] Synced headline variations to form:', validHeadlineVariations.length);
     }
 
-    // Also sync the dynamicTextEnabled flag
-    if (enableDynamicVariations && (validPrimaryVariations.length > 0 || validHeadlineVariations.length > 0)) {
-      setValue('dynamicTextEnabled', true);
+    // Also sync the dynamicTextEnabled flag (only if changed)
+    const shouldEnable = enableDynamicVariations && (validPrimaryVariations.length > 0 || validHeadlineVariations.length > 0);
+    if (shouldEnable && !currentDynamicTextEnabled) {
+      setValue('dynamicTextEnabled', true, { shouldDirty: true });
       console.log('✅ [Strategy For All] Enabled dynamicTextEnabled in form');
     }
-  }, [primaryTextVariations, headlineVariations, enableDynamicVariations, setValue]);
+  }, [primaryTextVariations, headlineVariations, enableDynamicVariations, setValue, watch]);
 
   // Sync form media values to local state (for Ad Scraper import and template loading)
   useEffect(() => {
