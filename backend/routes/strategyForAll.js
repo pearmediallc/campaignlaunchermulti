@@ -1037,89 +1037,34 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
 
     let result;
     try {
-      // Step 1: Upload media FIRST (batch needs hashes/IDs, not paths)
-      console.log('\n📤 Step 1: Uploading media assets...');
+      // ============================================================================
+      // STRATEGY 150 PATTERN: DON'T pre-upload media
+      // createStrategy150Campaign() handles media upload internally
+      // ============================================================================
+      console.log('\n📤 Step 1: Preparing campaign data (media will be uploaded by createStrategy150Campaign)...');
+      console.log('  ℹ️  Skipping pre-upload - createStrategy150Campaign() handles it');
+
+      // OLD CODE REMOVED: We were pre-uploading media here, but createStrategy150Campaign()
+      // expects file paths, not IDs. It handles upload internally.
       let uploadedImageHash, uploadedVideoId, uploadedVideoThumbnail;
       let dynamicImageHashes = [];
       let dynamicVideoIds = [];
 
-      // Handle Dynamic Creative multiple media first
-      if (campaignData.dynamicCreativeEnabled && campaignData.dynamicCreativeMediaPaths && campaignData.dynamicCreativeMediaPaths.length > 0) {
-        console.log(`🎨 Processing ${campaignData.dynamicCreativeMediaPaths.length} Dynamic Creative media files...`);
+      // REMOVED: All media upload logic - createStrategy150Campaign() handles this internally
+      // It expects file paths, not pre-uploaded IDs
 
-        for (const mediaPath of campaignData.dynamicCreativeMediaPaths) {
-          const extension = mediaPath.toLowerCase().split('.').pop();
-          const isVideo = ['mp4', 'mov', 'avi', 'wmv', 'flv', 'mkv'].includes(extension);
-
-          if (isVideo) {
-            console.log(`  📹 Uploading video: ${mediaPath}`);
-            const videoId = await userFacebookApi.uploadVideoSmart(mediaPath);
-            if (videoId) {
-              dynamicVideoIds.push(videoId);
-              console.log(`  ✅ Video uploaded: ${videoId}`);
-            }
-          } else {
-            console.log(`  📸 Uploading image: ${mediaPath}`);
-            const imageHash = await userFacebookApi.uploadImage(mediaPath);
-            if (imageHash) {
-              dynamicImageHashes.push(imageHash);
-              console.log(`  ✅ Image uploaded: ${imageHash}`);
-            }
-          }
-        }
-
-        console.log(`✅ Dynamic Creative media uploaded: ${dynamicImageHashes.length} images, ${dynamicVideoIds.length} videos`);
+      console.log(`  ℹ️  Media will be uploaded by createStrategy150Campaign()`);
+      if (campaignData.videoPath) {
+        console.log(`  📹 Video path: ${campaignData.videoPath}`);
+      }
+      if (campaignData.imagePath) {
+        console.log(`  📸 Image path: ${campaignData.imagePath}`);
+      }
+      if (campaignData.dynamicCreativeMediaPaths?.length > 0) {
+        console.log(`  🎨 Dynamic Creative: ${campaignData.dynamicCreativeMediaPaths.length} media files`);
       }
 
-      // Handle single image upload
-      if (campaignData.imagePath && !campaignData.dynamicCreativeEnabled) {
-        console.log(`📸 Uploading single image: ${campaignData.imagePath}`);
-        uploadedImageHash = await userFacebookApi.uploadImage(campaignData.imagePath);
-        console.log(`✅ Image uploaded: ${uploadedImageHash}`);
-      }
-
-      // Handle single video upload
-      if (campaignData.videoPath && !campaignData.dynamicCreativeEnabled) {
-        console.log(`📹 Uploading video: ${campaignData.videoPath}`);
-        uploadedVideoId = await userFacebookApi.uploadVideoSmart(campaignData.videoPath);
-        console.log(`✅ Video uploaded: ${uploadedVideoId}`);
-
-        // Upload custom thumbnail if provided, OR auto-extract from video
-        if (campaignData.videoThumbnailPath) {
-          console.log(`📸 Uploading custom video thumbnail: ${campaignData.videoThumbnailPath}`);
-          uploadedVideoThumbnail = await userFacebookApi.uploadImage(campaignData.videoThumbnailPath);
-          console.log(`✅ Custom thumbnail uploaded: ${uploadedVideoThumbnail}`);
-        } else {
-          // AUTO-EXTRACT THUMBNAIL: Facebook requires a thumbnail for video ads
-          console.log(`📸 Auto-extracting video thumbnail (frame 0)...`);
-          try {
-            const autoThumbnailPath = await extractVideoThumbnail(campaignData.videoPath, 0);
-            if (autoThumbnailPath) {
-              console.log(`✅ Thumbnail extracted: ${autoThumbnailPath}`);
-              uploadedVideoThumbnail = await userFacebookApi.uploadImage(autoThumbnailPath);
-              console.log(`✅ Auto-extracted thumbnail uploaded: ${uploadedVideoThumbnail}`);
-            } else {
-              console.warn(`⚠️ Could not extract thumbnail from video`);
-            }
-          } catch (thumbnailError) {
-            console.warn(`⚠️ Thumbnail extraction failed: ${thumbnailError.message}`);
-          }
-        }
-      }
-
-      // Handle carousel images
-      if (campaignData.imagePaths && campaignData.imagePaths.length > 0 && !campaignData.dynamicCreativeEnabled) {
-        console.log(`📸 Uploading ${campaignData.imagePaths.length} carousel images...`);
-        const carouselHashes = [];
-        for (const imagePath of campaignData.imagePaths) {
-          const hash = await userFacebookApi.uploadImage(imagePath);
-          if (hash) carouselHashes.push(hash);
-        }
-        console.log(`✅ ${carouselHashes.length} carousel images uploaded`);
-        campaignData.carouselImages = carouselHashes;
-      }
-
-      // Step 2: Initialize Batch Service
+      // Step 2: Initialize Batch Service (for later duplication step)
       console.log('\n🔧 Step 2: Initializing Batch Duplication Service...');
       const BatchDuplicationService = require('../services/batchDuplication');
       const batchService = new BatchDuplicationService(
@@ -1130,46 +1075,34 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
       );
       console.log('✅ Batch service initialized');
 
-      // Step 3: Prepare template data for batch creation
-      console.log('\n📋 Step 3: Preparing template data...');
-      const templateData = {
-        ...campaignData,
-        // Replace file paths with Facebook hashes/IDs
-        imageHash: uploadedImageHash,
-        videoId: uploadedVideoId,
-        videoThumbnail: uploadedVideoThumbnail,
-        // Dynamic Creative media
-        dynamicImages: dynamicImageHashes.length > 0 ? dynamicImageHashes : undefined,
-        dynamicVideos: dynamicVideoIds.length > 0 ? dynamicVideoIds : undefined,
-        // Remove path fields to avoid confusion (batch service uses hashes)
-        imagePath: undefined,
-        videoPath: undefined,
-        videoThumbnailPath: undefined,
-        dynamicCreativeMediaPaths: undefined
-      };
-
-      // DEBUG: Log text variations to verify they're being passed correctly
-      console.log('🔍 DEBUG - Text Variations verification:');
-      console.log('  📦 primaryText:', templateData.primaryText);
-      console.log('  📦 primaryTextVariations:', JSON.stringify(templateData.primaryTextVariations));
-      console.log('  📦 headline:', templateData.headline);
-      console.log('  📦 headlineVariations:', JSON.stringify(templateData.headlineVariations));
-      console.log('  📦 displayLink:', templateData.displayLink);
-      console.log('  📦 dynamicTextEnabled:', templateData.dynamicTextEnabled);
-      console.log('  📦 dynamicCreativeEnabled:', templateData.dynamicCreativeEnabled);
-      console.log('✅ Template data prepared');
+      // Step 3: Prepare campaign data (NO changes - pass as-is to createStrategy150Campaign)
+      console.log('\n📋 Step 3: Campaign data ready for createStrategy150Campaign...');
+      console.log('  ℹ️  Passing file paths directly (NOT pre-uploaded IDs)');
+      console.log('  📦 Media type:', campaignData.mediaType);
+      console.log('  📦 Dynamic Creative:', campaignData.dynamicCreativeEnabled || false);
+      console.log('  📦 Dynamic Text:', campaignData.dynamicTextEnabled || false);
+      if (campaignData.primaryTextVariations?.length > 0) {
+        console.log('  📦 Primary Text Variations:', campaignData.primaryTextVariations.length);
+      }
+      if (campaignData.headlineVariations?.length > 0) {
+        console.log('  📦 Headline Variations:', campaignData.headlineVariations.length);
+      }
+      console.log('✅ Campaign data ready');
 
       // ============================================================================
       // STRATEGY 150 PATTERN: Create 1-1-1 first, then batch duplicate
       // ============================================================================
-      console.log(`\n🚀 Step 4: Creating initial 1-1-1 structure (SAME AS STRATEGY 150)...`);
+      console.log(`\n🚀 Step 4: Creating initial 1-1-1 structure (EXACT STRATEGY 150 METHOD)...`);
       console.log(`  ℹ️  This creates 1 campaign + 1 ad set + 1 ad to capture Post ID`);
-      console.log(`  ℹ️  Using createStrategy150Campaign() for robust Post ID extraction`);
+      console.log(`  ℹ️  Using createStrategy150Campaign() - handles media upload internally`);
       console.log(`  ℹ️  Includes: 6 retries + 3 fallback methods + progressive delays`);
 
       // Step 4A: Create initial structure using Strategy 150's method
-      // This includes the 6-retry Post ID extraction with 3 fallback methods
-      const initialResult = await userFacebookApi.createStrategy150Campaign(templateData);
+      // This includes:
+      // - Media upload (videoPath → videoId)
+      // - 1-1-1 creation (campaign + ad set + ad)
+      // - Post ID extraction (6 retries + 3 fallback methods)
+      const initialResult = await userFacebookApi.createStrategy150Campaign(campaignData);
 
       console.log(`✅ Initial 1-1-1 structure created successfully!`);
       console.log(`  Campaign ID: ${initialResult.campaign.id}`);
@@ -1198,18 +1131,18 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
               initialResult.postId,        // Post ID to reuse (100% ROOT EFFECT!)
               adSetsToCreate,              // Number of duplicates (variable!)
               {
-                ...templateData,
-                mediaHashes: initialResult.mediaHashes,
-                dynamicCreativeEnabled: templateData.dynamicCreativeEnabled,
-                dynamicTextEnabled: templateData.dynamicTextEnabled,
-                primaryTextVariations: templateData.primaryTextVariations,
-                headlineVariations: templateData.headlineVariations,
-                primaryText: templateData.primaryText,
-                headline: templateData.headline,
-                description: templateData.description,
-                url: templateData.url,
-                displayLink: templateData.displayLink,
-                callToAction: templateData.callToAction
+                ...campaignData,
+                mediaHashes: initialResult.mediaHashes, // Use uploaded media from initial result
+                dynamicCreativeEnabled: campaignData.dynamicCreativeEnabled,
+                dynamicTextEnabled: campaignData.dynamicTextEnabled,
+                primaryTextVariations: campaignData.primaryTextVariations,
+                headlineVariations: campaignData.headlineVariations,
+                primaryText: campaignData.primaryText,
+                headline: campaignData.headline,
+                description: campaignData.description,
+                url: campaignData.url,
+                displayLink: campaignData.displayLink,
+                callToAction: campaignData.callToAction
               }
             );
           },
