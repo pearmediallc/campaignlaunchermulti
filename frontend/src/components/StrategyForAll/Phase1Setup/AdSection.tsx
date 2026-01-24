@@ -130,6 +130,30 @@ const AdSection: React.FC = () => {
     }
   }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]);
 
+  // CRITICAL: Sync local state BACK to form (for form submission)
+  // When user types in variation fields, update the form so it's included in submission
+  useEffect(() => {
+    // Only sync non-empty variations to the form
+    const validPrimaryVariations = primaryTextVariations.filter(v => v && v.trim());
+    const validHeadlineVariations = headlineVariations.filter(v => v && v.trim());
+
+    if (validPrimaryVariations.length > 0) {
+      setValue('primaryTextVariations', validPrimaryVariations);
+      console.log('✅ [Strategy For All] Synced primary text variations to form:', validPrimaryVariations.length);
+    }
+
+    if (validHeadlineVariations.length > 0) {
+      setValue('headlineVariations', validHeadlineVariations);
+      console.log('✅ [Strategy For All] Synced headline variations to form:', validHeadlineVariations.length);
+    }
+
+    // Also sync the dynamicTextEnabled flag
+    if (enableDynamicVariations && (validPrimaryVariations.length > 0 || validHeadlineVariations.length > 0)) {
+      setValue('dynamicTextEnabled', true);
+      console.log('✅ [Strategy For All] Enabled dynamicTextEnabled in form');
+    }
+  }, [primaryTextVariations, headlineVariations, enableDynamicVariations, setValue]);
+
   // Sync form media values to local state (for Ad Scraper import and template loading)
   useEffect(() => {
     const mediaFilesToSync: File[] = [];
