@@ -112,14 +112,15 @@ const AdSection: React.FC = () => {
   const formImage = watch('image');
   const formImages = watch('images');
 
-  // Use a ref to prevent circular updates between form and local state
-  const isSyncingRef = React.useRef(false);
+  // Use separate refs to prevent circular updates in each direction
+  const isSyncingToLocalRef = React.useRef(false); // Form → Local State
+  const isSyncingToFormRef = React.useRef(false);  // Local State → Form
 
   // Sync form data to local state when Ad Scraper import populates the form
   useEffect(() => {
-    if (isSyncingRef.current) return; // Prevent circular updates
+    if (isSyncingToLocalRef.current) return; // Prevent circular updates
 
-    isSyncingRef.current = true;
+    isSyncingToLocalRef.current = true;
 
     if (formDynamicTextEnabled !== undefined && formDynamicTextEnabled !== enableDynamicVariations) {
       setEnableDynamicVariations(formDynamicTextEnabled);
@@ -140,18 +141,22 @@ const AdSection: React.FC = () => {
 
     // Reset sync flag after a delay
     setTimeout(() => {
-      isSyncingRef.current = false;
+      isSyncingToLocalRef.current = false;
     }, 100);
   }, [formDynamicTextEnabled, formPrimaryVariations, formHeadlineVariations]);
 
   // Sync local state BACK to form when user types (but prevent circular updates)
   useEffect(() => {
-    if (isSyncingRef.current) return; // Prevent circular updates
-
-    isSyncingRef.current = true;
+    if (isSyncingToFormRef.current) return; // Prevent circular updates
 
     const validPrimaryVariations = primaryTextVariations.filter(v => v && v.trim());
     const validHeadlineVariations = headlineVariations.filter(v => v && v.trim());
+
+    // Only sync if we have variations to sync
+    const hasVariations = validPrimaryVariations.length > 0 || validHeadlineVariations.length > 0;
+    if (!hasVariations) return;
+
+    isSyncingToFormRef.current = true;
 
     if (validPrimaryVariations.length > 0) {
       setValue('primaryTextVariations', validPrimaryVariations, { shouldDirty: true, shouldValidate: false });
@@ -163,14 +168,14 @@ const AdSection: React.FC = () => {
       console.log('✅ [Strategy For All] Synced headline variations to form:', validHeadlineVariations.length);
     }
 
-    if (enableDynamicVariations && (validPrimaryVariations.length > 0 || validHeadlineVariations.length > 0)) {
+    if (enableDynamicVariations) {
       setValue('dynamicTextEnabled', true, { shouldDirty: true, shouldValidate: false });
       console.log('✅ [Strategy For All] Enabled dynamicTextEnabled in form');
     }
 
     // Reset sync flag after a delay
     setTimeout(() => {
-      isSyncingRef.current = false;
+      isSyncingToFormRef.current = false;
     }, 100);
   }, [primaryTextVariations, headlineVariations, enableDynamicVariations, setValue]);
 
