@@ -914,10 +914,49 @@ const StrategyForAllContainer: React.FC = () => {
         console.log('📢 Some fields were skipped for successful creation:', primaryResult.data.adSet?._skippedFields);
       }
 
-      setPhase('waiting');
+      // ============================================================================
+      // FIX: Backend ALREADY did all duplication - skip Phase 2 & 3!
+      // ============================================================================
+      // The /create endpoint uses Strategy 150 pattern and creates:
+      // - Initial 1-1-1 structure (campaign + ad set + ad)
+      // - Batch duplication of remaining N-1 ad sets
+      // - Returns postId from initial ad
+      // - Returns allAdSets array with all created ad set IDs
+      //
+      // Therefore:
+      // - Phase 2 (Post ID Capture) is UNNECESSARY - we already have postId
+      // - Phase 3 (Duplication) is UNNECESSARY - backend already duplicated
+      //
+      // We should skip directly to completion phase!
+      // ============================================================================
 
-      // Extract ad ID from the first ad for Post ID capture
-      const adId = primaryResult.data?.ads?.[0]?.id;
+      // Check if backend returned postId (from initial ad creation)
+      const backendPostId = primaryResult.data?.postId;
+      const totalAdSetsCreated = primaryResult.data?.allAdSets?.length || 1;
+
+      console.log('🔍 [Strategy For All] Checking if duplication already complete...');
+      console.log(`   Backend returned postId: ${backendPostId || 'NO'}`);
+      console.log(`   Total ad sets created: ${totalAdSetsCreated}`);
+      console.log(`   Expected ad sets: ${adSetCount}`);
+
+      // If backend has postId AND created all ad sets, skip directly to completion
+      if (backendPostId && totalAdSetsCreated >= adSetCount) {
+        console.log('✅ [Strategy For All] Backend completed all duplication!');
+        console.log('   Skipping Phase 2 (Post Capture) and Phase 3 (Duplication)');
+        console.log('   Going directly to completion phase');
+
+        setPostId(backendPostId);
+        setPhase('completed');
+        setActiveStep(3);
+      } else {
+        // Fallback to old flow (for backward compatibility)
+        console.log('⚠️  [Strategy For All] Backend did NOT complete duplication');
+        console.log('   Falling back to Phase 2 (Post Capture) flow');
+
+        setPhase('waiting');
+
+        // Extract ad ID from the first ad for Post ID capture
+        const adId = primaryResult.data?.ads?.[0]?.id;
         console.log('🎯 Extracted ad ID for Post ID capture:', adId);
 
         if (adId) {
@@ -926,9 +965,10 @@ const StrategyForAllContainer: React.FC = () => {
             console.log('⏰ Starting Post ID capture for ad:', adId);
             handleAutoPostCapture(adId);
           }, 30000); // Wait 30 seconds before trying to fetch post ID
-      } else {
-        console.warn('⚠️ No ad ID found in response, switching to manual input');
-        setPhase('manual');
+        } else {
+          console.warn('⚠️ No ad ID found in response, switching to manual input');
+          setPhase('manual');
+        }
       }
     } catch (error: any) {
       console.error('\n❌ ========== STRATEGY FOR ALL FAILED ==========');

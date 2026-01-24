@@ -1530,6 +1530,9 @@ router.post('/create', authenticate, requireFacebookAuth, refreshFacebookToken, 
         page: facebookAuth.selectedPage || { id: selectedPageId, name: 'Page' },
         pixel: pixelId ? { id: pixelId, name: facebookAuth.selectedPixel?.name || 'Pixel' } : null,
         postId: result.postId,
+        // CRITICAL: Include all created ad sets so frontend knows duplication is complete
+        allAdSets: result.allAdSets || [result.adSet.id],  // Array of all ad set IDs
+        totalAdSets: result.totalAdSets || 1,              // Total count for verification
         duplicationSettings: campaignData.duplicationSettings,
         facebookPayload, // What was sent to Facebook for verification
         // Add safety system info
