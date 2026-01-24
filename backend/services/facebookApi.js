@@ -1592,8 +1592,16 @@ class FacebookAPI {
         maxBodyLength: 50 * 1024 * 1024
       });
 
-      console.log('✅ Ad created successfully!');
+      console.log('✅ Ad API call returned successfully!');
+      console.log('  🔍 Full Response Data:', JSON.stringify(response.data, null, 2));
       console.log('  Ad ID:', response.data.id);
+
+      if (!response.data.id) {
+        console.error('❌ CRITICAL: Facebook returned success but NO ad ID!');
+        console.error('  This usually means the creative was rejected silently');
+        console.error('  Full response:', JSON.stringify(response.data, null, 2));
+        throw new Error('Facebook API returned success but no ad ID - creative may be invalid');
+      }
 
       return response.data;
     } catch (error) {
