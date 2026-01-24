@@ -1272,9 +1272,21 @@ class BatchDuplicationService {
         let retrySuccessCount = 0;
         let retryOrphanCount = 0;
         let retryFailCount = 0;
+        let consecutivePermanentErrors = 0; // Track consecutive permanent errors
+        let lastPermanentErrorMessage = null;
 
         for (let i = 0; i < maxRetriesToAttempt; i++) {
           const pairIndex = failedPairIndices[i];
+
+          // STOP if we hit 3 consecutive permanent errors with same message
+          // This prevents creating 50 orphan ad sets when there's a systematic issue
+          if (consecutivePermanentErrors >= 3) {
+            console.log(`\n🛑 STOP: ${consecutivePermanentErrors} consecutive permanent errors detected`);
+            console.log(`   Error: ${lastPermanentErrorMessage}`);
+            console.log(`   Skipping remaining ${maxRetriesToAttempt - i} retries to prevent orphan creation`);
+            console.log(`   ℹ️ Fix the underlying issue and retry the campaign`);
+            break;
+          }
           try {
             // Create atomic batch for this single pair
             const adSetBody = this.prepareAdSetBodyFromTemplate(templateData, pairIndex, campaignId);
@@ -1347,6 +1359,7 @@ class BatchDuplicationService {
               adSetsCreated++;
               adsCreated++;
               retrySuccessCount++;
+              consecutivePermanentErrors = 0; // Reset on success
 
               // Remove from failed details
               failedDetails = failedDetails.filter(f =>
@@ -1354,16 +1367,37 @@ class BatchDuplicationService {
               );
             } else if (adSetId && !adId) {
               // Orphan created during retry - delete it immediately to avoid extra ad sets
+              console.log(`     ⚠️ Pair ${pairIndex + 1}: Orphan detected (ad set ${adSetId} without ad)`);
+              console.log(`     🗑️ Deleting orphan to prevent extra ad sets...`);
               retryOrphanCount++;
+
+              // Check if this is a permanent error (e.g., "Cannot create dynamic creative ad in non-dynamic creative ad set")
+              const isPermanentError = adError && (
+                adError.includes('Cannot create dynamic creative') ||
+                adError.includes('Invalid parameter') ||
+                adError.includes('does not have permission')
+              );
+
+              if (isPermanentError) {
+                consecutivePermanentErrors++;
+                lastPermanentErrorMessage = adError;
+                console.log(`     🚨 PERMANENT ERROR detected: ${adError}`);
+                console.log(`     🔢 Consecutive permanent errors: ${consecutivePermanentErrors}/3`);
+              } else {
+                consecutivePermanentErrors = 0; // Reset if transient error
+              }
+
               try {
                 await axios.delete(`${this.baseURL}/${adSetId}`, { params: { access_token: this.accessToken } });
+                console.log(`     ✅ Orphan deleted successfully`);
               } catch (e) {
                 // If delete fails, count the orphan
                 adSetsCreated++;
-                console.error(`     ⚠️ Pair ${pairIndex + 1}: Created orphan ${adSetId}, delete failed: ${e.message}`);
+                console.error(`     ❌ Failed to delete orphan ${adSetId}: ${e.message}`);
               }
             } else {
               retryFailCount++;
+              consecutivePermanentErrors = 0; // Reset on complete failure (different from orphan)
             }
 
             // Delay between retries
