@@ -564,6 +564,11 @@ const StrategyForAllContainer: React.FC = () => {
         instagramAccount: campaignData.instagramAccount,
         pixel: campaignData.pixel,
 
+        // Dynamic Text Variations (for Facebook's Multiple Text Options)
+        dynamicTextEnabled: (campaignData as any).dynamicTextEnabled || false,
+        primaryTextVariations: (campaignData as any).primaryTextVariations || [],
+        headlineVariations: (campaignData as any).headlineVariations || [],
+
         // Placements - Pass exactly what user selected
         placementType: campaignData.placementType || 'automatic'
       };

@@ -2374,13 +2374,18 @@ class BatchDuplicationService {
         assetFeedSpec.descriptions = [{ text: templateData.description }];
       }
 
-      // Link URLs with optional display link
+      // Link URLs (WITHOUT display_url to avoid permission errors)
+      // NOTE: displayLink causes "(#10) Application does not have permission" error
+      // Facebook requires special permissions for display_url in asset_feed_spec
       const linkUrlObj = { website_url: templateData.url || '' };
-      if (templateData.displayLink) {
-        linkUrlObj.display_url = templateData.displayLink;
-        if (adIndex === 0) console.log(`  🔗 Display URL: ${templateData.displayLink}`);
-      }
+      // REMOVED: display_url causes permission error
+      // if (templateData.displayLink) {
+      //   linkUrlObj.display_url = templateData.displayLink;
+      // }
       assetFeedSpec.link_urls = [linkUrlObj];
+      if (adIndex === 0 && templateData.displayLink) {
+        console.log(`  ℹ️  Display URL skipped (permission restriction): ${templateData.displayLink}`);
+      }
 
       // Call to action
       assetFeedSpec.call_to_action_types = [templateData.callToAction || 'LEARN_MORE'];
@@ -4296,12 +4301,14 @@ class BatchDuplicationService {
           assetFeedSpec.descriptions = [{ text: textVariations.description }];
         }
 
-        // Link URLs
+        // Link URLs (WITHOUT display_url to avoid permission errors)
+        // NOTE: displayLink causes "(#10) Application does not have permission" error
         if (textVariations.url) {
           assetFeedSpec.link_urls = [{ website_url: textVariations.url }];
-          if (textVariations.displayLink) {
-            assetFeedSpec.link_urls[0].display_url = textVariations.displayLink;
-          }
+          // REMOVED: display_url causes permission error
+          // if (textVariations.displayLink) {
+          //   assetFeedSpec.link_urls[0].display_url = textVariations.displayLink;
+          // }
         }
 
         // Call to action
@@ -5405,12 +5412,14 @@ class BatchDuplicationService {
         assetFeedSpec.descriptions = [{ text: templateData.description }];
       }
 
-      // Add link URLs
+      // Add link URLs (WITHOUT display_url to avoid permission errors)
+      // NOTE: displayLink causes "(#10) Application does not have permission" error
       if (templateData.url) {
         assetFeedSpec.link_urls = [{ website_url: templateData.url }];
-        if (templateData.displayLink) {
-          assetFeedSpec.link_urls[0].display_url = templateData.displayLink;
-        }
+        // REMOVED: display_url causes permission error
+        // if (templateData.displayLink) {
+        //   assetFeedSpec.link_urls[0].display_url = templateData.displayLink;
+        // }
       }
 
       // Add call to action
