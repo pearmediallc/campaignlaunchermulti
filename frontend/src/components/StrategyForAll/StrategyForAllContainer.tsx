@@ -524,7 +524,7 @@ const StrategyForAllContainer: React.FC = () => {
 
         // URL fields
         url: campaignData.url || '',
-        urlType: (campaignData.urlType === 'lead_gen' || campaignData.urlType === 'call') ? campaignData.urlType : 'lead_gen',
+        urlType: campaignData.urlType || 'website', // Default to 'website' for most campaigns
 
         // Budget - send the appropriate one based on budgetType
         budgetType: campaignData.budgetType || 'daily',
