@@ -149,23 +149,22 @@ const AdSection: React.FC = () => {
   useEffect(() => {
     if (isSyncingToFormRef.current) return; // Prevent circular updates
 
-    const validPrimaryVariations = primaryTextVariations.filter(v => v && v.trim());
-    const validHeadlineVariations = headlineVariations.filter(v => v && v.trim());
-
-    // Only sync if we have variations to sync
-    const hasVariations = validPrimaryVariations.length > 0 || validHeadlineVariations.length > 0;
-    if (!hasVariations) return;
+    // Don't filter empty strings - they represent input fields user is typing in
+    // Only sync if arrays have changed (not empty)
+    const hasVariations = primaryTextVariations.length > 0 || headlineVariations.length > 0;
+    if (!hasVariations && !enableDynamicVariations) return;
 
     isSyncingToFormRef.current = true;
 
-    if (validPrimaryVariations.length > 0) {
-      setValue('primaryTextVariations', validPrimaryVariations, { shouldDirty: true, shouldValidate: false });
-      console.log('✅ [Strategy For All] Synced primary text variations to form:', validPrimaryVariations.length);
+    // Sync ALL variations including empty strings (for input fields)
+    if (primaryTextVariations.length > 0) {
+      setValue('primaryTextVariations', primaryTextVariations, { shouldDirty: true, shouldValidate: false });
+      console.log('✅ [Strategy For All] Synced primary text variations to form:', primaryTextVariations.length);
     }
 
-    if (validHeadlineVariations.length > 0) {
-      setValue('headlineVariations', validHeadlineVariations, { shouldDirty: true, shouldValidate: false });
-      console.log('✅ [Strategy For All] Synced headline variations to form:', validHeadlineVariations.length);
+    if (headlineVariations.length > 0) {
+      setValue('headlineVariations', headlineVariations, { shouldDirty: true, shouldValidate: false });
+      console.log('✅ [Strategy For All] Synced headline variations to form:', headlineVariations.length);
     }
 
     // Sync dynamicTextEnabled to match checkbox state

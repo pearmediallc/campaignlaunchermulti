@@ -487,9 +487,10 @@ const StrategyForAllContainer: React.FC = () => {
         },
 
         // Dynamic Text Variations (Facebook's Multiple Text Options)
+        // Filter out empty strings before submission
         dynamicTextEnabled: data.dynamicTextEnabled || false,
-        primaryTextVariations: data.primaryTextVariations || [],
-        headlineVariations: data.headlineVariations || []
+        primaryTextVariations: (data.primaryTextVariations || []).filter((v: string) => v && v.trim()),
+        headlineVariations: (data.headlineVariations || []).filter((v: string) => v && v.trim())
       };
 
       // Use the working campaignApi.createCampaign instead of custom endpoint
