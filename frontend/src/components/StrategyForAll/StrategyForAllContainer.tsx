@@ -690,6 +690,10 @@ const StrategyForAllContainer: React.FC = () => {
       console.log('🔍 Attribution in workingCampaignData:');
       console.log('  - attributionSetting:', workingCampaignData.attributionSetting);
       console.log('  - attributionWindow:', workingCampaignData.attributionWindow);
+      console.log('🔍 Text Variations in workingCampaignData:');
+      console.log('  - dynamicTextEnabled:', workingCampaignData.dynamicTextEnabled);
+      console.log('  - primaryTextVariations:', workingCampaignData.primaryTextVariations);
+      console.log('  - headlineVariations:', workingCampaignData.headlineVariations);
 
       // Loop for multiple campaigns
       const createdCampaigns = [];
