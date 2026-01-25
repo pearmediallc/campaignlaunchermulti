@@ -484,7 +484,12 @@ const StrategyForAllContainer: React.FC = () => {
         duplicationSettings: data.duplicationSettings || {
           defaultBudgetPerAdSet: 1,
           budgetDistributionType: 'equal'
-        }
+        },
+
+        // Dynamic Text Variations (Facebook's Multiple Text Options)
+        dynamicTextEnabled: data.dynamicTextEnabled || false,
+        primaryTextVariations: data.primaryTextVariations || [],
+        headlineVariations: data.headlineVariations || []
       };
 
       // Use the working campaignApi.createCampaign instead of custom endpoint
