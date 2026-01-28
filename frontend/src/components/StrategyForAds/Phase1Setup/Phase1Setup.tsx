@@ -8,7 +8,9 @@ import {
   StepLabel,
   Paper,
   Typography,
-  CircularProgress
+  CircularProgress,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { FormProvider, useForm } from 'react-hook-form';
 import { StrategyForAdsFormData } from '../../../types/strategyForAds';
@@ -31,6 +33,9 @@ interface Phase1SetupProps {
 }
 
 const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsData }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [loadingTemplate, setLoadingTemplate] = useState(true);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<StrategyForAdsFormData | null>(null);
@@ -438,7 +443,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
         )}
 
         {/* Template Manager Section */}
-        <Paper elevation={2} sx={{ p: 3, mb: 3, backgroundColor: '#f8f9fa' }}>
+        <Paper elevation={2} sx={{ p: { xs: 2, md: 3 }, mb: { xs: 2, md: 3 }, backgroundColor: '#f8f9fa' }}>
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
             📑 Campaign Templates
           </Typography>
@@ -450,7 +455,7 @@ const Phase1Setup: React.FC<Phase1SetupProps> = ({ onSubmit, error, importedAdsD
         </Paper>
 
         {/* Optional: Add stepper for visual progress */}
-        <Stepper activeStep={-1} sx={{ mb: 4 }}>
+        <Stepper activeStep={-1} orientation={isMobile ? 'vertical' : 'horizontal'} sx={{ mb: { xs: 2, md: 4 } }}>
           {formSections.map((section) => (
             <Step key={section.label} completed>
               <StepLabel>{section.label} Configuration</StepLabel>

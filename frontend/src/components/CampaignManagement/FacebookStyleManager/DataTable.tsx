@@ -12,7 +12,9 @@ import {
   Paper,
   Typography,
   IconButton,
-  Button
+  Button,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { Refresh as RefreshIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import ExpandableRow from './ExpandableRow';
@@ -57,6 +59,9 @@ const DataTable: React.FC<DataTableProps> = ({
   searchQuery = '',
   onBulkSchedule
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const allIds = data.map((item) => item.id);
   const allSelected = selectedItems.size > 0 && selectedItems.size === data.length;
   const someSelected = selectedItems.size > 0 && selectedItems.size < data.length;
@@ -102,7 +107,7 @@ const DataTable: React.FC<DataTableProps> = ({
   }
 
   return (
-    <Box sx={{ px: 3, pt: 2 }}>
+    <Box sx={{ px: { xs: 1, sm: 2, md: 3 }, pt: 2 }}>
       {/* Bulk Actions Toolbar */}
       {selectedItems.size > 0 && (
         <BulkActionsToolbar
@@ -118,8 +123,8 @@ const DataTable: React.FC<DataTableProps> = ({
 
       {/* Table */}
       <Paper sx={{ bgcolor: 'white', borderRadius: 2, overflow: 'hidden' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: '1px solid #e4e6eb' }}>
-          <Typography variant="h6" sx={{ fontSize: '16px', fontWeight: 600 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: { xs: 1.5, md: 2 }, borderBottom: '1px solid #e4e6eb' }}>
+          <Typography variant="h6" sx={{ fontSize: { xs: '14px', md: '16px' }, fontWeight: 600 }}>
             {data.length} {level === 'campaigns' ? 'Campaigns' : level === 'adsets' ? 'Ad Sets' : 'Ads'}
           </Typography>
           <IconButton onClick={onRefresh} size="small">
@@ -127,7 +132,8 @@ const DataTable: React.FC<DataTableProps> = ({
           </IconButton>
         </Box>
 
-        <Table>
+        <Box sx={{ overflowX: 'auto' }}>
+          <Table sx={{ minWidth: isMobile ? '800px' : 'auto' }}>
           <TableHead>
             <TableRow sx={{ bgcolor: '#f5f6f7' }}>
               {/* Checkbox column */}
@@ -194,6 +200,7 @@ const DataTable: React.FC<DataTableProps> = ({
             )}
           </TableBody>
         </Table>
+        </Box>
 
         {/* Load More Button */}
         {hasMore && onLoadMore && data.length > 0 && (

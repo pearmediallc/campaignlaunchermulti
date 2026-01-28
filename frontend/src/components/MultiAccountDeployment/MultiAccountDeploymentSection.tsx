@@ -27,7 +27,9 @@ import {
   InputAdornment,
   Select,
   MenuItem,
-  InputLabel
+  InputLabel,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import {
   ExpandMore,
@@ -69,6 +71,9 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
   show,
   onSelectionChange
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [loading, setLoading] = useState(false);
   const [targets, setTargets] = useState<DeploymentTarget[]>([]);
   const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
@@ -220,18 +225,19 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
     <Accordion defaultExpanded sx={{ mb: 2, border: '2px solid', borderColor: 'primary.main' }}>
       <AccordionSummary
         expandIcon={<ExpandMore />}
-        sx={{ bgcolor: 'primary.light' }}
+        sx={{ bgcolor: 'primary.light', py: { xs: 1, md: 'inherit' } }}
       >
-        <Box display="flex" alignItems="center" gap={1}>
-          <RocketLaunch color="primary" />
-          <Typography variant="h6" fontWeight={600}>
-            🔥 Multi-Account Deployment (RECOMMENDED)
+        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+          <RocketLaunch color="primary" sx={{ fontSize: { xs: '20px', md: '24px' } }} />
+          <Typography variant="h6" fontWeight={600} sx={{ fontSize: { xs: '14px', sm: '16px', md: '1.25rem' } }}>
+            🔥 Multi-Account Deployment {isMobile ? '' : '(RECOMMENDED)'}
           </Typography>
           {selectedCount > 1 && (
             <Chip
-              label={`${selectedCount} targets selected`}
+              label={`${selectedCount} selected`}
               color="primary"
               size="small"
+              sx={{ fontSize: { xs: '11px', md: '13px' } }}
             />
           )}
         </Box>
@@ -264,8 +270,8 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
             </Alert>
 
             {/* Processing Mode Selection */}
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+            <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 2 }, mb: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} gutterBottom sx={{ fontSize: { xs: '13px', md: '14px' } }}>
                 Processing Mode:
               </Typography>
               <FormControl component="fieldset">
@@ -312,10 +318,10 @@ export const MultiAccountDeploymentSection: React.FC<MultiAccountDeploymentSecti
             </Paper>
 
             {/* Search and Filter Section */}
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-              <Box display="flex" alignItems="center" gap={1} mb={2}>
-                <FilterList color="primary" />
-                <Typography variant="subtitle2" fontWeight={600}>
+            <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 2 }, mb: 2 }}>
+              <Box display="flex" alignItems="center" gap={1} mb={2} flexWrap="wrap">
+                <FilterList color="primary" sx={{ fontSize: { xs: '20px', md: '24px' } }} />
+                <Typography variant="subtitle2" fontWeight={600} sx={{ fontSize: { xs: '13px', md: '14px' } }}>
                   Search & Filter Targets
                 </Typography>
                 {hasActiveFilters && (
