@@ -10,7 +10,9 @@ import {
   Container,
   Alert,
   Tabs,
-  Tab
+  Tab,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { StrategyForAdsFormData, StrategyForAdsPhase, StrategyForAdsResponse } from '../../types/strategyForAds';
 import Phase1Setup from './Phase1Setup/Phase1Setup';
@@ -23,6 +25,9 @@ import { CreativeLibraryProvider } from '../../contexts/CreativeLibraryContext';
 import { useStrategyVerification } from '../../hooks/useStrategyVerification';
 
 const StrategyForAdsContainer: React.FC = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   // Tab management
   const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create');
 
@@ -1041,13 +1046,13 @@ const StrategyForAdsContainer: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Paper elevation={2} sx={{ p: 4 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
+    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1, sm: 2, md: 3 } }}>
+      <Paper elevation={2} sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
+        <Box sx={{ mb: { xs: 2, md: 4 } }}>
+          <Typography variant="h4" component="h1" gutterBottom align="center" sx={{ fontSize: { xs: '1.5rem', sm: '2rem', md: '2.125rem' } }}>
             Strategy For Ads
           </Typography>
-          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
+          <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3, fontSize: { xs: '0.875rem', md: '1rem' }, px: { xs: 1, md: 0 } }}>
             Create and manage campaigns with custom ad sets and ad variations (you control the quantities)
           </Typography>
 
@@ -1055,12 +1060,14 @@ const StrategyForAdsContainer: React.FC = () => {
           <Tabs
             value={activeTab}
             onChange={(_, newValue) => setActiveTab(newValue)}
-            centered
-            sx={{ mb: 4 }}
+            centered={!isMobile}
+            variant={isMobile ? 'scrollable' : 'standard'}
+            scrollButtons={isMobile ? 'auto' : false}
+            sx={{ mb: { xs: 2, md: 4 } }}
           >
-            <Tab label="Create Campaign" value="create" />
-            <Tab label="Manage Campaigns" value="manage" />
-            <Tab label="Multiply Campaign" value="multiply" />
+            <Tab label={isMobile ? "Create" : "Create Campaign"} value="create" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }} />
+            <Tab label={isMobile ? "Manage" : "Manage Campaigns"} value="manage" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }} />
+            <Tab label={isMobile ? "Multiply" : "Multiply Campaign"} value="multiply" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }} />
           </Tabs>
         </Box>
 
@@ -1068,15 +1075,15 @@ const StrategyForAdsContainer: React.FC = () => {
         {activeTab === 'create' ? (
           <>
             {/* Existing Campaign Creation Flow */}
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3 }}>
+            <Box sx={{ mb: { xs: 2, md: 4 } }}>
+              <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 3, fontSize: { xs: '0.875rem', md: '1rem' }, px: { xs: 1, md: 0 } }}>
                 Create 1 campaign with 1 ad set and 1 ad, then duplicate into {adSetCount > 1 ? `${adSetCount - 1} additional ad sets` : 'your selected number of ad sets'} using the same creative
               </Typography>
 
-              <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+              <Stepper activeStep={activeStep} alternativeLabel={!isMobile} orientation={isMobile ? 'vertical' : 'horizontal'} sx={{ mb: { xs: 2, md: 4 } }}>
                 {steps.map((label) => (
                   <Step key={label}>
-                    <StepLabel>{label}</StepLabel>
+                    <StepLabel sx={{ '& .MuiStepLabel-label': { fontSize: { xs: '0.75rem', md: '0.875rem' } } }}>{label}</StepLabel>
                   </Step>
                 ))}
               </Stepper>

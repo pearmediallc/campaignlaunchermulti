@@ -19,9 +19,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
-import { AccountCircle, Dashboard, People, History, Person, Campaign, BarChart, AutoAwesome, Facebook, LinkOff, Science, Psychology } from '@mui/icons-material';
+import { AccountCircle, Dashboard, People, History, Person, Campaign, BarChart, AutoAwesome, Facebook, LinkOff, Science, Psychology, Menu as MenuIcon, Close } from '@mui/icons-material';
 import ResourceSwitcher from './ResourceSwitcher';
 import { facebookAuthApi } from '../services/api';
 import { toast } from 'react-toastify';
@@ -33,6 +41,10 @@ const Navigation: React.FC = () => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -49,7 +61,16 @@ const Navigation: React.FC = () => {
 
   const handleNavigate = (path: string) => {
     handleClose();
+    setMobileMenuOpen(false);
     navigate(path);
+  };
+
+  const handleToggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const handleCloseMobileMenu = () => {
+    setMobileMenuOpen(false);
   };
 
   const handleOpenDisconnectDialog = () => {
@@ -112,156 +133,162 @@ const Navigation: React.FC = () => {
   };
 
   return (
-    <AppBar position="static" sx={{ 
-      backgroundColor: '#fff', 
+    <AppBar position="static" sx={{
+      backgroundColor: '#fff',
       color: '#1c1e21',
       boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
       borderBottom: '1px solid #dadde1'
     }}>
-      <Toolbar sx={{ minHeight: '56px !important', px: 3 }}>
+      <Toolbar sx={{ minHeight: '56px !important', px: { xs: 1, sm: 2, md: 3 } }}>
+        {/* Mobile Hamburger Menu */}
+        {user && isMobile && (
+          <IconButton
+            edge="start"
+            color="inherit"
+            aria-label="menu"
+            onClick={handleToggleMobileMenu}
+            sx={{ mr: 1 }}
+          >
+            <MenuIcon />
+          </IconButton>
+        )}
+
         <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
-          <Box sx={{ 
-            backgroundColor: '#1877f2', 
-            color: '#fff', 
-            p: 0.5, 
+          <Box sx={{
+            backgroundColor: '#1877f2',
+            color: '#fff',
+            p: 0.5,
             borderRadius: '6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             width: 32,
             height: 32,
-            mr: 2
+            mr: { xs: 1, sm: 2 }
           }}>
             <Campaign />
           </Box>
-          <Typography variant="h6" component="div" sx={{ 
+          <Typography variant="h6" component="div" sx={{
             fontWeight: 600,
-            fontSize: '18px',
-            color: '#1c1e21'
+            fontSize: { xs: '14px', sm: '16px', md: '18px' },
+            color: '#1c1e21',
+            display: { xs: 'none', sm: 'block' }
           }}>
             Facebook Campaign Launcher
           </Typography>
+          <Typography variant="h6" component="div" sx={{
+            fontWeight: 600,
+            fontSize: '14px',
+            color: '#1c1e21',
+            display: { xs: 'block', sm: 'none' }
+          }}>
+            Launcher
+          </Typography>
         </Box>
-        
+
         {user && (
-          <Box display="flex" alignItems="center" gap={2}>
-            {/* Resource Switcher - Only show if user is authenticated */}
-            <ResourceSwitcher />
+          <Box display="flex" alignItems="center" gap={{ xs: 0.5, sm: 1, md: 2 }}>
+            {/* Resource Switcher - Hide on mobile, show in drawer */}
+            {!isMobile && <ResourceSwitcher />}
 
-            {/* Strategy 1-50-1 Button */}
-            <Button
-              variant="outlined"
-              startIcon={<AutoAwesome />}
-              onClick={() => navigate('/strategy-1-50-1')}
-              sx={{
-                borderColor: '#1877f2',
-                color: '#1877f2',
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '14px',
-                px: 2,
-                '&:hover': {
-                  borderColor: '#166fe5',
-                  color: '#166fe5',
-                  backgroundColor: 'rgba(24, 119, 242, 0.04)'
-                }
-              }}
-            >
-              Strategy 1-50-1
-            </Button>
+            {/* Desktop Navigation - Hide on mobile */}
+            {!isMobile && (
+              <>
+                {/* Strategy 1-50-1 Button */}
+                <Button
+                  variant="outlined"
+                  startIcon={<AutoAwesome />}
+                  onClick={() => navigate('/strategy-1-50-1')}
+                  sx={{
+                    borderColor: '#1877f2',
+                    color: '#1877f2',
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    fontSize: '14px',
+                    px: 2,
+                    '&:hover': {
+                      borderColor: '#166fe5',
+                      color: '#166fe5',
+                      backgroundColor: 'rgba(24, 119, 242, 0.04)'
+                    }
+                  }}
+                >
+                  Strategy 1-50-1
+                </Button>
 
-            {/* Strategy for All Button */}
-            <Button
-              variant="outlined"
-              startIcon={<AutoAwesome />}
-              onClick={() => navigate('/strategy-for-all')}
-              sx={{
-                borderColor: '#1877f2',
-                color: '#1877f2',
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '14px',
-                px: 2,
-                '&:hover': {
-                  borderColor: '#166fe5',
-                  color: '#166fe5',
-                  backgroundColor: 'rgba(24, 119, 242, 0.04)'
-                }
-              }}
-            >
-              Strategy for All
-            </Button>
+                {/* Strategy for All Button */}
+                <Button
+                  variant="outlined"
+                  startIcon={<AutoAwesome />}
+                  onClick={() => navigate('/strategy-for-all')}
+                  sx={{
+                    borderColor: '#1877f2',
+                    color: '#1877f2',
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    fontSize: '14px',
+                    px: 2,
+                    '&:hover': {
+                      borderColor: '#166fe5',
+                      color: '#166fe5',
+                      backgroundColor: 'rgba(24, 119, 242, 0.04)'
+                    }
+                  }}
+                >
+                  Strategy for All
+                </Button>
 
-            {/* Strategy for Ads Button */}
-            <Button
-              variant="outlined"
-              startIcon={<AutoAwesome />}
-              onClick={() => navigate('/strategy-for-ads')}
-              sx={{
-                borderColor: '#1877f2',
-                color: '#1877f2',
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '14px',
-                px: 2,
-                '&:hover': {
-                  borderColor: '#166fe5',
-                  color: '#166fe5',
-                  backgroundColor: 'rgba(24, 119, 242, 0.04)'
-                }
-              }}
-            >
-              Strategy for Ads
-            </Button>
+                {/* Strategy for Ads Button */}
+                <Button
+                  variant="outlined"
+                  startIcon={<AutoAwesome />}
+                  onClick={() => navigate('/strategy-for-ads')}
+                  sx={{
+                    borderColor: '#1877f2',
+                    color: '#1877f2',
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    fontSize: '14px',
+                    px: 2,
+                    '&:hover': {
+                      borderColor: '#166fe5',
+                      color: '#166fe5',
+                      backgroundColor: 'rgba(24, 119, 242, 0.04)'
+                    }
+                  }}
+                >
+                  Strategy for Ads
+                </Button>
 
-            {/* Campaign Management Button */}
-            <Button
-              variant="outlined"
-              startIcon={<Dashboard />}
-              onClick={() => navigate('/campaign-management')}
-              sx={{
-                borderColor: '#1877f2',
-                color: '#1877f2',
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '14px',
-                px: 2,
-                '&:hover': {
-                  borderColor: '#166fe5',
-                  color: '#166fe5',
-                  backgroundColor: 'rgba(24, 119, 242, 0.04)'
-                }
-              }}
-            >
-              Manage Campaigns
-            </Button>
+                {/* Campaign Management Button */}
+                <Button
+                  variant="outlined"
+                  startIcon={<Dashboard />}
+                  onClick={() => navigate('/campaign-management')}
+                  sx={{
+                    borderColor: '#1877f2',
+                    color: '#1877f2',
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    fontSize: '14px',
+                    px: 2,
+                    '&:hover': {
+                      borderColor: '#166fe5',
+                      color: '#166fe5',
+                      backgroundColor: 'rgba(24, 119, 242, 0.04)'
+                    }
+                  }}
+                >
+                  Manage Campaigns
+                </Button>
+              </>
+            )}
 
-            {/* Temporary Analytics Button - Commented out per user request
-            <Button
-              variant="contained"
-              startIcon={<BarChart />}
-              onClick={() => window.location.href = '/analytics.html'}
-              sx={{
-                backgroundColor: '#1877f2',
-                color: '#fff',
-                textTransform: 'none',
-                fontWeight: 500,
-                fontSize: '14px',
-                px: 2,
-                '&:hover': {
-                  backgroundColor: '#166fe5'
-                }
-              }}
-            >
-              Analytics
-            </Button>
-            */}
-
-            {/* Facebook Status Indicator */}
+            {/* Facebook Status Indicator - Mobile: show only icon */}
             <Tooltip title={fbConnected ? `Connected: ${facebookUser?.name}` : 'Facebook not connected'}>
               <Chip
                 icon={<Facebook />}
-                label={fbConnected ? 'Connected' : 'Not Connected'}
+                label={isMobile ? '' : (fbConnected ? 'Connected' : 'Not Connected')}
                 color={fbConnected ? 'success' : 'error'}
                 size="small"
                 variant={fbConnected ? 'filled' : 'outlined'}
@@ -270,14 +297,21 @@ const Navigation: React.FC = () => {
                   fontWeight: 500,
                   fontSize: '13px',
                   cursor: 'pointer',
+                  minWidth: isMobile ? '32px' : 'auto',
                   '& .MuiChip-icon': {
-                    fontSize: '18px'
+                    fontSize: '18px',
+                    marginLeft: isMobile ? '4px' : '0',
+                    marginRight: isMobile ? '4px' : '0'
+                  },
+                  '& .MuiChip-label': {
+                    display: isMobile ? 'none' : 'block'
                   }
                 }}
               />
             </Tooltip>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {/* User Info - Hide name on mobile */}
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1.5 }}>
               <Typography variant="body2" sx={{
                 fontSize: '14px',
                 fontWeight: 500,
@@ -285,12 +319,12 @@ const Navigation: React.FC = () => {
               }}>
                 {user.firstName} {user.lastName}
               </Typography>
-              
+
               {user.roles && user.roles.length > 0 && (
-                <Chip 
+                <Chip
                   label={typeof user.roles[0] === 'string' ? user.roles[0] : user.roles[0].name}
                   size="small"
-                  sx={{ 
+                  sx={{
                     backgroundColor: '#e3f2fd',
                     color: '#1976d2',
                     fontSize: '12px',
@@ -300,7 +334,7 @@ const Navigation: React.FC = () => {
                 />
               )}
             </Box>
-            
+
             <IconButton
               size="medium"
               aria-label="account of current user"
@@ -458,6 +492,196 @@ const Navigation: React.FC = () => {
           </Box>
         )}
       </Toolbar>
+
+      {/* Mobile Drawer Menu */}
+      <Drawer
+        anchor="left"
+        open={mobileMenuOpen}
+        onClose={handleCloseMobileMenu}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: 280,
+            backgroundColor: '#fff'
+          }
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderBottom: '1px solid #dadde1' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '16px' }}>
+            Menu
+          </Typography>
+          <IconButton onClick={handleCloseMobileMenu}>
+            <Close />
+          </IconButton>
+        </Box>
+
+        <Box sx={{ p: 2 }}>
+          <ResourceSwitcher />
+        </Box>
+
+        <Divider />
+
+        <List>
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/strategy-1-50-1')}>
+              <ListItemIcon>
+                <AutoAwesome sx={{ color: '#1877f2' }} />
+              </ListItemIcon>
+              <ListItemText primary="Strategy 1-50-1" />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/strategy-for-all')}>
+              <ListItemIcon>
+                <AutoAwesome sx={{ color: '#1877f2' }} />
+              </ListItemIcon>
+              <ListItemText primary="Strategy for All" />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/strategy-for-ads')}>
+              <ListItemIcon>
+                <AutoAwesome sx={{ color: '#1877f2' }} />
+              </ListItemIcon>
+              <ListItemText primary="Strategy for Ads" />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/campaign-management')}>
+              <ListItemIcon>
+                <Dashboard sx={{ color: '#1877f2' }} />
+              </ListItemIcon>
+              <ListItemText primary="Manage Campaigns" />
+            </ListItemButton>
+          </ListItem>
+
+          <Divider sx={{ my: 1 }} />
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/dashboard')}>
+              <ListItemIcon>
+                <Dashboard />
+              </ListItemIcon>
+              <ListItemText primary="Dashboard" />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/intelligence')}>
+              <ListItemIcon>
+                <Psychology sx={{ color: '#9c27b0' }} />
+              </ListItemIcon>
+              <ListItemText primary="Intelligence Dashboard" />
+            </ListItemButton>
+          </ListItem>
+
+          {hasPermission('user', 'read') && (
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => handleNavigate('/users')}>
+                <ListItemIcon>
+                  <People />
+                </ListItemIcon>
+                <ListItemText primary="User Management" />
+              </ListItemButton>
+            </ListItem>
+          )}
+
+          {hasPermission('audit', 'read') && (
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => handleNavigate('/audit-logs')}>
+                <ListItemIcon>
+                  <History />
+                </ListItemIcon>
+                <ListItemText primary="Audit Logs" />
+              </ListItemButton>
+            </ListItem>
+          )}
+
+          {user?.roles?.some((role: any) => {
+            const roleName = typeof role === 'string' ? role : role.name;
+            return ['admin', 'super_admin'].includes(roleName?.toLowerCase());
+          }) && (
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => handleNavigate('/admin/test-dashboard')}>
+                <ListItemIcon>
+                  <Science sx={{ color: '#9c27b0' }} />
+                </ListItemIcon>
+                <ListItemText primary="Test Dashboard" />
+              </ListItemButton>
+            </ListItem>
+          )}
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => handleNavigate('/profile')}>
+              <ListItemIcon>
+                <Person />
+              </ListItemIcon>
+              <ListItemText primary="My Profile" />
+            </ListItemButton>
+          </ListItem>
+
+          {fbConnected && (
+            <>
+              <Divider sx={{ my: 1 }} />
+              <ListItem disablePadding>
+                <ListItemButton
+                  onClick={() => {
+                    handleCloseMobileMenu();
+                    setDisconnectDialogOpen(true);
+                  }}
+                  sx={{
+                    color: 'error.main'
+                  }}
+                >
+                  <ListItemIcon>
+                    <LinkOff sx={{ color: 'error.main' }} />
+                  </ListItemIcon>
+                  <ListItemText primary="Disconnect Facebook" />
+                </ListItemButton>
+              </ListItem>
+            </>
+          )}
+
+          <Divider sx={{ my: 1 }} />
+
+          <ListItem disablePadding>
+            <ListItemButton onClick={handleLogout}>
+              <ListItemIcon>
+                <AccountCircle />
+              </ListItemIcon>
+              <ListItemText primary="Logout" />
+            </ListItemButton>
+          </ListItem>
+        </List>
+
+        {/* User Info at Bottom */}
+        {user && (
+          <Box sx={{ p: 2, mt: 'auto', borderTop: '1px solid #dadde1' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '14px' }}>
+              {user.firstName} {user.lastName}
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#65676b', fontSize: '12px' }}>
+              {user.email}
+            </Typography>
+            {user.roles && user.roles.length > 0 && (
+              <Chip
+                label={typeof user.roles[0] === 'string' ? user.roles[0] : user.roles[0].name}
+                size="small"
+                sx={{
+                  backgroundColor: '#e3f2fd',
+                  color: '#1976d2',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  height: '20px',
+                  mt: 1
+                }}
+              />
+            )}
+          </Box>
+        )}
+      </Drawer>
     </AppBar>
   );
 };

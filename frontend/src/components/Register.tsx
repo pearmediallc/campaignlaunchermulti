@@ -75,9 +75,10 @@ const Register: React.FC = () => {
       alignItems="center"
       minHeight="100vh"
       bgcolor="grey.100"
+      sx={{ px: { xs: 2, sm: 0 } }}
     >
-      <Paper elevation={3} sx={{ p: 4, maxWidth: 500, width: '100%' }}>
-        <Typography variant="h4" align="center" gutterBottom color="primary">
+      <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, maxWidth: 500, width: '100%' }}>
+        <Typography variant="h4" align="center" gutterBottom color="primary" sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
           Register
         </Typography>
         

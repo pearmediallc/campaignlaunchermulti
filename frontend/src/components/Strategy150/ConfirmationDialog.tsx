@@ -21,7 +21,9 @@ import {
   RadioGroup,
   Radio,
   Tabs,
-  Tab
+  Tab,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { WarningAmber, CheckCircle, ContentCopy } from '@mui/icons-material';
 import { Strategy150FormData } from '../../types/strategy150';
@@ -58,6 +60,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   onConfirm,
   onCancel
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const [deploymentOption, setDeploymentOption] = useState<'single' | 'multiple' | 'multi-account'>('single');
   const [numberOfCampaigns, setNumberOfCampaigns] = useState(1);
   const [multiAccountTargets, setMultiAccountTargets] = useState<DeploymentTarget[]>([]);
@@ -103,9 +108,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onCancel} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Box display="flex" alignItems="center" gap={1}>
+    <Dialog open={open} onClose={onCancel} maxWidth="md" fullWidth fullScreen={isMobile}>
+      <DialogTitle sx={{ fontSize: { xs: '1.25rem', md: '1.5rem' }, py: { xs: 2, md: 3 } }}>
+        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
           <WarningAmber color="warning" fontSize="large" />
           <Typography variant="h6">Confirm Campaign Creation</Typography>
         </Box>
