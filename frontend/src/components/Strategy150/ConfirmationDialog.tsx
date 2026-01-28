@@ -34,6 +34,7 @@ interface DeploymentTarget {
   pageName: string;
   pixelId?: string | null;
   pixelName?: string | null;
+  customCampaignName?: string;
   isCurrent: boolean;
   status: string;
 }
